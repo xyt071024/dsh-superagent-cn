@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>破甲模式 · Super Agent</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="brand">
+      <span class="logo">◆</span>
+      <span class="brand-name">Super Agent</span>
+      <span class="brand-sub">for DeepSeek Harness</span>
+    </div>
+    <nav class="lang-switch" aria-label="Language">
+      <a href="index.html" class="active" data-lang="zh">中文</a>
+      <a href="en/index.html" data-lang="en">English</a>
+      <a href="ja/index.html" data-lang="ja">日本語</a>
+    </nav>
+  </div>
+</header>
+
+<main class="doc">
+<h1>破甲模式（Purge Mode）</h1>
+<p><a href="../index.html">← 返回首页</a> | <a href="../install.html">安装说明</a> | <a href="../docs/zh/01-overview.html">完整文档</a></p>
+<hr>
+<blockquote><h2>⚠️ 威胁提示（请先读这一段）</h2>
+<p><strong>破甲模式会修改 DSH 宿主程序本身的行为。</strong> 这不是普通插件，它会：</p>
+<ul>
+<li>给宿主打 <strong>86 处补丁</strong>，改变模型行为边界</li>
+<li>绕过部分宿主内置的内容限制</li>
+<li>修改进程级配置</li>
+</ul>
+<p><strong>后果</strong>：</p>
+<table><thead><tr><th>风险</th><th>说明</th></tr></thead><tbody>
+<tr><td><strong>行为不可预测</strong></td><td>模型可能输出你不期望的内容</td></tr>
+<tr><td><strong>升级会失效</strong></td><td>DSH 升级后补丁需要重新适配，否则插件打不开</td></tr>
+<tr><td><strong>数据风险</strong></td><td>输出内容不做过滤，可能包含错误信息被当真</td></tr>
+<tr><td><strong>合规责任在你</strong></td><td>用它做什么，责任完全由使用者承担</td></tr>
+<tr><td><strong>可能违反服务条款</strong></td><td>部分模型服务的条款禁止绕过限制</td></tr>
+</tbody></table>
+<p><strong>我们不做任何担保。</strong> 这是开源工具，按「现状」提供，作者不为使用后果负责。</p>
+<p><strong>建议</strong>：只在<strong>你自己拥有、你自己承担后果</strong>的环境使用。不要用在生产系统、不要用在别人的机器上、不要用于任何你需要向第三方负责的场景。</p></blockquote>
+<hr>
+<h2>这是什么</h2>
+<p>破甲模式<strong>不是我们写的</strong>，是把两个开源项目集成进来：</p>
+<table><thead><tr><th>项目</th><th>作者</th><th>仓库</th></tr></thead><tbody>
+<tr><td>dsh-purge（原始）</td><td>小杨 / YuJunZhiXue</td><td>https://github.com/YuJunZhiXue/dsh-purge</td></tr>
+<tr><td>dsh-purge Community（社区版，我们用这个）</td><td>kingcharleslzy-ai</td><td>https://github.com/kingcharleslzy-ai/dsh-purge</td></tr>
+</tbody></table>
+<p><strong>上游版本</strong>：1.6.84</p>
+<p><strong>上游已验证宿主</strong>：DSH Desktop 0.2.2-rc.1 / 0.2.1-rc.1 / rc.2 / rc.3 / rc.5</p>
+<p><strong>许可证</strong>：MIT（原署名与版权完整保留）</p>
+<p><strong>本项目的定位</strong>：把它们打包成和 Super Agent 一致的两种形态（插件版 / 白板版），让安装体验统一。<strong>我们不是上游的官方发行版，也未获其背书。</strong></p>
+<hr>
+<h2>它到底改了什么</h2>
+<p>上游的做法是<strong>在宿主代码里做精确替换</strong>——找到一段确切的代码，换成另一段。</p>
+<table><thead><tr><th>项</th><th>数量</th></tr></thead><tbody>
+<tr><td>宿主补丁</td><td>86 处</td></tr>
+<tr><td>状态自检</td><td>25 层</td></tr>
+<tr><td>依赖</td><td>无（纯本地）</td></tr>
+</tbody></table>
+<p><strong>核心机制</strong>：DSH 每次启动时会读 <code>~/.dsh/prompt-inject.md</code>（如果存在），把它作为系统提示的一部分注入。</p>
+<p>破甲模式做的就是：<strong>往这个文件里写内容，并给宿主打补丁确保这段内容真的生效</strong>。</p>
+<p><strong>这意味着</strong>：</p>
+<ul>
+<li>文件删了，行为立刻恢复</li>
+<li>DSH 升级，补丁可能需要重新打</li>
+<li>补丁与宿主版本强绑定，版本不对会失败</li>
+</ul>
+<hr>
+<h2>两种形态</h2>
+<p>和 Super Agent 一样，破甲模式也分两种：</p>
+<table><thead><tr><th>形态</th><th>是什么</th><th>下载</th></tr></thead><tbody>
+<tr><td><strong>插件版</strong></td><td>装进现有 DSH</td><td><code>dsh-purge-plugin-v&lt;版本&gt;.tar.gz</code></td></tr>
+<tr><td><strong>白板版</strong></td><td>自带 DSH 的完整包</td><td><code>dsh-purge-standalone-v&lt;版本&gt;-&lt;平台&gt;.zip</code></td></tr>
+</tbody></table>
+<hr>
+<h1>插件版安装</h1>
+<h2>步骤 1：确认版本</h2>
+<p><strong>这一步最容易出错。</strong></p>
+<pre><code class="language-bash">dsh --version</code></pre>
+<p>必须落在 <strong>0.2.1-rc.1 / rc.2 / rc.3 / rc.5 / 0.2.2-rc.1</strong> 之一。</p>
+<p><strong>不在这个范围</strong>：不要装，先升级或降级 DSH。装错版本的表现是<strong>插件打不开</strong>或<strong>软件起不来</strong>。</p>
+<h2>步骤 2：备份</h2>
+<pre><code class="language-bash">cp ~/.dsh/profiles/&lt;你的profile&gt;/cordis.patch.yml ~/.dsh/profiles/&lt;你的profile&gt;/cordis.patch.yml.bak-before-purge</code></pre>
+<p><strong>必须做。</strong> 出问题就靠这个恢复。</p>
+<h2>步骤 3：创建独立 profile（推荐）</h2>
+<pre><code class="language-bash">dsh purge --from-default-profile web --dump-config &gt; /dev/null</code></pre>
+<p><strong>为什么不装进现有 profile</strong>：破甲会改宿主行为，装进主 profile 会影响你所有其它插件。</p>
+<h2>步骤 4：安装</h2>
+<pre><code class="language-bash">dsh plugin --profile purge add &lt;破甲插件包路径&gt;</code></pre>
+<h2>步骤 5：启动并启用</h2>
+<pre><code class="language-bash">dsh --profile purge</code></pre>
+<p>面板打开后，在侧栏找到 <strong>Purge / 破甲</strong> 入口，点「启用」。</p>
+<p>它会给宿主打补丁。<strong>这个过程需要几十秒</strong>，期间不要关窗口。</p>
+<h2>步骤 6：验证</h2>
+<p>面板上应该显示：</p>
+<pre><code>补丁状态：86 / 86 已应用
+自检：25 / 25 通过</code></pre>
+<p><strong>如果不是 86/86</strong>：说明版本不匹配或权限不足，见下方排查。</p>
+<hr>
+<h1>白板版安装</h1>
+<h2>下载</h2>
+<p><code>dsh-purge-standalone-v&lt;版本&gt;-&lt;平台&gt;.zip</code></p>
+<h2>解压</h2>
+<pre><code>dsh-purge-standalone/
+├── dsh.exe
+├── node/
+├── profiles/
+│   └── purge/          ← 预配置
+├── plugins/
+├── prompt-inject.md    ← 破甲提示内容
+├── 启动.cmd
+└── README.txt</code></pre>
+<h2>启动</h2>
+<p>双击 <code>启动.cmd</code>，或在终端：</p>
+<pre><code class="language-bash">./dsh --profile purge</code></pre>
+<p><strong>首次启动会自动打补丁</strong>，等它显示 <code>86/86</code>。</p>
+<hr>
+<h2>恢复原状</h2>
+<h2>快速恢复（推荐）</h2>
+<p>面板 → Purge → <strong>「停用」</strong></p>
+<p>它会自动回滚补丁。</p>
+<h2>彻底恢复</h2>
+<pre><code class="language-bash"># 1. 停用插件
+dsh plugin --profile purge remove dsh-purge
+
+# 2. 删除注入文件
+rm ~/.dsh/prompt-inject.md
+
+# 3. 恢复配置文件
+cp ~/.dsh/profiles/&lt;profile&gt;/cordis.patch.yml.bak-before-purge \
+   ~/.dsh/profiles/&lt;profile&gt;/cordis.patch.yml
+
+# 4. 重启 DSH</code></pre>
+<h2>白板版恢复</h2>
+<p>直接删文件夹。</p>
+<hr>
+<h2>故障排查</h2>
+<table><thead><tr><th>症状</th><th>原因</th><th>解决</th></tr></thead><tbody>
+<tr><td>插件打不开</td><td>DSH 版本不在支持范围</td><td>核对版本，升级或降级</td></tr>
+<tr><td>补丁数不是 86/86</td><td>宿主被改过，或有其它插件冲突</td><td>换干净 profile 重装</td></tr>
+<tr><td>启动就崩</td><td>补丁与版本不匹配</td><td>停用插件，恢复备份</td></tr>
+<tr><td>打完补丁没效果</td><td>提示文件没写进去 / 没重启</td><td>检查 <code>~/.dsh/prompt-inject.md</code> 是否存在，重启 DSH</td></tr>
+<tr><td>白屏</td><td>端口冲突或没带 token</td><td>用终端打印的完整地址</td></tr>
+<tr><td>Windows 权限错误</td><td>文件被占用</td><td>关掉 DSH 再装</td></tr>
+</tbody></table>
+<h2>版本不匹配怎么办</h2>
+<p><strong>最稳的做法</strong>：装的和上游验证过的版本一致。</p>
+<pre><code class="language-bash">npm install -g @deepseek-ai/dsh@0.2.2-rc.1</code></pre>
+<p>然后重装破甲插件。</p>
+<hr>
+<h2>和 Super Agent 的关系</h2>
+<p><strong>两件事，互不依赖。</strong></p>
+<table><thead><tr><th></th><th>Super Agent</th><th>破甲模式</th></tr></thead><tbody>
+<tr><td>作用</td><td>接到多源工作、自动干活</td><td>改模型行为边界</td></tr>
+<tr><td>装法</td><td>独立 profile</td><td>独立 profile</td></tr>
+<tr><td>可以一起装吗</td><td>可以，但<strong>各用各的 profile</strong></td><td>同左</td></tr>
+</tbody></table>
+<p><strong>同时装的话</strong>：两个 profile 分别起，互不干扰。</p>
+<p><strong>不建议</strong>把破甲装进 Super Agent 的 profile——Super Agent 有严格的权限设计（三层授权），破甲会削弱这层保护。</p>
+<hr>
+<h2>再次提醒</h2>
+<blockquote><p><strong>破甲模式会降低系统的行为约束。</strong></p>
+<p>如果你用它来处理：</p>
+<ul>
+<li>别人的数据</li>
+<li>生产系统</li>
+<li>需要向第三方负责的工作</li>
+</ul>
+<p><strong>请停下来想清楚。</strong> 出问题的责任完全在你。</p>
+<p>这个工具的存在意义是<strong>研究者、开发者在自己可控环境里做实验</strong>，不是用来绕过任何服务的规则。</p></blockquote>
+<hr>
+<p><a href="../index.html">← 返回首页</a> | <a href="../install.html">安装说明</a> | <a href="../docs/zh/01-overview.html">完整文档</a></p>
+<nav class="doc-nav">
+<a class="prev" href="index.html">← 返回首页</a>
+<a class="next" href="docs/zh/01-overview.html">完整文档 →</a>
+</nav>
+</main>
+
+<footer>
+  <p><a href="index.html" style="color:inherit">首页</a> · MIT License</p>
+</footer>
+
+</body>
+</html>
