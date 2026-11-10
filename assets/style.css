@@ -290,3 +290,77 @@ footer p { margin: 0.3rem 0; }
   header, footer, .doc-nav { display: none; }
   body { font-size: 11pt; }
 }
+
+/* ---------- sections added for install / plan / credits / purge ---------- */
+
+.tag-warn {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.1em 0.5em;
+  border-radius: 4px;
+  background: var(--warn-bg);
+  color: var(--warn);
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+  vertical-align: middle;
+  margin-left: 0.4rem;
+}
+
+.warn-section { border-left: 3px solid var(--warn); padding-left: 1.1rem; }
+
+.section-note {
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  margin: -0.6rem 0 1rem;
+}
+
+/* top-of-page threat banner */
+.threat {
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--line));
+  border-radius: var(--radius);
+  background: var(--warn-bg);
+  padding: 1.15rem 1.35rem;
+  margin: 0 0 2rem;
+}
+.threat h2 { margin: 0 0 0.6rem; color: var(--warn); font-size: 1.15rem; }
+.threat p { margin: 0.5rem 0; }
+.threat ul { margin: 0.6rem 0; padding-left: 1.3rem; }
+
+/* steps list */
+.step-list { counter-reset: step; list-style: none; padding: 0; }
+.step-list > li {
+  counter-increment: step;
+  position: relative;
+  padding-left: 2.5rem;
+  margin: 1.5rem 0;
+}
+.step-list > li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: 0.1rem;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.85rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* file tree */
+.filetree {
+  background: var(--bg-code);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1rem 1.15rem;
+  font-family: var(--mono);
+  font-size: 0.83rem;
+  line-height: 1.7;
+  overflow-x: auto;
+  white-space: pre;
+}
+.filetree .note { color: var(--ink-faint); }
