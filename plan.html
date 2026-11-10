@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>完整搭建计划 · Super Agent</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="brand">
+      <span class="logo">◆</span>
+      <span class="brand-name">Super Agent</span>
+      <span class="brand-sub">for DeepSeek Harness</span>
+    </div>
+    <nav class="lang-switch" aria-label="Language">
+      <a href="index.html" class="active" data-lang="zh">中文</a>
+      <a href="en/index.html" data-lang="en">English</a>
+      <a href="ja/index.html" data-lang="ja">日本語</a>
+    </nav>
+  </div>
+</header>
+
+<main class="doc">
+<h1>完整搭建计划</h1>
+<p><a href="../index.html">← 返回首页</a> | <a href="../install.html">安装说明</a> | <a href="../docs/zh/01-overview.html">完整文档</a></p>
+<hr>
+<p>这份计划回答：<strong>从零开始要怎么做、每步做什么、出问题怎么办。</strong></p>
+<hr>
+<h2>一、总体路线</h2>
+<pre><code>阶段 0  准备（0.5 天）
+   ↓
+阶段 1  修复地基（0.5 天）      ← 关键：不修完后面全是空转
+   ↓
+阶段 2  核心框架（5 天）
+   ↓
+阶段 3  连接源接入（6 天）
+   ↓
+阶段 4  多会话协同（4 天）
+   ↓
+阶段 5  自我进化（2 天）
+   ↓
+阶段 6  打包发布（4 天）
+   ↓
+阶段 7  验收（2 天）</code></pre>
+<p><strong>合计约 24 个工作日</strong>（不含你配合授权的等待时间）</p>
+<hr>
+<h2>二、阶段 0：准备（0.5 天）</h2>
+<h3>做什么</h3>
+<table><thead><tr><th>#</th><th>任务</th><th>产出</th></tr></thead><tbody>
+<tr><td>0.1</td><td>核对 DSH 版本范围</td><td>版本确认表</td></tr>
+<tr><td>0.2</td><td>备份现有 profile 与数据</td><td>备份文件</td></tr>
+<tr><td>0.3</td><td>准备测试仓库（GitHub 上一个空仓库）</td><td>测试环境</td></tr>
+<tr><td>0.4</td><td>确认 Node / pnpm / Git 版本</td><td>环境报告</td></tr>
+</tbody></table>
+<h3>通过标准</h3>
+<ul>
+<li>DSH 版本落在 0.2.1-rc.1 ~ 0.2.2-rc.1</li>
+<li>备份可恢复（试恢复一次）</li>
+<li>测试仓库能 <code>git clone</code></li>
+</ul>
+<h3>出问题怎么办</h3>
+<table><thead><tr><th>问题</th><th>处理</th></tr></thead><tbody>
+<tr><td>DSH 版本不在范围</td><td>升级或降级到 <code>0.2.2-rc.1</code></td></tr>
+<tr><td>没有测试仓库</td><td>新建一个私有空仓库，零风险</td></tr>
+<tr><td>磁盘空间不足</td><td>预留 ≥2GB（Node + DSH + 依赖）</td></tr>
+</tbody></table>
+<hr>
+<h2>三、阶段 1：修复地基（0.5 天）</h2>
+<p><strong>这一步不做完，后面所有工作都是空中楼阁。</strong></p>
+<h3>做什么</h3>
+<table><thead><tr><th>#</th><th>任务</th><th>为什么</th></tr></thead><tbody>
+<tr><td>1.1</td><td>修 GitHub 源的 CLI 包装问题</td><td>现在源在空转，一条数据拉不到</td></tr>
+<tr><td>1.2</td><td>加「隔离进程环境变量」开关</td><td>防止污染同进程其它插件</td></tr>
+<tr><td>1.3</td><td>修平台兼容（4 处）</td><td>Windows 上原版跑不起来</td></tr>
+</tbody></table>
+<h3>1.1 具体问题</h3>
+<p><strong>现象</strong>：源状态 <code>error</code>，日志 <code>15 consecutive failed polls</code>，<code>received: 0</code>。</p>
+<p><strong>根因</strong>：CLI 包装脚本用的是批处理格式，但插件用直接 spawn 的方式调用它，Windows 上不认。</p>
+<p><strong>修法</strong>：改用可执行文件包装，或直接注入环境变量。</p>
+<h3>1.2 具体问题</h3>
+<p><strong>现象</strong>：插件会改 <code>process.env.PATH</code>，把 <code>gh</code>/<code>lark-cli</code> 的包装脚本插到最前。</p>
+<p><strong>后果</strong>：同进程的其它插件调用 <code>gh</code> 时会用到它的账号。</p>
+<p><strong>修法</strong>：加配置项，融合模式下不改全局环境，改为局部传参。</p>
+<h3>1.3 四处平台兼容</h3>
+<table><thead><tr><th>#</th><th>问题</th><th>修法</th></tr></thead><tbody>
+<tr><td>a</td><td>无 <code>env</code> 命令</td><td>改用 spawn 的环境参数</td></tr>
+<tr><td>b</td><td><code>stateDir</code> 只认 <code>/</code> 开头</td><td>放宽为同时接受 <code>X:/</code></td></tr>
+<tr><td>c</td><td>硬编码 <code>bash</code> 工具</td><td>按平台选 <code>bash</code>/<code>pwsh</code>（<strong>两处</strong>）</td></tr>
+<tr><td>d</td><td>重启时端口自我抢占</td><td>启动前先清理旧进程</td></tr>
+</tbody></table>
+<h3>通过标准</h3>
+<ul>
+<li>源状态 <code>ready</code></li>
+<li><code>received</code> 计数 &gt; 0（<strong>真的拉到数据</strong>）</li>
+<li>原有插件功能不受影响（逐项测）</li>
+</ul>
+<h3>出问题怎么办</h3>
+<table><thead><tr><th>问题</th><th>处理</th></tr></thead><tbody>
+<tr><td>改完源还是 error</td><td>看具体错误信息，别只看 <code>runtime: ready</code></td></tr>
+<tr><td>原有插件坏了</td><td>立刻回滚，检查隔离开关是否生效</td></tr>
+<tr><td>端口一直冲突</td><td>换端口，或写启动脚本先杀旧进程</td></tr>
+</tbody></table>
+<hr>
+<h2>四、阶段 2：核心框架（5 天）</h2>
+<h3>2.1 设置界面骨架（3 天）</h3>
+<table><thead><tr><th>#</th><th>任务</th><th>验收</th></tr></thead><tbody>
+<tr><td>2.1.1</td><td>八分组导航结构</td><td>能切换，状态保持</td></tr>
+<tr><td>2.1.2</td><td>基本 / 高级两组</td><td>字段能存能读</td></tr>
+<tr><td>2.1.3</td><td>模型与算力组</td><td>模型列表能拉到，选择能保存</td></tr>
+<tr><td>2.1.4</td><td>执行模式组</td><td>开关生效</td></tr>
+<tr><td>2.1.5</td><td>保存/重置/导入导出</td><td>配置能往返</td></tr>
+</tbody></table>
+<p><strong>技术要点</strong>：</p>
+<ul>
+<li>设置项变化要<strong>热生效</strong>，不需要重启</li>
+<li>保存失败要有明确提示（不能静默失败）</li>
+<li>每个字段有默认值，新装即能用</li>
+</ul>
+<h3>2.2 模型授权与分档（2 天）</h3>
+<table><thead><tr><th>#</th><th>任务</th><th>验收</th></tr></thead><tbody>
+<tr><td>2.2.1</td><td>模型清单拉取</td><td>能列出可用模型，按 provider 分组</td></tr>
+<tr><td>2.2.2</td><td>逐模型勾选 + 预算</td><td>勾选能存，预算能算</td></tr>
+<tr><td>2.2.3</td><td>三档策略（统一/分档/多模型）</td><td>切换后行为不同</td></tr>
+<tr><td>2.2.4</td><td>思考深度分档</td><td>四档能存</td></tr>
+<tr><td>2.2.5</td><td>用量统计</td><td>实时显示已用/剩余</td></tr>
+</tbody></table>
+<p><strong>验收关键</strong>：<strong>配了不同模型，实际调用真的用了不同模型</strong>（看日志确认，不能只看界面）。</p>
+<hr>
+<h2>五、阶段 3：连接源接入（6 天）</h2>
+<h3>顺序原则</h3>
+<p><strong>先做场景最匹配、依赖最少的。</strong></p>
+<table><thead><tr><th>顺序</th><th>来源</th><th>天数</th><th>理由</th></tr></thead><tbody>
+<tr><td>3.1</td><td>QQ邮箱</td><td>1</td><td>场景最匹配（异步工作请求）、纯标准协议</td></tr>
+<tr><td>3.2</td><td>企业微信</td><td>1</td><td>官方 API 最规范</td></tr>
+<tr><td>3.3</td><td>飞书</td><td>0.5</td><td>有 CLI，只差应用凭证</td></tr>
+<tr><td>3.4</td><td>Gmail</td><td>0.5</td><td>同邮箱逻辑，加代理</td></tr>
+<tr><td>3.5</td><td>QQ</td><td>1</td><td>已有桥接，写适配层</td></tr>
+<tr><td>3.6</td><td>微信</td><td>2</td><td>最麻烦，放最后</td></tr>
+</tbody></table>
+<h3>每个源的通用步骤</h3>
+<table><thead><tr><th>#</th><th>任务</th><th>验收</th></tr></thead><tbody>
+<tr><td>a</td><td>实现配置表单</td><td>能填、能存、能校验</td></tr>
+<tr><td>b</td><td>实现消息翻译</td><td>平台事件 → 统一 Trigger</td></tr>
+<tr><td>c</td><td>实现回信通道</td><td>能发回原渠道</td></tr>
+<tr><td>d</td><td>实现权限判断</td><td>白名单能生效</td></tr>
+<tr><td>e</td><td>接入健康检查</td><td>状态能显示</td></tr>
+<tr><td>f</td><td><strong>端到端测试</strong></td><td><strong>真发一条消息，真收到回复</strong></td></tr>
+</tbody></table>
+<h3>3.1 QQ邮箱的关键点</h3>
+<table><thead><tr><th>项</th><th>说明</th></tr></thead><tbody>
+<tr><td>收信</td><td>IMAP IDLE（服务器推送，不用轮询）</td></tr>
+<tr><td>认证</td><td><strong>授权码</strong>，不是登录密码</td></tr>
+<tr><td>断线</td><td>自动重连 + 按 UID 游标补拉</td></tr>
+<tr><td>线程归并</td><td>按邮件主题 + References 头</td></tr>
+</tbody></table>
+<p><strong>为什么第一个做</strong>：协议标准、不依赖任何客户端、场景和「有人发工作过来」完全匹配。</p>
+<h3>3.6 微信的关键点</h3>
+<p><strong>这是最难的，必须五层加固</strong>：</p>
+<table><thead><tr><th>层</th><th>手段</th></tr></thead><tbody>
+<tr><td>进程守护</td><td>15 秒探活，崩溃重启（指数退避）</td></tr>
+<tr><td>端口仲裁</td><td>启动前清理僵尸进程</td></tr>
+<tr><td>双通道</td><td>主通道挂 → 窗口控件读取</td></tr>
+<tr><td>消息去重</td><td>按消息 ID</td></tr>
+<tr><td>熔断</td><td>连续失败降级告警</td></tr>
+</tbody></table>
+<p><strong>诚实预期</strong>：<strong>4 星是上限</strong>。它依赖客户端行为，改版就得跟。不承诺 5 星。</p>
+<h3>通过标准</h3>
+<p>每个源都必须做到：<strong>发一条测试消息 → 它收到 → 建工单 → 回复到原渠道</strong>。</p>
+<p><strong>只看界面显示"已连接"不算通过。</strong></p>
+<hr>
+<h2>六、阶段 4：多会话协同（4 天）</h2>
+<table><thead><tr><th>#</th><th>任务</th><th>天数</th><th>验收</th></tr></thead><tbody>
+<tr><td>4.1</td><td>难度预判</td><td>0.5</td><td>能区分四档，准确率可接受</td></tr>
+<tr><td>4.2</td><td>子会话创建</td><td>1</td><td>能开 N 个，各用不同模型</td></tr>
+<tr><td>4.3</td><td>共享任务板</td><td>1</td><td>各会话能看到彼此进度</td></tr>
+<tr><td>4.4</td><td>卡死检测与接管</td><td>1</td><td>模拟卡死，能检测并接管</td></tr>
+<tr><td>4.5</td><td>汇总回测</td><td>0.5</td><td>能合并结果，能退回修改</td></tr>
+</tbody></table>
+<h3>关键验收：救援流程</h3>
+<p>必须跑通这个场景：</p>
+<pre><code>1. 开 3 个子会话
+2. 手动杀掉其中一个（模拟卡死）
+3. 主会话应在 90 秒内检测到
+4. 读取卡死会话的日志
+5. 决定接管
+6. 接管者继续，不重复已完成部分</code></pre>
+<p><strong>跑不通就是没做完。</strong></p>
+<hr>
+<h2>七、阶段 5：自我进化（2 天）</h2>
+<table><thead><tr><th>#</th><th>任务</th><th>验收</th></tr></thead><tbody>
+<tr><td>5.1</td><td>任务后复盘</td><td>能生成结构化经验条目</td></tr>
+<tr><td>5.2</td><td>经验库检索</td><td>新任务能加载相关经验（≤5 条）</td></tr>
+<tr><td>5.3</td><td>代码扫描</td><td>能发现冗余，<strong>只提 PR 不直接改</strong></td></tr>
+<tr><td>5.4</td><td>红线保护</td><td>权限/白名单/熔断逻辑不可被自动修改</td></tr>
+</tbody></table>
+<p><strong>关键</strong>：自我修改必须<strong>走 PR</strong>，且<strong>不能碰红线代码</strong>。</p>
+<hr>
+<h2>八、阶段 6：打包发布（4 天）</h2>
+<h3>8.1 两种形态 × 两种模式 = 四个包</h3>
+<table><thead><tr><th>包</th><th>内容</th><th>大小预估</th></tr></thead><tbody>
+<tr><td><code>superagent-plugin</code></td><td>插件本体</td><td>几 MB</td></tr>
+<tr><td><code>superagent-standalone</code></td><td>含 Node + DSH</td><td>~200MB</td></tr>
+<tr><td><code>purge-plugin</code></td><td>破甲插件</td><td>几 MB</td></tr>
+<tr><td><code>purge-standalone</code></td><td>含 Node + DSH</td><td>~200MB</td></tr>
+</tbody></table>
+<h3>8.2 版本适配矩阵</h3>
+<p><strong>必须逐个验证</strong>：</p>
+<table><thead><tr><th>DSH 版本</th><th>Super Agent</th><th>破甲</th></tr></thead><tbody>
+<tr><td>0.2.1-rc.1</td><td>?</td><td>✅ 上游已验证</td></tr>
+<tr><td>0.2.1-rc.2</td><td>?</td><td>✅</td></tr>
+<tr><td>0.2.1-rc.3</td><td>?</td><td>✅</td></tr>
+<tr><td>0.2.1-rc.5</td><td>?</td><td>✅</td></tr>
+<tr><td>0.2.2-rc.1</td><td>当前开发版</td><td>✅</td></tr>
+</tbody></table>
+<p><strong>打勾之前必须真装一次、真跑一次。</strong></p>
+<h3>8.3 文档三语</h3>
+<table><thead><tr><th>文档</th><th>zh</th><th>en</th><th>ja</th></tr></thead><tbody>
+<tr><td>README</td><td>✅</td><td>✅</td><td>✅</td></tr>
+<tr><td>安装说明</td><td>✅</td><td>待补</td><td>待补</td></tr>
+<tr><td>破甲说明</td><td>✅</td><td>待补</td><td>待补</td></tr>
+<tr><td>致谢</td><td>✅</td><td>✅</td><td>✅</td></tr>
+<tr><td>完整文档 9 篇</td><td>✅</td><td>✅</td><td>✅</td></tr>
+</tbody></table>
+<hr>
+<h2>九、阶段 7：验收（2 天）</h2>
+<h3>验收清单</h3>
+<table><thead><tr><th>#</th><th>项</th><th>通过标准</th></tr></thead><tbody>
+<tr><td>1</td><td>全新环境装插件版</td><td>从零到能用，≤10 分钟</td></tr>
+<tr><td>2</td><td>全新环境装白板版</td><td>解压到能用，≤5 分钟</td></tr>
+<tr><td>3</td><td>三个版本各装一次</td><td>都能跑</td></tr>
+<tr><td>4</td><td>六个连接源各测一次</td><td>都能收发</td></tr>
+<tr><td>5</td><td>多会话协同</td><td>救援流程跑通</td></tr>
+<tr><td>6</td><td>破甲模式</td><td>86/86 补丁，可停用可恢复</td></tr>
+<tr><td>7</td><td>卸载</td><td>卸载后无残留</td></tr>
+<tr><td>8</td><td>三语文档</td><td>链接不全坏，内容一致</td></tr>
+</tbody></table>
+<hr>
+<h2>十、风险与应对</h2>
+<table><thead><tr><th>风险</th><th>概率</th><th>影响</th><th>应对</th></tr></thead><tbody>
+<tr><td><strong>版本升级导致插件失效</strong></td><td>高</td><td>高</td><td>冻结验证过的版本；升级前先测</td></tr>
+<tr><td>平台兼容性问题</td><td>中</td><td>高</td><td>Windows 优先，其它平台标注「未完整实测」</td></tr>
+<tr><td>微信频繁失效</td><td>高</td><td>中</td><td>五层加固 + 明确告知「4 星上限」</td></tr>
+<tr><td>多会话成本失控</td><td>中</td><td>中</td><td>难度预判 + 日预算上限 + 单任务上限</td></tr>
+<tr><td>上游破甲项目停更</td><td>中</td><td>低</td><td>保留源码，可自行维护</td></tr>
+<tr><td>API 变更导致连接源失效</td><td>中</td><td>中</td><td>每个源独立熔断，坏一个不影响其它</td></tr>
+</tbody></table>
+<hr>
+<h2>十一、每个阶段的交付物</h2>
+<table><thead><tr><th>阶段</th><th>交付</th></tr></thead><tbody>
+<tr><td>0</td><td>环境确认报告</td></tr>
+<tr><td>1</td><td>修好的地基 + 验证记录</td></tr>
+<tr><td>2</td><td>可操作的设置界面 + 截图</td></tr>
+<tr><td>3</td><td>六个能收发的连接源 + 测试记录</td></tr>
+<tr><td>4</td><td>跑通的协同流程 + 录屏</td></tr>
+<tr><td>5</td><td>经验库 + 一次真实自优化 PR</td></tr>
+<tr><td>6</td><td>四个安装包 + 版本矩阵表</td></tr>
+<tr><td>7</td><td>验收报告</td></tr>
+</tbody></table>
+<hr>
+<h2>十二、下一步</h2>
+<p><strong>现在该做的是阶段 1。</strong></p>
+<p>原因：它是所有后续工作的前提。源不通，接六个连接源也是空转。</p>
+<p><strong>阶段 1 不需要你配合任何东西</strong>，可以立刻开始。</p>
+<hr>
+<p><a href="../index.html">← 返回首页</a> | <a href="../install.html">安装说明</a> | <a href="../docs/zh/01-overview.html">完整文档</a></p>
+<nav class="doc-nav">
+<a class="prev" href="index.html">← 返回首页</a>
+<a class="next" href="docs/zh/01-overview.html">完整文档 →</a>
+</nav>
+</main>
+
+<footer>
+  <p><a href="index.html" style="color:inherit">首页</a> · MIT License</p>
+</footer>
+
+</body>
+</html>
