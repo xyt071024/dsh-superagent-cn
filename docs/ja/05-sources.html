@@ -26,7 +26,7 @@
 <main class="doc">
 <h1>ソースと安定性</h1>
 <h2>1. 設計原則</h2>
-<p><strong>各ソースが担うのは 3 つだけ</strong>です。翻訳、返信、権限判定。それ以外はすべてコアのロジックを再利用します。</p>
+<p><strong>各ソースがやることは 3 つだけ</strong>です。翻訳、返信、権限判定。それ以外はすべてコアのロジックを再利用します。</p>
 <pre><code>プラットフォームのイベント
    ↓ 翻訳
 統一された Trigger
@@ -38,9 +38,9 @@
 <hr>
 <h2>2. 7 つのソース</h2>
 <table><thead><tr><th>#</th><th>プラットフォーム</th><th>プロトコル</th><th>安定性の目標</th><th>必要なもの</th></tr></thead><tbody>
-<tr><td>1</td><td>WeCom</td><td>公式 API + コールバック</td><td>★★★★★</td><td>企業 ID + アプリ Secret</td></tr>
+<tr><td>1</td><td>企業微信</td><td>公式 API + コールバック</td><td>★★★★★</td><td>企業 ID + アプリ Secret</td></tr>
 <tr><td>2</td><td>QQ メール</td><td>IMAP IDLE + SMTP</td><td>★★★★★</td><td>認証コード</td></tr>
-<tr><td>3</td><td>Feishu</td><td>CLI + イベントストリーム</td><td>★★★★★</td><td>自社アプリの資格情報</td></tr>
+<tr><td>3</td><td>飛書</td><td>CLI + イベントストリーム</td><td>★★★★★</td><td>自社アプリの認証情報</td></tr>
 <tr><td>4</td><td>GitHub</td><td>CLI + 4 段ミラー</td><td>★★★★★</td><td>設定済み</td></tr>
 <tr><td>5</td><td>Gmail</td><td>IMAP + アプリパスワード</td><td>★★★★☆</td><td>2 段階認証</td></tr>
 <tr><td>6</td><td>QQ</td><td>WebSocket</td><td>★★★★☆</td><td>設定済み</td></tr>
@@ -56,10 +56,10 @@
 </tbody></table>
 <h3>3.2 任意の 4 項目</h3>
 <table><thead><tr><th>項目</th><th>役割</th><th>実装しない場合</th></tr></thead><tbody>
-<tr><td><strong>権限範囲</strong></td><td>誰が仕事を依頼できるかを判定</td><td>既定の許可リストを使用</td></tr>
+<tr><td><strong>権限範囲</strong></td><td>誰がアサインできるかを判定</td><td>既定の許可リストを使います</td></tr>
 <tr><td><strong>コンテキスト読み取り</strong></td><td>評価時により多く読む</td><td>単一メッセージしか見られません</td></tr>
 <tr><td><strong>ヘルスチェック</strong></td><td>接続状態を報告</td><td>状態表示なし</td></tr>
-<tr><td><strong>検索能力</strong></td><td>キーワードで履歴を探す</td><td>遡及できません</td></tr>
+<tr><td><strong>検索能力</strong></td><td>キーワードで履歴を探す</td><td>遡れません</td></tr>
 </tbody></table>
 <h3>3.3 翻訳の例：メール</h3>
 <pre><code>メールを 1 通受信
@@ -67,7 +67,7 @@
 Trigger に翻訳：
    actor      = 送信者のメールアドレス
    text       = 件名 + 本文
-   threadKey  = 件名（同じ件名を 1 スレッドにまとめる）
+   threadKey  = 件名（同じ件名を 1 つのスレッドにまとめる）
    mention    = 宛先に自分が含まれるか
    meta       = { messageId, references, inReplyTo }
    ↓
@@ -93,7 +93,7 @@ SMTP で送信</code></pre>
 異常 → 自動再起動（指数バックオフ：5s → 10s → 20s → 40s、上限 5 分）
    ↓
 5 回連続で失敗 → 再起動を停止し、警告</code></pre>
-<p><strong>なぜバックオフが必要か</strong>：バックオフしないと、壊れた依存が無限に再起動され、かえってシステム全体を圧迫します。</p>
+<p><strong>なぜバックオフが必要か</strong>：バックオフしないと、壊れた依存が無限に再起動され、かえってシステムを圧迫します。</p>
 <h3>4.2 L2 — ポート調停</h3>
 <pre><code>起動前に対象ポートを確認
    ↓
@@ -107,7 +107,7 @@ SMTP で送信</code></pre>
 <tr><td>GitHub</td><td>API</td><td>ローカル git キャッシュ</td></tr>
 <tr><td>WeChat</td><td>ローカルクライアントのプロトコル</td><td>ウィンドウコントロールの読み取り</td></tr>
 <tr><td>メール</td><td>IMAP</td><td>POP3</td></tr>
-<tr><td>WeCom</td><td>コールバック</td><td>能動的なポーリング</td></tr>
+<tr><td>企業微信</td><td>コールバック</td><td>能動的なポーリング</td></tr>
 </tbody></table>
 <p><strong>主チャネルが落ちたら、自動で予備チャネルへ切り替えます。</strong></p>
 <h3>4.4 L4 — メッセージの重複排除</h3>
@@ -117,7 +117,7 @@ SMTP で送信</code></pre>
 ID キャッシュを照会
    ├─ 処理済み → 破棄
    └─ 新規 → 処理し、ID を記録（7 日間保持）</code></pre>
-<h3>4.5 L5 — 遮断保護</h3>
+<h3>4.5 L5 — サーキットブレーカー保護</h3>
 <pre><code>あるソースが連続して失敗
    ↓ しきい値に到達（既定 5 回）
 「縮退」としてマーク
@@ -131,14 +131,14 @@ ID キャッシュを照会
 <p><strong>なぜ必要か</strong>：壊れたソースが再試行を続けると、すべての接続を占有し、他のソースを圧迫します。</p>
 <hr>
 <h2>5. 各ソースの詳細</h2>
-<h3>5.1 WeCom（最も安定）</h3>
-<p><strong>なぜ最も安定しているか</strong>：企業向けの公式 API で、プロトコルが安定しており、完全なドキュメントがあります。</p>
+<h3>5.1 企業微信（最も安定）</h3>
+<p><strong>なぜ最も安定しているか</strong>：企業向けの公式 API で、プロトコルが安定しており、ドキュメントも揃っています。</p>
 <p><strong>2 つの接続方法</strong>：</p>
 <table><thead><tr><th>方法</th><th>能力</th><th>複雑さ</th></tr></thead><tbody>
 <tr><td>グループボット Webhook</td><td>送信のみ、受信不可</td><td>極めて低い</td></tr>
 <tr><td>アプリメッセージ API</td><td>送受信可能</td><td>中</td></tr>
 </tbody></table>
-<p><strong>推奨</strong>：アプリメッセージ API（受信できなければ仕事を依頼できません）。</p>
+<p><strong>推奨</strong>：アプリメッセージ API（受信できなければアサインできません）。</p>
 <p><strong>設定項目</strong>：</p>
 <pre><code>企業 ID (corpid)
 アプリ Secret
@@ -162,20 +162,20 @@ AgentId
 再接続に失敗 → バックオフして再試行（5s / 15s / 60s）
    ↓
 再接続に成功 → UID カーソルで切断期間のメッセージを補完取得</code></pre>
-<h3>5.3 Feishu</h3>
-<p><strong>CLI は既にあり</strong>、アプリの資格情報が不足しています。</p>
+<h3>5.3 飛書</h3>
+<p><strong>CLI は既にあり</strong>、アプリの認証情報が不足しています。</p>
 <p><strong>設定</strong>：自社アプリを作成し、App ID と App Secret を取得します。</p>
 <p><strong>能力</strong>：イベントストリームのプッシュ + メッセージの送受信。</p>
 <h3>5.4 GitHub（4 段ミラー）</h3>
 <p><strong>これは本プロジェクトの重要な設計</strong>です。GitHub は一部の地域でアクセスが不安定だからです。</p>
-<pre><code>第 1 段：api.github.com       直接接続
+<pre><code>第 1 段：api.github.com       直結
     ↓ 失敗
 第 2 段：高速化ミラー          サードパーティのプロキシ
     ↓ 失敗
 第 3 段：ローカル git キャッシュ  すでに clone 済みの内容
     ↓ 失敗
 第 4 段：一括ダウンロード      zip を取得して展開</code></pre>
-<p><strong>各段が失敗すると自動で降格し、人手の介入は不要です。</strong></p>
+<p><strong>各段が失敗すると自動で縮退し、人手の介入は不要です。</strong></p>
 <p><strong>設定項目</strong>：</p>
 <pre><code>☑ 本家サイト
 ☑ ミラー1（高速化プロキシ）
@@ -188,7 +188,7 @@ AgentId
 <tr><td>認証</td><td>アプリ専用パスワード（2 段階認証の有効化が必要）</td></tr>
 <tr><td>ネットワーク</td><td><strong>プロキシが必要</strong>（一部の地域）</td></tr>
 </tbody></table>
-<p><strong>注意</strong>：Gmail は一部の地域で直接接続するとタイムアウトするため、必ずプロキシを経由します。</p>
+<p><strong>注意</strong>：Gmail は一部の地域で直結するとタイムアウトするため、必ずプロキシを経由します。</p>
 <h3>5.6 QQ</h3>
 <p><strong>ブリッジは既にあり</strong>、WebSocket を使います。</p>
 <p><strong>強化ポイント</strong>：</p>
@@ -211,8 +211,8 @@ AgentId
 <tr><td><strong>L1 プロセス監視</strong></td><td>15 秒ごとの生存確認、クラッシュ時に再起動</td><td>プロセスの停止</td></tr>
 <tr><td><strong>L2 ポート調停</strong></td><td>起動前にゾンビプロセスを掃除</td><td>ポートの取り合い</td></tr>
 <tr><td><strong>L3 デュアルチャネル</strong></td><td>主チャネルが落ちたら → <strong>ウィンドウコントロールの読み取り</strong></td><td>単一障害点</td></tr>
-<tr><td><strong>L4 重複排除</strong></td><td>メッセージ ID で重複排除</td><td>二重処理</td></tr>
-<tr><td><strong>L5 遮断</strong></td><td>連続失敗で縮退・警告</td><td>全体の圧迫</td></tr>
+<tr><td><strong>L4 メッセージ重複排除</strong></td><td>メッセージ ID で重複排除</td><td>二重処理</td></tr>
+<tr><td><strong>L5 サーキットブレーカー</strong></td><td>連続失敗で縮退・警告</td><td>全体の圧迫</td></tr>
 </tbody></table>
 <h4>L3 が鍵：ウィンドウコントロールの読み取り</h4>
 <p><strong>原理</strong>：Windows の UIAutomation は、WeChat ウィンドウ内のコントロールツリー（メッセージ一覧、入力欄、送信ボタン）を直接読み取れます。</p>
@@ -239,7 +239,7 @@ AgentId
 <tr><td><code>starting</code></td><td>起動中</td><td>青</td></tr>
 <tr><td><code>paused</code></td><td>一時停止（設定が未完了）</td><td>灰</td></tr>
 <tr><td><code>error</code></td><td>エラー</td><td>橙</td></tr>
-<tr><td><code>degraded</code></td><td>縮退（遮断中）</td><td>赤</td></tr>
+<tr><td><code>degraded</code></td><td>縮退（サーキットブレーカー中）</td><td>赤</td></tr>
 </tbody></table>
 <p><strong>状態は項目ごとに分かれています</strong>：</p>
 <pre><code>runtime  : ready     ← ホスト層
@@ -258,7 +258,7 @@ email    : ready</code></pre>
 <p><strong>作業量</strong>：約 300〜600 行、2〜4 時間。</p>
 <hr>
 <h2>8. ソース比較のまとめ</h2>
-<table><thead><tr><th>観点</th><th>WeCom</th><th>QQ メール</th><th>Feishu</th><th>GitHub</th><th>Gmail</th><th>QQ</th><th>WeChat</th></tr></thead><tbody>
+<table><thead><tr><th>観点</th><th>企業微信</th><th>QQ メール</th><th>飛書</th><th>GitHub</th><th>Gmail</th><th>QQ</th><th>WeChat</th></tr></thead><tbody>
 <tr><td>安定性</td><td>★★★★★</td><td>★★★★★</td><td>★★★★★</td><td>★★★★★</td><td>★★★★☆</td><td>★★★★☆</td><td>★★★★☆</td></tr>
 <tr><td>接続の難しさ</td><td>低</td><td>低</td><td>中</td><td>低</td><td>中</td><td>低</td><td>高</td></tr>
 <tr><td>必要な準備</td><td>企業資格</td><td>認証コード</td><td>アプリ作成</td><td>なし</td><td>2 段階認証</td><td>なし</td><td>委任</td></tr>
@@ -267,7 +267,7 @@ email    : ready</code></pre>
 </tbody></table>
 <p><strong>1 つだけ接続するなら QQ メールを選んでください</strong>：場面に最も合い（非同期、送信者が分かる、スレッドにまとめられる）、依存が最も少なく、プロトコルが標準的です。</p>
 <hr>
-<p><a href="04-settings.html">← 前へ：設定 UI</a> | <a href="../../index.html">README に戻る</a> | <a href="06-proxy.html">次へ：プロキシ設計 →</a></p>
+<p><a href="04-settings.html">← 前へ：設定 UI</a> | <a href="../../index.html">README に戻る</a> | <a href="06-proxy.html">次へ：プロキシ方式 →</a></p>
 <nav class="doc-nav">
 <a class="prev" href="04-settings.html">← 前へ：設定 UI 設計</a>
 <a class="next" href="06-proxy.html">次へ：プロキシ設計 →</a>
