@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Super Agent for DeepSeek Harness</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="brand">
+      <span class="logo">◆</span>
+      <span class="brand-name">Super Agent</span>
+      <span class="brand-sub">for DeepSeek Harness</span>
+    </div>
+
+    <nav class="lang-switch" aria-label="Language">
+      <a href="index.html" class="active" data-lang="zh">中文</a>
+      <a href="en/index.html" data-lang="en">English</a>
+      <a href="ja/index.html" data-lang="ja">日本語</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+<section class="hero">
+  <h1>会自己找活干的智能体</h1>
+  <p class="hero-sub">
+    从任意入口收到工作 · 判断该不该接 · 难题拆给多个模型协同 · 完成后回来告诉你
+  </p>
+  <div class="hero-actions">
+    <a href="docs/zh/01-overview.html" class="btn btn-primary">开始阅读</a>
+    <a href="https://github.com/xyt071024/dsh-superagent-cn" class="btn btn-ghost">GitHub 仓库</a>
+  </div>
+</section>
+
+<section class="cards">
+  <div class="card">
+    <div class="card-icon">⇄</div>
+    <h3>多源接入</h3>
+    <p>GitHub、飞书、企业微信、邮箱、QQ、微信，统一入口。谁来都能接住。</p>
+  </div>
+  <div class="card">
+    <div class="card-icon">⛊</div>
+    <h3>三层权限</h3>
+    <p>网关（代码）→ 评估（模型）→ 授权（凭证）。消息内容改不了权限。</p>
+  </div>
+  <div class="card">
+    <div class="card-icon">⋔</div>
+    <h3>多会话协同</h3>
+    <p>难题自动拆成多个子会话，不同模型并行，卡住了互相救援。</p>
+  </div>
+  <div class="card">
+    <div class="card-icon">↻</div>
+    <h3>自我进化</h3>
+    <p>复盘 → 记经验 → 优化自己。同类任务一次比一次做得好。</p>
+  </div>
+</section>
+
+<section class="doc-index">
+  <h2>文档目录</h2>
+  <ol class="toc">
+    <li><a href="docs/zh/01-overview.html"><span class="num">01</span><span class="title">项目定位与核心概念</span><span class="desc">它是什么、三层权限、设计哲学</span></a></li>
+    <li><a href="docs/zh/02-flow.html"><span class="num">02</span><span class="title">完整任务流程</span><span class="desc">一条消息从进来到出去的每一步</span></a></li>
+    <li><a href="docs/zh/03-collaboration.html"><span class="num">03</span><span class="title">多会话协同机制</span><span class="desc">难题怎么拆、怎么互救、怎么回测</span></a></li>
+    <li><a href="docs/zh/04-settings.html"><span class="num">04</span><span class="title">设置界面设计</span><span class="desc">八个分组，字段级说明</span></a></li>
+    <li><a href="docs/zh/05-sources.html"><span class="num">05</span><span class="title">连接源与稳定性</span><span class="desc">七个入口怎么接、怎么保证不掉线</span></a></li>
+    <li><a href="docs/zh/06-proxy.html"><span class="num">06</span><span class="title">代理方案</span><span class="desc">三层架构与切换策略</span></a></li>
+    <li><a href="docs/zh/07-evolution.html"><span class="num">07</span><span class="title">自我进化机制</span><span class="desc">它怎么优化自己</span></a></li>
+    <li><a href="docs/zh/08-cost.html"><span class="num">08</span><span class="title">省流与成本控制</span><span class="desc">高 API 用量下的应对</span></a></li>
+    <li><a href="docs/zh/09-deployment.html"><span class="num">09</span><span class="title">部署与工程量</span><span class="desc">怎么装、要多久</span></a></li>
+  </ol>
+</section>
+
+<section class="quickfacts">
+  <h2>要点速览</h2>
+  <table>
+    <tr><th>项目</th><th>说明</th></tr>
+    <tr><td>运行形态</td><td>融合版（装进现有 DSH）/ 纯净版（白板 DSH）</td></tr>
+    <tr><td>运行状态</td><td>对话态（可见）/ 静默态（后台，消息唤醒）</td></tr>
+    <tr><td>连接源</td><td>7 个，全部可单独启停</td></tr>
+    <tr><td>并发</td><td>默认 3 个工单 + 1 个预留给人</td></tr>
+    <tr><td>子会话</td><td>最多 6 个，可配不同模型与思考深度</td></tr>
+    <tr><td>消息上限</td><td>IM 回复 100 词（硬约束）</td></tr>
+    <tr><td>许可证</td><td>MIT</td></tr>
+  </table>
+</section>
+
+</main>
+
+<footer>
+  <p>Super Agent for DeepSeek Harness · MIT License</p>
+  <p class="footer-note">基于 DeepSeek Harness 构建，核心流程完全复用官方实现。</p>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Super Agent for DeepSeek Harness</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="brand">
+      <span class="logo">◆</span>
+      <span class="brand-name">Super Agent</span>
+      <span class="brand-sub">for DeepSeek Harness</span>
+    </div>
+
+    <nav class="lang-switch" aria-label="Language">
+      <a href="../index.html" data-lang="zh">中文</a>
+      <a href="index.html" class="active" data-lang="en">English</a>
+      <a href="../ja/index.html" data-lang="ja">日本語</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+<section class="hero">
+  <h1>An agent that looks for work</h1>
+  <p class="hero-sub">
+    Receives work from any source · decides whether to take it · splits hard problems across models · reports back when done.
+  </p>
+  <div class="hero-actions">
+    <a href="docs/en/01-overview.html" class="btn btn-primary">Start reading</a>
+    <a href="https://github.com/xyt071024/dsh-superagent-cn" class="btn btn-ghost">GitHub repository</a>
+  </div>
+</section>
+
+<section class="cards">
+  <div class="card">
+    <div class="card-icon">⇄</div>
+    <h3>Multi-source intake</h3>
+    <p>GitHub, Feishu, WeCom, email, QQ, WeChat — one unified entry point.</p>
+  </div>
+  <div class="card">
+    <div class="card-icon">⛊</div>
+    <h3>Three-layer authorization</h3>
+    <p>Gate (code) → Assessment (model) → Mandate (credential). Message content cannot change permissions.</p>
+  </div>
+  <div class="card">
+    <div class="card-icon">⋔</div>
+    <h3>Multi-session collaboration</h3>
+    <p>Hard tasks split into sub-sessions with different models, running in parallel and rescuing each other when stuck.</p>
+  </div>
+  <div class="card">
+    <div class="card-icon">↻</div>
+    <h3>Self-evolution</h3>
+    <p>Reflect → record lessons → optimize itself. Better at the same task each time.</p>
+  </div>
+</section>
+
+<section class="doc-index">
+  <h2>Documentation</h2>
+  <ol class="toc">
+    <li><a href="docs/en/01-overview.html"><span class="num">01</span><span class="title">Positioning and core concepts</span><span class="desc">What it is, three-layer authorization, design philosophy</span></a></li>
+    <li><a href="docs/en/02-flow.html"><span class="num">02</span><span class="title">Complete task flow</span><span class="desc">Every step from incoming message to reply</span></a></li>
+    <li><a href="docs/en/03-collaboration.html"><span class="num">03</span><span class="title">Multi-session collaboration</span><span class="desc">How tasks split, rescue, and verify</span></a></li>
+    <li><a href="docs/en/04-settings.html"><span class="num">04</span><span class="title">Settings UI design</span><span class="desc">Eight groups, field by field</span></a></li>
+    <li><a href="docs/en/05-sources.html"><span class="num">05</span><span class="title">Sources and stability</span><span class="desc">Seven entry points and how they stay connected</span></a></li>
+    <li><a href="docs/en/06-proxy.html"><span class="num">06</span><span class="title">Proxy architecture</span><span class="desc">Three layers and switching strategy</span></a></li>
+    <li><a href="docs/en/07-evolution.html"><span class="num">07</span><span class="title">Self-evolution</span><span class="desc">How it improves itself</span></a></li>
+    <li><a href="docs/en/08-cost.html"><span class="num">08</span><span class="title">Cost control</span><span class="desc">Coping with high API usage</span></a></li>
+    <li><a href="docs/en/09-deployment.html"><span class="num">09</span><span class="title">Deployment</span><span class="desc">How to install, how long it takes</span></a></li>
+  </ol>
+</section>
+
+<section class="quickfacts">
+  <h2>At a glance</h2>
+  <table>
+    <tr><th>Item</th><th>Detail</th></tr>
+    <tr><td>Forms</td><td>Integrated (into existing DSH) / Standalone (blank DSH)</td></tr>
+    <tr><td>States</td><td>Interactive (visible) / Silent (background, wakes on message)</td></tr>
+    <tr><td>Sources</td><td>7, each independently switchable</td></tr>
+    <tr><td>Concurrency</td><td>3 tickets by default + 1 reserved for humans</td></tr>
+    <tr><td>Sub-sessions</td><td>Up to 6, each with its own model and thinking depth</td></tr>
+    <tr><td>Message limit</td><td>100 words for IM replies (hard ceiling)</td></tr>
+    <tr><td>License</td><td>MIT</td></tr>
+  </table>
+</section>
+
+</main>
+
+<footer>
+  <p>Super Agent for DeepSeek Harness · MIT License</p>
+  <p class="footer-note">Built on DeepSeek Harness; core flow reuses the official implementation entirely.</p>
+</footer>
+
+</body>
+</html>

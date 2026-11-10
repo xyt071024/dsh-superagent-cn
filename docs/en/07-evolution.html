@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Self-Evolution · Super Agent</title>
+<link rel="stylesheet" href="../../assets/style.css">
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="brand">
+      <span class="logo">◆</span>
+      <span class="brand-name">Super Agent</span>
+      <span class="brand-sub">for DeepSeek Harness</span>
+    </div>
+    <nav class="lang-switch" aria-label="Language">
+      <a href="../zh/07-evolution.html" data-lang="zh">中文</a>
+      <a href="../en/07-evolution.html" class="active" data-lang="en">English</a>
+      <a href="../ja/07-evolution.html" data-lang="ja">日本語</a>
+    </nav>
+  </div>
+</header>
+
+<main class="doc">
+<h1>Self-Evolution</h1>
+<h2>1. Four Levels of Evolution</h2>
+<pre><code>┌──────────────────────────────────────────┐
+│  L1 Self-check and retrospective         │
+│  After each task: what went well,        │
+│  what was slow, what was wrong           │
+└──────────────────────────────────────────┘
+                  ↓ accumulate
+┌──────────────────────────────────────────┐
+│  L2 Crystallize experience               │
+│  Common flows → skills;                  │
+│  common pitfalls → checklists            │
+└──────────────────────────────────────────┘
+                  ↓ optimize
+┌──────────────────────────────────────────┐
+│  L3 Code optimization                    │
+│  Find redundancy → suggest cleanup;      │
+│  find dead code → suggest removal        │
+└──────────────────────────────────────────┘
+                  ↓ extend
+┌──────────────────────────────────────────┐
+│  L4 Capability expansion                 │
+│  Missing tool → install; missing         │
+│  knowledge → learn (both need mandate)   │
+└──────────────────────────────────────────┘</code></pre>
+<hr>
+<h2>2. L1: Self-Check and Retrospective</h2>
+<h3>2.1 Triggers</h3>
+<table><thead><tr><th>Trigger</th><th>Content</th></tr></thead><tbody>
+<tr><td>Task completed</td><td>Full retrospective of this run</td></tr>
+<tr><td>Task failed</td><td>Analysis of the failure cause</td></tr>
+<tr><td>Scheduled (weekly)</td><td>Summary of recent experience</td></tr>
+</tbody></table>
+<h3>2.2 Retrospective Content</h3>
+<pre><code>1. What went right this time?
+   · Which judgment was accurate
+   · Which approach worked
+   · Which tool was useful
+
+2. What was slow this time?
+   · Which step was the bottleneck
+   · Were there redundant steps
+   · Was too much context read
+
+3. What was wrong this time?
+   · Where the judgment failed
+   · Was there rework
+   · Did the user correct anything
+
+4. What should be done next time this kind of task comes up?
+   · Concrete actions
+   · What to avoid</code></pre>
+<h3>2.3 Experience Format</h3>
+<pre><code class="language-json">{
+  "id": "lesson-001",
+  "createdAt": "2026-11-10T23:00:00Z",
+  "taskType": "code-modification",
+  "context": "The user asked to change the styles of a React component",
+  "whatWorked": [
+    "Read AGENTS.md before acting, which avoided violating project conventions",
+    "Ran the tests once before changing anything, confirming the baseline was green"
+  ],
+  "whatFailed": [
+    "Did not check which branch it was at first, and changed the wrong place"
+  ],
+  "lesson": "Confirm the current branch before acting, and check that the target file is on the expected branch",
+  "appliesWhen": ["modifying existing code", "multi-branch projects"]
+}</code></pre>
+<h3>2.4 Using Experience</h3>
+<p><strong>It is not fully loaded every time</strong> (that would be too expensive). Instead it is <strong>retrieved by task type</strong>:</p>
+<pre><code>New task arrives
+   ↓
+Identify the task type (code change / documentation / troubleshooting / ...)
+   ↓
+Retrieve relevant experience (by taskType + keywords)
+   ↓
+Load only the top N entries (default 5)
+   ↓
+Inject them into the executor's context</code></pre>
+<p><strong>Cost control</strong>: 5 lessons cost about 500 tokens and buy avoidance of repeated mistakes.</p>
+<hr>
+<h2>3. L2: Crystallizing Experience</h2>
+<h3>3.1 When Something Becomes a Skill</h3>
+<pre><code>The same kind of task done 3+ times
+   ↓
+The flow is essentially fixed
+   ↓
+Extract it into a skill (SKILL.md)
+   ↓
+Call it directly next time, without re-reasoning</code></pre>
+<h3>3.2 Benefits of Skills</h3>
+<table><thead><tr><th>Benefit</th><th>Description</th></tr></thead><tbody>
+<tr><td>Saves tokens</td><td>No need to re-reason the flow every time</td></tr>
+<tr><td>More stable</td><td>A fixed flow is more reliable than improvising</td></tr>
+<tr><td>Reviewable</td><td>You can read what the skill contains</td></tr>
+</tbody></table>
+<h3>3.3 Criteria for Crystallizing</h3>
+<table><thead><tr><th>Should crystallize</th><th>Should not crystallize</th></tr></thead><tbody>
+<tr><td>Fixed steps, recurring</td><td>One-off tasks</td></tr>
+<tr><td>Clear success criteria</td><td>Subjective results</td></tr>
+<tr><td>Steps that are easy to get wrong</td><td>Very simple operations</td></tr>
+<tr><td>Requires multi-step coordination</td><td>Single-step operations</td></tr>
+</tbody></table>
+<hr>
+<h2>4. L3: Code Self-Optimization</h2>
+<h3>4.1 What It Scans</h3>
+<table><thead><tr><th>Type</th><th>Detection method</th></tr></thead><tbody>
+<tr><td><strong>Duplicate code</strong></td><td>Similarity analysis, finding blocks of 3+ identical lines</td></tr>
+<tr><td><strong>Dead code</strong></td><td>Functions/variables not referenced anywhere</td></tr>
+<tr><td><strong>Overlong functions</strong></td><td>Exceeds a threshold (e.g. 100 lines)</td></tr>
+<tr><td><strong>Complex conditionals</strong></td><td>Nesting deeper than 4 levels</td></tr>
+<tr><td><strong>Unused dependencies</strong></td><td>Present in package.json but unused in the code</td></tr>
+</tbody></table>
+<h3>4.2 How Changes Are Made (Important)</h3>
+<pre><code>Optimization opportunity found
+   ↓
+Generate a change proposal
+   ↓
+⦿ Go through the PR flow (default)
+   · Create a branch
+   · Commit the change
+   · Open a PR
+   · Wait for your review
+   ↓
+○ Change directly (must be enabled explicitly)</code></pre>
+<p><strong>Why the PR flow is the default</strong>: self-modification is a high-risk operation. You may disagree with its judgment, and a PR gives you the chance to stop it.</p>
+<h3>4.3 Red Lines for Self-Modification</h3>
+<p><strong>The following must never be modified automatically</strong>:</p>
+<table><thead><tr><th>Red line</th><th>Reason</th></tr></thead><tbody>
+<tr><td>Permission decision logic</td><td>Breaking it is equivalent to opening a backdoor</td></tr>
+<tr><td>Whitelist checks</td><td>Same as above</td></tr>
+<tr><td>Audit log</td><td>If broken, problems cannot be traced</td></tr>
+<tr><td>Circuit breaker / rate limiting</td><td>If broken, the system can run out of control</td></tr>
+<tr><td>Configuration files</td><td>Controlled by you</td></tr>
+</tbody></table>
+<p><strong>Even if an "optimization opportunity" is found in these places, it only raises a suggestion and does not change anything.</strong></p>
+<hr>
+<h2>5. L4: Capability Expansion</h2>
+<h3>5.1 Three Kinds of Expansion</h3>
+<table><thead><tr><th>Expansion</th><th>Trigger</th><th>Mandate requirement</th></tr></thead><tbody>
+<tr><td><strong>Install a plugin</strong></td><td>A missing capability is detected</td><td>Checked on the permission page</td></tr>
+<tr><td><strong>Write a skill</strong></td><td>A flow is detected as commonly used</td><td>Checked on the permission page</td></tr>
+<tr><td><strong>Learn knowledge</strong></td><td>A knowledge gap is detected</td><td>Record only, no mandate needed</td></tr>
+</tbody></table>
+<h3>5.2 Plugin Installation Flow</h3>
+<pre><code>Missing capability detected
+   ↓
+Search for available plugins (npm / GitHub)
+   ↓
+⚠ Safety check:
+   · Is the source trustworthy
+   · Does it have known vulnerabilities
+   · Is the permission scope too broad
+   ↓
+Generate a proposal: "Need to install X, because Y, risk is Z"
+   ↓
+⦿ Wait for your confirmation (default)
+○ Install directly (must be enabled explicitly)</code></pre>
+<p><strong>Why confirmation is the default</strong>: installing a plugin means pulling in third-party code, and the risk is not controllable.</p>
+<h3>5.3 Recording Capability Gaps</h3>
+<p>Even when it cannot install anything itself, it <strong>records</strong> the gap:</p>
+<pre><code class="language-json">{
+  "gap": "Missing PDF parsing capability",
+  "encounteredAt": "2026-11-10",
+  "timesNeeded": 3,
+  "suggestedSolution": "Install pdf-parse or a similar library",
+  "status": "pending-user-decision"
+}</code></pre>
+<p><strong>A suggestion is raised only after a threshold is reached (default 3 times)</strong>, to avoid installing things for one-off needs.</p>
+<hr>
+<h2>6. The Boundaries of Evolution</h2>
+<h3>6.1 What Can Evolve</h3>
+<table><thead><tr><th>Item</th><th>Scope</th></tr></thead><tbody>
+<tr><td>Experience library</td><td>Unbounded growth (archived periodically)</td></tr>
+<tr><td>Skills</td><td>Can be added, can be modified</td></tr>
+<tr><td>Its own code</td><td>Through PRs, only non-red-line parts</td></tr>
+<tr><td>Plugins</td><td>Requires a mandate</td></tr>
+</tbody></table>
+<h3>6.2 What Cannot Evolve</h3>
+<table><thead><tr><th>Item</th><th>Reason</th></tr></thead><tbody>
+<tr><td>Permission decision logic</td><td>Security red line</td></tr>
+<tr><td>Whitelist</td><td>Controlled by you</td></tr>
+<tr><td>Mandate credentials</td><td>Controlled by you</td></tr>
+<tr><td>Circuit breaker thresholds</td><td>Prevents it from switching off its own protection</td></tr>
+<tr><td>Audit records</td><td>Must not be tamperable</td></tr>
+</tbody></table>
+<h3>6.3 The Evolution Brake</h3>
+<pre><code>Detected that self-modification is too frequent
+   ↓ e.g. 10 self-optimization PRs in one week
+Pause self-optimization
+   ↓
+Show: "There have been many self-modifications recently; consider stabilizing for a while"</code></pre>
+<p><strong>Why the brake exists</strong>: frequent self-modification makes the system unpredictable.</p>
+<hr>
+<h2>7. Experience Library Structure</h2>
+<pre><code>&lt;stateDir&gt;/
+  lessons/
+    2026-11/
+      lesson-001.json
+      lesson-002.json
+      ...
+    index.json          ← index, grouped by taskType
+    archived/           ← archive (older than 90 days and never referenced)</code></pre>
+<p><strong>index.json</strong>:</p>
+<pre><code class="language-json">{
+  "byTaskType": {
+    "code-modification": ["lesson-001", "lesson-005"],
+    "bug-investigation": ["lesson-002"],
+    "documentation": ["lesson-003"]
+  },
+  "byKeyword": {
+    "git-branch": ["lesson-001"],
+    "testing": ["lesson-001", "lesson-004"]
+  }
+}</code></pre>
+<hr>
+<h2>8. Measuring the Effect</h2>
+<p>How do you know it is actually getting better?</p>
+<table><thead><tr><th>Metric</th><th>How to read it</th></tr></thead><tbody>
+<tr><td>Time taken for similar tasks</td><td>Should trend down</td></tr>
+<tr><td>Rework rate</td><td>Should trend down</td></tr>
+<tr><td>Number of user corrections</td><td>Should trend down</td></tr>
+<tr><td>First-pass success rate</td><td>Should trend up</td></tr>
+<tr><td>Average token consumption</td><td>Should trend down (because experience is reused)</td></tr>
+</tbody></table>
+<p><strong>The dashboard should have trend charts for these numbers.</strong></p>
+<hr>
+<h2>9. Configuration</h2>
+<p>See <a href="04-settings.html#group-7-self-evolution">Settings UI · Group 7: Self-Evolution</a>.</p>
+<p>Key switches:</p>
+<table><thead><tr><th>Switch</th><th>Default</th><th>Description</th></tr></thead><tbody>
+<tr><td>Self retrospective</td><td>On</td><td>Review after every task</td></tr>
+<tr><td>Record experience</td><td>On</td><td>Write into the experience library</td></tr>
+<tr><td>Code scan</td><td>On</td><td>Look for redundancy</td></tr>
+<tr><td>Change method</td><td><strong>Through PRs</strong></td><td>Never change directly</td></tr>
+<tr><td>Autonomous plugin install</td><td><strong>Off</strong></td><td>Must be enabled explicitly</td></tr>
+<tr><td>Autonomous skill writing</td><td><strong>Off</strong></td><td>Must be enabled explicitly</td></tr>
+<tr><td>Suggest on capability gaps</td><td>On</td><td>Suggest only, never act</td></tr>
+</tbody></table>
+<hr>
+<p><a href="06-proxy.html">← Previous: Proxy Architecture</a> | <a href="../../index.html">Back to README</a> | <a href="08-cost.html">Next: Cost Control →</a></p>
+<nav class="doc-nav">
+<a class="prev" href="06-proxy.html">← Previous：Proxy Architecture</a>
+<a class="next" href="08-cost.html">Next：Cost Control →</a>
+</nav>
+</main>
+
+<footer>
+  <p><a href="../en/index.html" style="color:inherit">Home</a> · MIT License</p>
+</footer>
+
+</body>
+</html>

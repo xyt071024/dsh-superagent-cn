@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cost Control · Super Agent</title>
+<link rel="stylesheet" href="../../assets/style.css">
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="brand">
+      <span class="logo">◆</span>
+      <span class="brand-name">Super Agent</span>
+      <span class="brand-sub">for DeepSeek Harness</span>
+    </div>
+    <nav class="lang-switch" aria-label="Language">
+      <a href="../zh/08-cost.html" data-lang="zh">中文</a>
+      <a href="../en/08-cost.html" class="active" data-lang="en">English</a>
+      <a href="../ja/08-cost.html" data-lang="ja">日本語</a>
+    </nav>
+  </div>
+</header>
+
+<main class="doc">
+<h1>Cost Control</h1>
+<h2>1. Why Cost Control Is Needed</h2>
+<p>Multi-session collaboration means <strong>one task may open 6 sessions</strong>. If every one of them used the strongest model at the highest thinking depth, the cost would be more than ten times that of a single session.</p>
+<p><strong>The typical cost blow-up</strong>:</p>
+<pre><code>One "medium" task
+   ↓ no difficulty estimate
+6 sub-sessions opened
+   ↓ all use the strongest model
+   ↓ all use the highest thinking depth
+   ↓ each session re-reads the same context
+Total consumption = 20x+ that of a single session</code></pre>
+<p><strong>The goal of cost control is not "spend less" — it is "do not spend for nothing".</strong></p>
+<hr>
+<h2>2. Three Levels of Control</h2>
+<h3>L1: Task Difficulty Estimate (most effective)</h3>
+<pre><code>Task arrives
+   ↓
+Run one classification pass with an extremely lightweight model
+   · Model: the cheapest one
+   · Thinking depth: minimal
+   · Output: a single word
+   ↓
+About 50 tokens
+   ↓
+Determines the downstream strategy</code></pre>
+<p><strong>50 tokens buy savings of hundreds to thousands of tokens — this is the highest-leverage step.</strong></p>
+<h3>L2: Tiering by Difficulty</h3>
+<table><thead><tr><th>Difficulty</th><th>Model tier</th><th>Thinking depth</th><th>Sub-session count</th></tr></thead><tbody>
+<tr><td><strong>simple</strong></td><td>Cheap model</td><td>Low</td><td>0 (do it itself)</td></tr>
+<tr><td><strong>medium</strong></td><td>Standard model</td><td>Medium</td><td>0-2</td></tr>
+<tr><td><strong>complex</strong></td><td>Strong model</td><td>High</td><td>3-4</td></tr>
+<tr><td><strong>extreme</strong></td><td>Strong model</td><td>Highest</td><td>5-6</td></tr>
+</tbody></table>
+<h3>L3: Runtime Degrade</h3>
+<pre><code>Monitor actual consumption
+   ↓
+Past 80% of the budget
+   ↓
+⚠ Warn + downgrade subsequent tasks
+   ↓
+Past 100%
+   ↓
+Pause (wait for your decision)</code></pre>
+<hr>
+<h2>3. Implementing the Difficulty Estimate</h2>
+<h3>3.1 Prompt</h3>
+<pre><code>Judge the complexity of this task and output a single word:
+
+simple  —— small single-file change, simple Q&amp;A, formatting tweak
+medium  —— coordination across several files, context must be understood
+complex —— cross-module refactoring, a design is required
+extreme —— architectural decisions, multi-system integration
+
+Task:
+{task}</code></pre>
+<h3>3.2 Why "Minimal" Thinking Depth</h3>
+<p>A classification task does not need deep reasoning. Using "minimal":</p>
+<ul>
+<li>Costs about 1/16 of "highest"</li>
+<li>The accuracy loss is small (task descriptions are usually clear enough)</li>
+</ul>
+<h3>3.3 Handling Misjudgment</h3>
+<p><strong>The estimate can be wrong.</strong> Two cases:</p>
+<table><thead><tr><th>Case</th><th>Handling</th></tr></thead><tbody>
+<tr><td>Judged "simple", actually hard</td><td>Gets stuck during execution → escalate and re-judge</td></tr>
+<tr><td>Judged "complex", actually simple</td><td>No progress in the first 2 minutes → downgrade and do it itself</td></tr>
+</tbody></table>
+<p><strong>The basis for the call</strong>: check progress 2 minutes into execution; if a "simple" task has made no progress at all, reassess.</p>
+<hr>
+<h2>4. Context Reuse</h2>
+<h3>4.1 The Problem</h3>
+<p>Messages in the same thread are read by several tickets. Re-reading each time means paying twice.</p>
+<h3>4.2 The Solution</h3>
+<pre><code>First read of a thread
+   ↓
+Summary + key excerpts cached
+   ↓
+Later tickets read it → cache hit
+   ↓
+Only the new portion is appended</code></pre>
+<p><strong>Cache validity</strong>: when the thread has new messages, the corresponding part is invalidated.</p>
+<h3>4.3 Cache Granularity</h3>
+<table><thead><tr><th>Content</th><th>Caching strategy</th></tr></thead><tbody>
+<tr><td>Full thread history</td><td>Summary cache (key facts retained)</td></tr>
+<tr><td>Repository files</td><td>Cached by commit hash</td></tr>
+<tr><td>Model responses</td><td>KV Cache (reuse the same prefix)</td></tr>
+</tbody></table>
+<hr>
+<h2>5. Result Caching</h2>
+<h3>5.1 What Can Be Cached</h3>
+<table><thead><tr><th>Can cache</th><th>Cannot cache</th></tr></thead><tbody>
+<tr><td>Code analysis results</td><td>Anything involving live state</td></tr>
+<tr><td>Document summaries</td><td>Anything depending on the current time</td></tr>
+<tr><td>File structure</td><td>Anything needing the latest data</td></tr>
+<tr><td>Approaches for similar tasks</td><td>Anything the user explicitly asked to redo</td></tr>
+</tbody></table>
+<h3>5.2 Cache Key</h3>
+<pre><code>key = hash(task type + target file + hash of the target file + key parameters)</code></pre>
+<p><strong>If the file changes, the cache is invalidated.</strong></p>
+<hr>
+<h2>6. Model Tiering Strategy</h2>
+<h3>6.1 Comparing Three Strategies</h3>
+<table><thead><tr><th>Strategy</th><th>Cost</th><th>Effect</th><th>Suited to</th></tr></thead><tbody>
+<tr><td><strong>Uniform model</strong></td><td>Medium</td><td>Stable</td><td>Homogeneous tasks</td></tr>
+<tr><td><strong>Tiered models</strong></td><td>Cheapest</td><td>As needed</td><td>Most scenarios</td></tr>
+<tr><td><strong>Multi-model in parallel</strong></td><td>Most expensive</td><td>Best</td><td>Critical tasks</td></tr>
+</tbody></table>
+<h3>6.2 Tiering Configuration Example</h3>
+<pre><code>Difficulty estimate  → cheapest model   minimal thinking
+Simple tasks         → flash tier       low thinking
+Medium tasks         → standard tier    medium thinking
+Complex tasks        → strong model     high thinking
+Extremely complex    → strongest model  highest thinking
+Self-evolution       → strongest model  highest thinking (low frequency, worth it)</code></pre>
+<h3>6.3 Cost of Thinking Depth</h3>
+<table><thead><tr><th>Tier</th><th>Relative token consumption</th></tr></thead><tbody>
+<tr><td>Minimal</td><td>1x</td></tr>
+<tr><td>Low</td><td>2x</td></tr>
+<tr><td>Medium</td><td>4x</td></tr>
+<tr><td>High</td><td>8x</td></tr>
+<tr><td>Highest</td><td>16x</td></tr>
+</tbody></table>
+<p><strong>That is why "use minimal thinking for the difficulty estimate" matters so much.</strong></p>
+<hr>
+<h2>7. Budget Control</h2>
+<h3>7.1 Three Budget Levels</h3>
+<table><thead><tr><th>Level</th><th>When exceeded</th></tr></thead><tbody>
+<tr><td><strong>Daily budget</strong></td><td>Pause (configurable to downgrade instead)</td></tr>
+<tr><td><strong>Monthly budget</strong></td><td>Pause + notify</td></tr>
+<tr><td><strong>Per-task budget</strong></td><td>Downgrade or abort</td></tr>
+</tbody></table>
+<h3>7.2 Budget Display</h3>
+<p>Shown live on the dashboard:</p>
+<pre><code>Daily budget  ¥50
+Used          ¥12.4  ▓▓▓▓▓░░░░░░░░░░░░░  24.8%
+Tasks today   8, averaging ¥1.55/task</code></pre>
+<h3>7.3 Handling Over-Budget</h3>
+<pre><code>Approaching budget (80%)
+   ↓
+⚠ Warn: subsequent tasks are downgraded automatically
+
+Past budget (100%)
+   ↓
+⦿ Pause (default): new tasks queue up, waiting for your decision
+○ Downgrade: continue but use only cheap models
+○ Unlimited: continue executing normally</code></pre>
+<hr>
+<h2>8. Cost Amplification in Multi-Session</h2>
+<h3>8.1 Cost Model</h3>
+<pre><code>Single-session cost = C
+
+N sessions in parallel:
+  Theoretical cost = N × C
+  Actual cost      = N × C × 1.3 (coordination overhead)
+
+But the time saved = N times</code></pre>
+<p><strong>So multi-session is "trading money for time".</strong></p>
+<h3>8.2 When It Is Worth It</h3>
+<table><thead><tr><th>Worth it</th><th>Not worth it</th></tr></thead><tbody>
+<tr><td>The task can truly run in parallel</td><td>Strongly sequential dependencies</td></tr>
+<tr><td>Time-sensitive</td><td>Not urgent</td></tr>
+<tr><td>High complexity</td><td>Simple tasks</td></tr>
+<tr><td>Cost is acceptable</td><td>Budget is tight</td></tr>
+</tbody></table>
+<h3>8.3 Cost Ceiling Protection</h3>
+<pre><code>☑ Per-task cost ceiling  ¥ [ 10 ]
+When exceeded: pause and ask</code></pre>
+<p><strong>Prevents one task from accidentally burning a whole day's budget.</strong></p>
+<hr>
+<h2>9. Measured Data Reference</h2>
+<p>The following is <strong>sample data</strong>; actual figures vary by task and model:</p>
+<table><thead><tr><th>Scenario</th><th>Single session</th><th>Multi-session (4)</th><th>Multiple</th></tr></thead><tbody>
+<tr><td>Simple copy change</td><td>¥0.05</td><td>not split</td><td>1x</td></tr>
+<tr><td>Medium feature change</td><td>¥0.8</td><td>¥2.4 (3)</td><td>3x</td></tr>
+<tr><td>Complex refactor</td><td>¥5</td><td>¥18 (5)</td><td>3.6x</td></tr>
+<tr><td>Extremely complex system</td><td>¥20</td><td>¥60 (6)</td><td>3x</td></tr>
+</tbody></table>
+<p><strong>Note</strong>: multi-session does not cost N times as much, because each session has a smaller task scope and therefore a lower per-session cost.</p>
+<hr>
+<h2>10. Cost Control Checklist</h2>
+<p>Check against this list before going live:</p>
+<table><thead><tr><th>#</th><th>Item</th><th>Default</th><th>Description</th></tr></thead><tbody>
+<tr><td>1</td><td>☑ Task difficulty estimate</td><td>On</td><td>The most effective cost control measure</td></tr>
+<tr><td>2</td><td>☑ Minimal thinking for the estimate</td><td>On</td><td>A 16x cost difference</td></tr>
+<tr><td>3</td><td>☑ Result caching</td><td>On</td><td>The same task is not repeated</td></tr>
+<tr><td>4</td><td>☑ Context reuse</td><td>On</td><td>The same thread is not re-read</td></tr>
+<tr><td>5</td><td>☑ Daily budget ceiling</td><td>Required</td><td>Prevents surprises</td></tr>
+<tr><td>6</td><td>☑ Per-task ceiling</td><td>Recommended</td><td>Prevents a single task from blowing up</td></tr>
+<tr><td>7</td><td>☑ Auto-downgrade over budget</td><td>Recommended on</td><td>Smooth handling</td></tr>
+<tr><td>8</td><td>☐ Multi-model in parallel</td><td>As needed</td><td>Only for critical tasks</td></tr>
+<tr><td>9</td><td>☑ Lower self-evolution frequency</td><td>Weekly</td><td>Not every task needs a retrospective</td></tr>
+</tbody></table>
+<hr>
+<h2>11. Anti-Patterns</h2>
+<table><thead><tr><th>Anti-pattern</th><th>Problem</th></tr></thead><tbody>
+<tr><td>Using the strongest model for everything</td><td>10x the cost, limited gain in quality</td></tr>
+<tr><td>Using the highest thinking for everything</td><td>Same as above</td></tr>
+<tr><td>Splitting every task into multiple sessions</td><td>Coordination overhead &gt; benefit</td></tr>
+<tr><td>No difficulty estimate</td><td>Small tasks go through a heavy flow</td></tr>
+<tr><td>No budget ceiling</td><td>One accident burns it all</td></tr>
+<tr><td>A deep retrospective after every task</td><td>Retrospective cost &gt; task cost</td></tr>
+</tbody></table>
+<hr>
+<p><a href="07-evolution.html">← Previous: Self-Evolution</a> | <a href="../../index.html">Back to README</a> | <a href="09-deployment.html">Next: Deployment →</a></p>
+<nav class="doc-nav">
+<a class="prev" href="07-evolution.html">← Previous：Self-Evolution</a>
+<a class="next" href="09-deployment.html">Next：Deployment →</a>
+</nav>
+</main>
+
+<footer>
+  <p><a href="../en/index.html" style="color:inherit">Home</a> · MIT License</p>
+</footer>
+
+</body>
+</html>

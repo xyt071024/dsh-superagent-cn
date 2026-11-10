@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>多会话协同机制 · Super Agent</title>
+<link rel="stylesheet" href="../../assets/style.css">
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="brand">
+      <span class="logo">◆</span>
+      <span class="brand-name">Super Agent</span>
+      <span class="brand-sub">for DeepSeek Harness</span>
+    </div>
+    <nav class="lang-switch" aria-label="Language">
+      <a href="../zh/03-collaboration.html" class="active" data-lang="zh">中文</a>
+      <a href="../en/03-collaboration.html" data-lang="en">English</a>
+      <a href="../ja/03-collaboration.html" data-lang="ja">日本語</a>
+    </nav>
+  </div>
+</header>
+
+<main class="doc">
+<h1>多会话协同机制</h1>
+<p>这是本项目<strong>最核心的扩展能力</strong>，也是与官方实现差别最大的部分。</p>
+<hr>
+<h2>1. 概念：什么叫「异轮会话」</h2>
+<p><strong>异轮会话</strong> = 主会话在执行任务时，<strong>按任务难度动态派生出的子会话</strong>。</p>
+<p>不是预先定义的，不是固定的。<strong>任务简单就不拆，任务难才拆。</strong></p>
+<hr>
+<h2>2. 为什么需要它</h2>
+<h3>2.1 单会话的局限</h3>
+<table><thead><tr><th>问题</th><th>表现</th></tr></thead><tbody>
+<tr><td><strong>单点思维</strong></td><td>一个模型从头想到尾，思路容易固化</td></tr>
+<tr><td><strong>串行慢</strong></td><td>三个独立子任务也要排队做</td></tr>
+<tr><td><strong>卡住就完了</strong></td><td>一处卡住，整个任务停摆</td></tr>
+<tr><td><strong>没有交叉验证</strong></td><td>自己检查自己，容易漏</td></tr>
+</tbody></table>
+<h3>2.2 多会话如何解决</h3>
+<table><thead><tr><th>痛点</th><th>解法</th></tr></thead><tbody>
+<tr><td>单点思维</td><td><strong>不同模型并行</strong>，思路互补</td></tr>
+<tr><td>串行慢</td><td><strong>同时开工</strong></td></tr>
+<tr><td>卡住就完</td><td><strong>互相救援</strong>（一个卡死，另一个接管）</td></tr>
+<tr><td>没有交叉验证</td><td><strong>互相 review + 主会话最终回测</strong></td></tr>
+</tbody></table>
+<hr>
+<h2>3. 完整流程（八步）</h2>
+<h3>第 1 步：任务到达</h3>
+<p>来源可以是任一入口：</p>
+<ul>
+<li>邮箱收到工作邮件</li>
+<li>GitHub 上有人 @ 它</li>
+<li>QQ / 微信 / 企微 / 飞书 来消息</li>
+<li>你直接在对话窗说</li>
+</ul>
+<h3>第 2 步：难度预判（省流关键）</h3>
+<p><strong>先跑一次极轻量的评估</strong>，用小模型 + 最低思考深度。</p>
+<pre><code>输入：任务描述
+输出：一个词
+   simple   —— 单文件小改动
+   medium   —— 多文件协调
+   complex  —— 跨模块重构
+   extreme  —— 需要架构设计</code></pre>
+<p><strong>成本约 50 token</strong>，换来后面几百上千 token 的节省。</p>
+<p><strong>判断结果直接决定策略</strong>：</p>
+<table><thead><tr><th>难度</th><th>策略</th></tr></thead><tbody>
+<tr><td>simple</td><td>主会话自己干完</td></tr>
+<tr><td>medium</td><td>主会话干，必要时开 1-2 个子会话</td></tr>
+<tr><td>complex</td><td>拆 3-4 个子会话</td></tr>
+<tr><td>extreme</td><td>拆 5-6 个子会话 + 多轮迭代</td></tr>
+</tbody></table>
+<h3>第 3 步：开子会话</h3>
+<pre><code>主会话决定开 N 个（N = 1~6，由难度决定）
+   ↓
+每个子会话获得：
+   ├─ 独立的 Session（互不干扰的上下文）
+   ├─ 独立的工作目录（不会踩到彼此的文件）
+   ├─ 指定的模型（可不同）
+   ├─ 指定的思考深度（可不同）
+   └─ 明确的任务边界（做什么、不做什么）</code></pre>
+<p><strong>模型可以完全不同</strong>：</p>
+<table><thead><tr><th>子会话</th><th>模型</th><th>思考深度</th><th>为什么选它</th></tr></thead><tbody>
+<tr><td>A</td><td>kimi-k2-turbo</td><td>高</td><td>擅长长上下文分析</td></tr>
+<tr><td>B</td><td>claude-sonnet-4</td><td>中</td><td>擅长代码质量</td></tr>
+<tr><td>C</td><td>deepseek-v4-pro</td><td>高</td><td>擅长逻辑推理</td></tr>
+</tbody></table>
+<p><strong>也可以统一模型</strong>：如果任务不需要多视角，全用同一个模型更省钱。</p>
+<h3>第 4 步：建立互联</h3>
+<pre><code>        ┌──────────────┐
+        │   主会话      │
+        └──────┬───────┘
+       ┌───────┼───────┐
+       ↓       ↓       ↓
+    ┌─────┐ ┌─────┐ ┌─────┐
+    │  A  │←→│  B  │←→│  C  │
+    └─────┘ └─────┘ └─────┘
+       ↕       ↕       ↕
+    ┌─────────────────────┐
+    │   共享任务板         │
+    │  （谁在干什么、进度）  │
+    └─────────────────────┘</code></pre>
+<p><strong>三层连接</strong>：</p>
+<table><thead><tr><th>连接</th><th>作用</th></tr></thead><tbody>
+<tr><td>子 → 主</td><td>上报进度、请求决策</td></tr>
+<tr><td>主 → 子</td><td>派任务、调整方向、叫停</td></tr>
+<tr><td>子 ↔ 子</td><td>直接通信（不经主会话中转）</td></tr>
+<tr><td>全部 ↔ 任务板</td><td>共享状态，知道彼此进度</td></tr>
+</tbody></table>
+<h3>第 5 步：协同执行</h3>
+<pre><code>各自干活
+   ↓
+每 30 秒写一次心跳 + 进度到任务板
+   ↓
+定期检查任务板：
+   ├─ 我的活干完了？→ 看看谁还没完 → 去帮
+   ├─ 别人卡住了？→ 主动询问是否需要帮
+   └─ 我的方向可能错了？→ 看看别人的做法</code></pre>
+<p><strong>互相帮助的三种形态</strong>：</p>
+<table><thead><tr><th>形态</th><th>例子</th></tr></thead><tbody>
+<tr><td><strong>补位</strong></td><td>A 完成自己的部分，去接 B 没做完的</td></tr>
+<tr><td><strong>求援</strong></td><td>B 遇到难题，A 带着上下文来帮忙</td></tr>
+<tr><td><strong>纠偏</strong></td><td>C 发现 A 的方向和 B 冲突，提出来</td></tr>
+</tbody></table>
+<h3>第 6 步：卡死检测与救援</h3>
+<p><strong>这是最关键的一环。</strong></p>
+<pre><code>每个子会话每 30 秒写心跳
+   ↓
+主会话定时扫描
+   ↓
+发现某个超过 90 秒没心跳
+   ↓
+标记「疑似卡死」
+   ↓
+读取它的工作日志 + 目录状态
+   ↓
+判断真实进度
+   ↓
+三选一决策：
+   ├─ 让它继续（只是暂时忙，不是真卡）
+   ├─ 重启它（进程挂了）
+   └─ 让别的会话接管（真的走不通了）</code></pre>
+<p><strong>接管流程</strong>：</p>
+<pre><code>1. 读取卡死会话的：
+   · 工作日志（做到哪一步）
+   · 目录变更（改了哪些文件）
+   · 最后一条消息（卡在哪）
+2. 把这些打包成上下文
+3. 交给接管者（通常是进度最快的那个）
+4. 接管者继续，不重复已完成的部分</code></pre>
+<p><strong>为什么要读日志再接管</strong>：不读就直接重做，会重复劳动，甚至覆盖已完成的正确成果。</p>
+<h3>第 7 步：汇总回测</h3>
+<pre><code>所有子会话完成
+   ↓
+主会话收集各自的产出
+   ↓
+合并（可能有冲突，需要解决）
+   ↓
+跑完整验证：
+   · 编译 / 构建通过？
+   · 测试全绿？
+   · 功能符合原始需求？
+   · 有没有互相矛盾的地方？
+   ↓
+发现问题？
+   ├─ 有 → 退回给对应的子会话修（最多 3 轮）
+   └─ 无 → 进入下一步</code></pre>
+<p><strong>回测不是走过场</strong>。它要<strong>独立验证</strong>，不能只信子会话的自述。</p>
+<h3>第 8 步：最终交付</h3>
+<pre><code>主会话做最后一次完整验证
+   ↓
+通过 → 输出结果
+   ↓
+发回原始来源（邮件回复 / GitHub 评论 / IM 消息）
+   ↓
+记录经验到经验库
+   ↓
+进入休眠</code></pre>
+<hr>
+<h2>4. 两种状态下的同一条流程</h2>
+<p><strong>关键</strong>：对话态和静默态的<strong>流程完全一致</strong>，区别只在界面。</p>
+<table><thead><tr><th>环节</th><th>对话态</th><th>静默态</th></tr></thead><tbody>
+<tr><td>任务到达</td><td>你说话</td><td>消息推送</td></tr>
+<tr><td>难度预判</td><td>同样跑</td><td>同样跑</td></tr>
+<tr><td>开子会话</td><td>窗口可见</td><td>后台不可见</td></tr>
+<tr><td>协同执行</td><td>你能看到进度</td><td>只在面板留记录</td></tr>
+<tr><td>卡死救援</td><td>同样做</td><td>同样做</td></tr>
+<tr><td>最终回测</td><td>同样跑</td><td>同样跑</td></tr>
+<tr><td>交付</td><td>在窗口显示</td><td>发回来源</td></tr>
+</tbody></table>
+<p><strong>唯一区别</strong>：静默态下不弹窗、不打断你。</p>
+<hr>
+<h2>5. 技术实现</h2>
+<h3>5.1 组件对应</h3>
+<table><thead><tr><th>环节</th><th>用什么实现</th></tr></thead><tbody>
+<tr><td>开子会话</td><td>Agent Teams 的 <code>spawn_teammate</code>，或 <code>subagent</code></td></tr>
+<tr><td>不同模型</td><td>编排层支持 <code>provider</code> / <code>model</code> 覆盖</td></tr>
+<tr><td>共享任务板</td><td>Agent Teams 的 shared task DAG</td></tr>
+<tr><td>子会话互发消息</td><td><code>send_message</code>（支持冷启动唤醒）</td></tr>
+<tr><td>心跳</td><td>子会话定期写状态文件</td></tr>
+<tr><td>卡死检测</td><td>主会话定时扫描时间戳</td></tr>
+<tr><td>进度查询</td><td><code>list_agents</code> + 读共享状态</td></tr>
+</tbody></table>
+<h3>5.2 数据结构</h3>
+<p><strong>共享任务板</strong>：</p>
+<pre><code class="language-json">{
+  "ticketId": "T-18",
+  "sessions": [
+    { "id": "A", "model": "kimi-k2-turbo", "status": "running",  "progress": 60, "heartbeat": 1794284787 },
+    { "id": "B", "model": "claude-sonnet-4","status": "waiting",  "progress": 20, "heartbeat": 1794284790 },
+    { "id": "C", "model": "deepseek-v4-pro","status": "stuck",    "progress": 0,  "heartbeat": 1794284600 }
+  ],
+  "tasks": [
+    { "name": "分析需求", "owner": "A", "status": "done",    "progress": 100 },
+    { "name": "设计方案", "owner": "B", "status": "running", "progress": 20  },
+    { "name": "写代码",   "owner": "A", "status": "running", "progress": 60  },
+    { "name": "写测试",   "owner": "C", "status": "stuck",   "progress": 0   }
+  ]
+}</code></pre>
+<h3>5.3 与官方的差异</h3>
+<table><thead><tr><th>维度</th><th>官方实现</th><th>本项目</th></tr></thead><tbody>
+<tr><td>工单之间</td><td><strong>完全隔离，互不知道</strong></td><td>互通、共享任务板</td></tr>
+<tr><td>卡死处理</td><td>超时直接杀</td><td>读日志 → 决定接管/重启</td></tr>
+<tr><td>模型</td><td>每个工单一个模型</td><td>每个子会话可不同模型</td></tr>
+<tr><td>回测</td><td>执行器自己检查</td><td>主会话独立最终验证</td></tr>
+<tr><td>救援</td><td>无</td><td>有（互相补位）</td></tr>
+</tbody></table>
+<p><strong>这是对官方的实质扩展，不是配置能实现的。</strong></p>
+<hr>
+<h2>6. 风险与约束</h2>
+<h3>6.1 已知风险</h3>
+<table><thead><tr><th>风险</th><th>表现</th><th>缓解</th></tr></thead><tbody>
+<tr><td><strong>互相等待</strong></td><td>A 等 B，B 等 A，都不动</td><td>主会话检测无进展 → 强制指定</td></tr>
+<tr><td><strong>重复劳动</strong></td><td>两个会话做了同一件事</td><td>任务板先认领再开工</td></tr>
+<tr><td><strong>覆盖冲突</strong></td><td>两个会话改同一文件</td><td>目录隔离 + 合并时检测</td></tr>
+<tr><td><strong>成本失控</strong></td><td>6 个会话全用强模型</td><td>分档配置 + 日预算上限</td></tr>
+<tr><td><strong>循环救援</strong></td><td>A 救 B，B 又去救 A</td><td>救援次数上限（默认 1 次/会话）</td></tr>
+</tbody></table>
+<h3>6.2 硬约束</h3>
+<table><thead><tr><th>约束</th><th>值</th><th>说明</th></tr></thead><tbody>
+<tr><td>最大子会话数</td><td>6</td><td>再多协调成本超过收益</td></tr>
+<tr><td>心跳间隔</td><td>30 秒</td><td>太密浪费，太疏检测迟</td></tr>
+<tr><td>卡死判定</td><td>90 秒无心跳</td><td>3 个心跳周期</td></tr>
+<tr><td>最多退回轮数</td><td>3</td><td>回测不过时退回修的次数</td></tr>
+<tr><td>单次救援</td><td>每会话最多 1 次</td><td>防循环</td></tr>
+</tbody></table>
+<h3>6.3 什么时候不该拆</h3>
+<p><strong>不是所有任务都该拆。</strong> 以下情况主会话自己干更快：</p>
+<ul>
+<li>任务少于 10 分钟</li>
+<li>强顺序依赖（第二步必须等第一步完成）</li>
+<li>需要频繁共享中间状态</li>
+<li>简单问答</li>
+</ul>
+<p><strong>难度预判就是为了避免这个</strong>。</p>
+<hr>
+<h2>7. 完整示例</h2>
+<h3>需求：给项目加一个完整的用户登录系统</h3>
+<pre><code>【T+0】邮件到达：「帮我给项目加个登录系统，支持邮箱密码和第三方 OAuth」
+       ↓
+【T+3】难度预判 → extreme（涉及数据库、UI、安全、第三方集成）
+       ↓
+【T+5】主会话拆成 4 个子会话：
+        A: 数据库设计与迁移    → claude-sonnet-4（中思考）
+        B: 后端 API 与鉴权     → deepseek-v4-pro（高思考）
+        C: 前端登录页面        → kimi-k2-turbo（高思考）
+        D: OAuth 第三方集成    → gpt-5-mini（中思考）
+       ↓
+【T+8】建立互联，建任务板
+       ↓
+【T+10】四个各自开工
+       ↓
+【T+45】A 完成数据库设计 → 更新任务板 → 去帮 C 写前端表单
+【T+60】D 卡在 OAuth 文档不清晰 → 无心跳
+【T+62】主会话检测到 → 读 D 的日志 → 发现它卡在解析回调参数
+        → 决定让 B 接管（B 已熟悉鉴权逻辑）
+【T+63】B 拿到 D 的进度 + 日志，继续做 OAuth
+【T+90】全部完成
+       ↓
+【T+92】主会话合并 → 发现 A 和 B 都改了 user 表结构 → 冲突
+        → 退回给 B 修正（以 A 的设计为准）
+【T+110】B 修完
+       ↓
+【T+112】跑完整测试 → 全绿
+【T+115】最终回测 → 通过
+       ↓
+【T+116】回复邮件：「已完成，共 4 个模块，22 个文件，测试覆盖 87%」
+       ↓
+【T+117】记录经验：OAuth 文档解析易卡 → 下次提前提供示例</code></pre>
+<hr>
+<p><a href="02-flow.html">← 上一篇：完整任务流程</a> | <a href="../../index.html">返回 README</a> | <a href="04-settings.html">下一篇：设置界面 →</a></p>
+<nav class="doc-nav">
+<a class="prev" href="02-flow.html">← 上一篇：完整任务流程</a>
+<a class="next" href="04-settings.html">下一篇：设置界面设计 →</a>
+</nav>
+</main>
+
+<footer>
+  <p><a href="../index.html" style="color:inherit">返回首页</a> · MIT License</p>
+</footer>
+
+</body>
+</html>

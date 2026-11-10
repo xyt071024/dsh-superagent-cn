@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deployment · Super Agent</title>
+<link rel="stylesheet" href="../../assets/style.css">
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="brand">
+      <span class="logo">◆</span>
+      <span class="brand-name">Super Agent</span>
+      <span class="brand-sub">for DeepSeek Harness</span>
+    </div>
+    <nav class="lang-switch" aria-label="Language">
+      <a href="../zh/09-deployment.html" data-lang="zh">中文</a>
+      <a href="../en/09-deployment.html" class="active" data-lang="en">English</a>
+      <a href="../ja/09-deployment.html" data-lang="ja">日本語</a>
+    </nav>
+  </div>
+</header>
+
+<main class="doc">
+<h1>Deployment</h1>
+<h2>1. Prerequisites</h2>
+<table><thead><tr><th>Item</th><th>Requirement</th></tr></thead><tbody>
+<tr><td>DeepSeek Harness</td><td>0.2.x or later</td></tr>
+<tr><td>Node.js</td><td>22.19+ or 24+</td></tr>
+<tr><td>Package manager</td><td>pnpm</td></tr>
+<tr><td>OS</td><td>Windows 10/11, macOS, Linux</td></tr>
+</tbody></table>
+<hr>
+<h2>2. Two Installation Shapes</h2>
+<h3>2.1 Merged Edition</h3>
+<p><strong>Installs into the DSH you already have — one more entry point, no other plugin touched.</strong></p>
+<pre><code class="language-sh"># 1. Create a separate profile (does not overwrite the existing one)
+dsh superagent --from-default-profile web --dump-config &gt; /dev/null
+
+# 2. Install the plugin package
+dsh plugin --profile superagent add link:&lt;project path&gt;
+
+# 3. Configure
+# Edit ~/.dsh/profiles/superagent/cordis.patch.yml
+# Set stateDir and the port
+
+# 4. Start
+dsh --profile superagent</code></pre>
+<p><strong>Key point</strong>: "Isolate process environment variables" must be enabled, otherwise it will affect the <code>gh</code> / CLI calls of other plugins.</p>
+<h3>2.2 Clean Edition</h3>
+<p><strong>A brand-new blank DSH with only this installed, following the official update path.</strong></p>
+<pre><code class="language-sh"># 1. Install DSH the official way (if you do not have it yet)
+npm install -g @deepseek-ai/dsh
+
+# 2. Create a blank profile
+dsh superagent --from-default-profile web --dump-config &gt; /dev/null
+
+# 3. Install
+dsh plugin --profile superagent add link:&lt;project path&gt;
+
+# 4. Start
+dsh --profile superagent</code></pre>
+<p><strong>Advantage</strong>: clean, no legacy baggage, upgradeable along with official releases.</p>
+<hr>
+<h2>3. Configuration</h2>
+<h3>3.1 Minimal Configuration</h3>
+<pre><code class="language-yaml"># ~/.dsh/profiles/superagent/cordis.patch.yml
+- id: webserver
+  config:
+    host: 127.0.0.1
+    port: 3082
+
+- id: superagent
+  config:
+    stateDir: &lt;absolute path&gt;/state/superagent</code></pre>
+<p><strong>Note</strong>: <code>stateDir</code> must be an absolute path. On Windows use the <code>C:/path/with/forward/slash</code> form.</p>
+<h3>3.2 Full Configuration</h3>
+<p>Configuration through the UI is recommended over hand-editing the file.</p>
+<p>See the eight groups in <a href="04-settings.html">Settings UI</a>.</p>
+<hr>
+<h2>4. First Start</h2>
+<pre><code>1. Start the process
+   ↓
+2. Open the dashboard (the terminal prints a URL containing the token)
+   ↓
+3. The first-run wizard begins:
+   · Configure GitHub (repository + CLI)
+   · Configure other sources (as needed)
+   · Configure the proxy (if needed)
+   · Set the permission whitelist
+   · Set the budget
+   ↓
+4. Run it in "observe mode" for a week
+   ↓
+5. Look at the decisions it recorded; switch to "automatic mode" once you trust them</code></pre>
+<hr>
+<h2>5. What Each Source Needs From You</h2>
+<table><thead><tr><th>Source</th><th>Needed</th><th>How to obtain it</th></tr></thead><tbody>
+<tr><td><strong>GitHub</strong></td><td>Repository + CLI authorization</td><td>Already logged in is enough</td></tr>
+<tr><td><strong>WeCom</strong></td><td>Corp ID + App Secret + AgentId</td><td>Create an app in the admin console</td></tr>
+<tr><td><strong>QQ Mail</strong></td><td>Authorization code</td><td>Mail settings → Account → Enable IMAP → Generate authorization code</td></tr>
+<tr><td><strong>Feishu</strong></td><td>App ID + App Secret</td><td>Create a custom app on the open platform</td></tr>
+<tr><td><strong>Gmail</strong></td><td>App-specific password</td><td>Enable two-step verification → Generate an app password</td></tr>
+<tr><td><strong>QQ</strong></td><td>Existing bridge</td><td>No extra configuration</td></tr>
+<tr><td><strong>WeChat</strong></td><td>Local client authorization</td><td>Scan the QR code on first login</td></tr>
+</tbody></table>
+<hr>
+<h2>6. Engineering Effort Estimate</h2>
+<h3>6.1 By Phase</h3>
+<table><thead><tr><th>Phase</th><th>Content</th><th>Days</th></tr></thead><tbody>
+<tr><td><strong>P0</strong></td><td>Fix the GitHub source + environment isolation switch</td><td>0.5</td></tr>
+<tr><td><strong>P1</strong></td><td>Settings UI skeleton (eight groups)</td><td>3</td></tr>
+<tr><td><strong>P2</strong></td><td>Model mandate + tiering + cost control</td><td>2</td></tr>
+<tr><td><strong>P3</strong></td><td>Multi-session collaboration (interop / task board / rescue / replay)</td><td>4</td></tr>
+<tr><td><strong>P4</strong></td><td>Proxy system (three layers + drag-and-drop detection)</td><td>3</td></tr>
+<tr><td><strong>P5</strong></td><td>Self-evolution mechanism</td><td>2</td></tr>
+<tr><td><strong>P6</strong></td><td>Seven connection sources</td><td>6</td></tr>
+<tr><td><strong>P7</strong></td><td>Stability hardening (five layers)</td><td>2</td></tr>
+<tr><td><strong>P8</strong></td><td>Browser mandate wizard</td><td>2</td></tr>
+<tr><td><strong>P9</strong></td><td>Dual state + foreground/background switching</td><td>1.5</td></tr>
+<tr><td><strong>P10</strong></td><td>Packaging + trilingual documentation</td><td>2.5</td></tr>
+<tr><td><strong>Total</strong></td><td></td><td><strong>~28.5 days</strong></td></tr>
+</tbody></table>
+<h3>6.2 Suggested Batches</h3>
+<p><strong>Batch 1 (3.5 days)</strong>: P0 + P1 + P2</p>
+<p>→ You can see the complete settings UI and configure models</p>
+<p><strong>Batch 2 (7 days)</strong>: P3 + P4</p>
+<p>→ Multi-session collaboration and the proxy can run</p>
+<p><strong>Batch 3 (10 days)</strong>: P5 + P6 + P7</p>
+<p>→ Self-evolution, seven sources onboarded, stability</p>
+<p><strong>Batch 4 (5.5 days)</strong>: P8 + P9 + P10</p>
+<p>→ Browser wizard, dual state, packaging</p>
+<p><strong>Why not do it all at once</strong>: you need to review and adjust direction along the way; doing it all in one go tends to drift off course.</p>
+<hr>
+<h2>7. External Dependencies</h2>
+<table><thead><tr><th>Component</th><th>Purpose</th><th>Required</th></tr></thead><tbody>
+<tr><td>DeepSeek Harness</td><td>Runtime environment</td><td>Required</td></tr>
+<tr><td>Node.js</td><td>Runtime</td><td>Required</td></tr>
+<tr><td>Git</td><td>Code operations</td><td>Required</td></tr>
+<tr><td>Playwright</td><td>Browser automation</td><td>Needed by the mandate wizard</td></tr>
+<tr><td>Microsoft Edge</td><td>Built-in browser</td><td>Needed by the mandate wizard</td></tr>
+<tr><td>IMAP library</td><td>Mail retrieval</td><td>Needed by the mailbox source</td></tr>
+</tbody></table>
+<hr>
+<h2>8. Data Location</h2>
+<pre><code>&lt;stateDir&gt;/
+  orchestrator.sqlite    ← main database
+  worker-bin/            ← command shims
+  work/                  ← ticket working directory
+  lessons/               ← experience library
+  logs/                  ← logs
+  config-backup/         ← configuration backups</code></pre>
+<p><strong>Backup strategy</strong>: back up the whole <code>&lt;stateDir&gt;</code> directory periodically.</p>
+<hr>
+<h2>9. Upgrading</h2>
+<h3>9.1 Upgrading the Merged Edition</h3>
+<pre><code class="language-sh"># Upgrade the plugin
+dsh plugin --profile superagent update
+
+# Upgrade DSH itself (follow your main version)
+# Note: a major version upgrade may affect compatibility</code></pre>
+<h3>9.2 Upgrading the Clean Edition</h3>
+<pre><code class="language-sh"># Follow the official release entirely
+npm update -g @deepseek-ai/dsh</code></pre>
+<h3>9.3 Pre-Upgrade Checklist</h3>
+<table><thead><tr><th>#</th><th>Check</th></tr></thead><tbody>
+<tr><td>1</td><td>Back up <code>&lt;stateDir&gt;</code></td></tr>
+<tr><td>2</td><td>Record the current configuration (export it)</td></tr>
+<tr><td>3</td><td>Confirm no task is currently running</td></tr>
+<tr><td>4</td><td>If you run a locally patched build, confirm the patch can be reapplied</td></tr>
+</tbody></table>
+<hr>
+<h2>10. Troubleshooting</h2>
+<h3>10.1 Startup Failure</h3>
+<table><thead><tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr></thead><tbody>
+<tr><td><code>EADDRINUSE</code></td><td>Port already in use</td><td>Kill the old process or change the port</td></tr>
+<tr><td><code>ValidationError: stateDir</code></td><td>Wrong path format</td><td>Use an absolute path with forward slashes</td></tr>
+<tr><td><code>cannot resolve profile bundle</code></td><td>Wrong package name</td><td>Check the package name in <code>package.json</code></td></tr>
+<tr><td><code>spawn env ENOENT</code></td><td>Platform incompatibility</td><td>See the next section</td></tr>
+</tbody></table>
+<h3>10.2 A Source Is Not Working</h3>
+<table><thead><tr><th>Symptom</th><th>Check</th></tr></thead><tbody>
+<tr><td>Status <code>error</code></td><td>Read the specific error message</td></tr>
+<tr><td>Status <code>paused</code></td><td>Configuration incomplete</td></tr>
+<tr><td>0 messages received</td><td>Whitelist / receive scope mismatched</td></tr>
+<tr><td>Repeated polling failures</td><td>CLI path or authorization problem</td></tr>
+</tbody></table>
+<p><strong>Key point</strong>: look at the <strong>business-layer status</strong>, not only at <code>runtime: ready</code>.</p>
+<h3>10.3 Platform Compatibility</h3>
+<p>On some platforms the original implementation may need small adjustments:</p>
+<table><thead><tr><th>Problem</th><th>Symptom</th><th>Direction</th></tr></thead><tbody>
+<tr><td>No <code>env</code> command</td><td><code>spawn env ENOENT</code></td><td>Pass the environment via process arguments instead</td></tr>
+<tr><td>Path format</td><td><code>stateDir</code> validation fails</td><td>Use the format for that platform</td></tr>
+<tr><td>Different command names</td><td>Tool registration fails</td><td>Pick the shell that matches the platform</td></tr>
+<tr><td>Port self-occupation</td><td><code>EADDRINUSE</code> on restart</td><td>Stop the old process before starting</td></tr>
+</tbody></table>
+<hr>
+<h2>11. Security Recommendations</h2>
+<table><thead><tr><th>#</th><th>Recommendation</th><th>Reason</th></tr></thead><tbody>
+<tr><td>1</td><td><strong>Dedicated account</strong></td><td>Give the agent its own account; do not share yours</td></tr>
+<tr><td>2</td><td><strong>Least privilege</strong></td><td>Put only the necessary people on the whitelist</td></tr>
+<tr><td>3</td><td><strong>Start in observe mode</strong></td><td>First see what it wants to do</td></tr>
+<tr><td>4</td><td><strong>Budget ceiling</strong></td><td>Prevents accidental spending</td></tr>
+<tr><td>5</td><td><strong>Second confirmation for dangerous actions</strong></td><td>Deleting files, pushing, sending messages</td></tr>
+<tr><td>6</td><td><strong>Leave autonomous plugin install off</strong></td><td>Unless you trust it</td></tr>
+<tr><td>7</td><td><strong>Review the audit records periodically</strong></td><td>Know what it has done</td></tr>
+</tbody></table>
+<hr>
+<h2>12. Minimal Working Configuration</h2>
+<p>If you want to get it running and take a look first, this is the simplest configuration:</p>
+<pre><code class="language-yaml">Sources: only GitHub enabled
+Mode: observe
+Budget: ¥10 per day
+Autonomous permissions: all off</code></pre>
+<p><strong>Run it for a week and look at the decisions it recorded.</strong> Once you trust them, open things up step by step.</p>
+<hr>
+<p><a href="08-cost.html">← Previous: Cost Control</a> | <a href="../../index.html">Back to README</a></p>
+<nav class="doc-nav">
+<a class="prev" href="08-cost.html">← Previous：Cost Control</a>
+
+</nav>
+</main>
+
+<footer>
+  <p><a href="../en/index.html" style="color:inherit">Home</a> · MIT License</p>
+</footer>
+
+</body>
+</html>

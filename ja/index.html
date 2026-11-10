@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Super Agent for DeepSeek Harness</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="brand">
+      <span class="logo">◆</span>
+      <span class="brand-name">Super Agent</span>
+      <span class="brand-sub">for DeepSeek Harness</span>
+    </div>
+
+    <nav class="lang-switch" aria-label="Language">
+      <a href="../index.html" data-lang="zh">中文</a>
+      <a href="../en/index.html" data-lang="en">English</a>
+      <a href="index.html" class="active" data-lang="ja">日本語</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+<section class="hero">
+  <h1>自ら仕事を探すエージェント</h1>
+  <p class="hero-sub">
+    あらゆる入口から仕事を受け取り · 引き受けるべきかを判断し · 難しい課題を複数モデルに分割し · 完了後に報告します。
+  </p>
+  <div class="hero-actions">
+    <a href="docs/ja/01-overview.html" class="btn btn-primary">読み始める</a>
+    <a href="https://github.com/xyt071024/dsh-superagent-cn" class="btn btn-ghost">GitHub リポジトリ</a>
+  </div>
+</section>
+
+<section class="cards">
+  <div class="card">
+    <div class="card-icon">⇄</div>
+    <h3>マルチソース受信</h3>
+    <p>GitHub、Feishu、WeCom、メール、QQ、WeChat を統一エントリで。</p>
+  </div>
+  <div class="card">
+    <div class="card-icon">⛊</div>
+    <h3>3 層の権限モデル</h3>
+    <p>ゲート（コード）→ 評価（モデル）→ 委任（資格情報）。メッセージ内容では権限を変更できません。</p>
+  </div>
+  <div class="card">
+    <div class="card-icon">⋔</div>
+    <h3>マルチセッション協調</h3>
+    <p>難しいタスクを複数のサブセッションに分割し、異なるモデルが並行して補完し合います。詰まったら相互に救済。</p>
+  </div>
+  <div class="card">
+    <div class="card-icon">↻</div>
+    <h3>自己進化</h3>
+    <p>振り返り → 経験を記録 → 自己最適化。同じタスクを回を重ねるごとに上手くこなします。</p>
+  </div>
+</section>
+
+<section class="doc-index">
+  <h2>ドキュメント</h2>
+  <ol class="toc">
+    <li><a href="docs/ja/01-overview.html"><span class="num">01</span><span class="title">位置づけと中核概念</span><span class="desc">何であるか、3 層権限、設計思想</span></a></li>
+    <li><a href="docs/ja/02-flow.html"><span class="num">02</span><span class="title">タスクフロー全体</span><span class="desc">メッセージ受信から返信までの全ステップ</span></a></li>
+    <li><a href="docs/ja/03-collaboration.html"><span class="num">03</span><span class="title">マルチセッション協調</span><span class="desc">分割・救済・検証の仕組み</span></a></li>
+    <li><a href="docs/ja/04-settings.html"><span class="num">04</span><span class="title">設定 UI 設計</span><span class="desc">8 つのグループ、項目ごとの説明</span></a></li>
+    <li><a href="docs/ja/05-sources.html"><span class="num">05</span><span class="title">ソースと安定性</span><span class="desc">7 つの入口と接続維持の方法</span></a></li>
+    <li><a href="docs/ja/06-proxy.html"><span class="num">06</span><span class="title">プロキシ設計</span><span class="desc">3 層構成と切り替え戦略</span></a></li>
+    <li><a href="docs/ja/07-evolution.html"><span class="num">07</span><span class="title">自己進化</span><span class="desc">どのように自己改善するか</span></a></li>
+    <li><a href="docs/ja/08-cost.html"><span class="num">08</span><span class="title">コスト管理</span><span class="desc">API 使用量が多い場合の対応</span></a></li>
+    <li><a href="docs/ja/09-deployment.html"><span class="num">09</span><span class="title">デプロイ</span><span class="desc">導入手順と所要期間</span></a></li>
+  </ol>
+</section>
+
+<section class="quickfacts">
+  <h2>概要</h2>
+  <table>
+    <tr><th>項目</th><th>内容</th></tr>
+    <tr><td>形態</td><td>統合版（既存 DSH に導入）/ スタンドアロン版（空の DSH）</td></tr>
+    <tr><td>状態</td><td>対話状態（表示）/ サイレント状態（バックグラウンド、メッセージで起動）</td></tr>
+    <tr><td>ソース</td><td>7 つ、それぞれ個別に有効化・無効化可能</td></tr>
+    <tr><td>並行数</td><td>既定 3 チケット + 人間用に 1 つ予約</td></tr>
+    <tr><td>サブセッション</td><td>最大 6 つ、それぞれモデルと思考深度を設定可能</td></tr>
+    <tr><td>メッセージ上限</td><td>IM 返信は 100 語（厳格な上限）</td></tr>
+    <tr><td>ライセンス</td><td>MIT</td></tr>
+  </table>
+</section>
+
+</main>
+
+<footer>
+  <p>Super Agent for DeepSeek Harness · MIT License</p>
+  <p class="footer-note">DeepSeek Harness 上に構築。コアフローは公式実装をそのまま再利用しています。</p>
+</footer>
+
+</body>
+</html>

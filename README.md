@@ -1,10 +1,9 @@
 # Super Agent for DeepSeek Harness
 
-> A proactive agent system that takes work from anywhere, decides whether it should act, splits hard tasks across multiple models, and improves itself over time.
->
-> 一个能从任意入口接活、自主判断该不该干、把难题拆给多个模型协同、并且会自我迭代的常驻智能体系统。
+**中文** | [English](#english) | [日本語](#日本語)
 
-[中文](#中文) | [English](#english) | [日本語](#日本語)
+> 📖 **推荐用网页版阅读**：[打开文档站点](https://xyt071024.github.io/dsh-superagent-cn/)
+> 网页版支持在任意页面切换语言，跟随你阅读的位置。
 
 ---
 
@@ -12,43 +11,39 @@
 
 ### 这是什么
 
-Super Agent 建立在 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 之上，是一个**会主动找活干的智能体**。
+一个建立在 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 之上的**会自己找活干的智能体**。
 
-普通的 AI 助手：你问一句，它答一句。
+普通 AI 助手：你问一句，它答一句。
 
 Super Agent：你不在的时候它也在工作。有人给它发邮件、在 GitHub 上 @ 它、在 QQ 上找它——它会自己判断「这活该不该接」、「接了我能做什么」，然后动手，做完回来告诉你。
 
-### 三种能力叠加
+### 核心能力
 
 | 能力 | 说明 |
 |---|---|
 | **多源接入** | GitHub、飞书、企业微信、邮箱、QQ、微信，统一入口 |
-| **权限判定** | 谁能派活、该不该接、范围多大，全部可配 |
-| **多模型协同** | 难题自动拆成多个子会话，不同模型并行，互相补位 |
+| **三层权限** | 网关（代码）→ 评估（模型）→ 授权（凭证）。消息内容改不了权限 |
+| **多会话协同** | 难题自动拆成多个子会话，不同模型并行，卡住互相救援 |
+| **自我进化** | 复盘 → 记经验 → 优化自己 |
 
-### 两种形态
+### 两种形态 · 两种状态
 
-- **融合版** — 装进你现有的 DSH，侧边栏多一个入口，不影响其它插件
-- **纯净版** — 全新白板 DSH，只装它，走官方更新路径
+- **形态**：融合版（装进现有 DSH）/ 纯净版（白板 DSH，走官方更新）
+- **状态**：对话态（可见）/ 静默态（后台，消息唤醒）
 
-### 两种状态
+### 文档导航
 
-- **对话态** — 界面可见，你说话才动，可随时打断
-- **静默态** — 进程常驻，无消息时几乎不消耗算力，消息到达自动唤醒
-
-两种状态**流程完全一致**，区别只在是否显示在界面上。
-
-### 从哪里开始读
-
-1. [项目定位与核心概念](docs/01-overview.md) — 它是什么、解决什么问题
-2. [完整任务流程](docs/02-flow.md) — 一条消息从进来到出去的每一步
-3. [多会话协同机制](docs/03-collaboration.md) — 难题怎么拆、怎么互救、怎么回测
-4. [设置界面设计](docs/04-settings.md) — 八个分组，字段级说明
-5. [连接源与稳定性](docs/05-sources.md) — 七个入口怎么接、怎么保证不掉线
-6. [代理方案](docs/06-proxy.md) — 三层架构与切换策略
-7. [自我进化机制](docs/07-evolution.md) — 它怎么优化自己
-8. [省流与成本控制](docs/08-cost.md) — 高 API 用量下的应对
-9. [部署与工程量](docs/09-deployment.md) — 怎么装、要多久
+| # | 文档 | 内容 |
+|---|---|---|
+| 01 | [项目定位与核心概念](docs/zh/01-overview.md) | 它是什么、三层权限、设计哲学 |
+| 02 | [完整任务流程](docs/zh/02-flow.md) | 一条消息从进来到出去的每一步 |
+| 03 | [多会话协同机制](docs/zh/03-collaboration.md) | 难题怎么拆、怎么互救、怎么回测 |
+| 04 | [设置界面设计](docs/zh/04-settings.md) | 八个分组，字段级说明 |
+| 05 | [连接源与稳定性](docs/zh/05-sources.md) | 七个入口怎么接、怎么保证不掉线 |
+| 06 | [代理方案](docs/zh/06-proxy.md) | 三层架构与切换策略 |
+| 07 | [自我进化机制](docs/zh/07-evolution.md) | 它怎么优化自己 |
+| 08 | [省流与成本控制](docs/zh/08-cost.md) | 高 API 用量下的应对 |
+| 09 | [部署与工程量](docs/zh/09-deployment.md) | 怎么装、要多久 |
 
 ### 与 DeepSeek Harness 的关系
 
@@ -56,8 +51,6 @@ Super Agent：你不在的时候它也在工作。有人给它发邮件、在 Gi
 
 - **核心流程完全复用 DSH**：Source → Trigger → Thread → Eval → Ticket → Executor
 - **本项目的扩展**：多源接入、多模型协同、自我进化、稳定性加固
-
-如果你还没装 DSH，请先看 [DeepSeek Harness 官方仓库](https://github.com/deepseek-ai/deepseek-harness)。
 
 ### 许可证
 
@@ -69,43 +62,39 @@ MIT
 
 ### What this is
 
-Super Agent is built on top of [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). It is an **agent that actively looks for work**.
+An **agent that looks for work**, built on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
 
 A normal AI assistant: you ask, it answers.
 
 Super Agent: it works while you are away. Someone emails it, mentions it on GitHub, or messages it on QQ — it decides **whether this work should be taken**, **what it can do within that scope**, then does it and reports back.
 
-### Three capabilities combined
+### Core capabilities
 
 | Capability | Description |
 |---|---|
-| **Multi-source intake** | GitHub, Feishu, WeCom, Email, QQ, WeChat — one unified entry |
-| **Authorization** | Who may request work, whether to accept, how far it may go — all configurable |
-| **Multi-model collaboration** | Hard tasks split into sub-sessions with different models, working in parallel and covering each other |
+| **Multi-source intake** | GitHub, Feishu, WeCom, email, QQ, WeChat — one unified entry |
+| **Three-layer authorization** | Gate (code) → Assessment (model) → Mandate (credential). Message content cannot change permissions |
+| **Multi-session collaboration** | Hard tasks split into sub-sessions with different models, rescuing each other when stuck |
+| **Self-evolution** | Reflect → record lessons → optimize itself |
 
-### Two forms
+### Two forms · Two states
 
-- **Integrated** — installed into your existing DSH, one extra sidebar entry, other plugins untouched
-- **Standalone** — a fresh blank DSH with only this installed, following the official update path
+- **Forms**: Integrated (into existing DSH) / Standalone (blank DSH, official update path)
+- **States**: Interactive (visible) / Silent (background, wakes on message)
 
-### Two states
+### Documentation
 
-- **Interactive** — visible UI, acts only when you speak, interruptible
-- **Silent** — process resident, near-zero compute when idle, wakes on incoming messages
-
-Both states **follow exactly the same flow**; only the UI presence differs.
-
-### Where to start reading
-
-1. [Positioning and core concepts](docs/01-overview.md)
-2. [Complete task flow](docs/02-flow.md)
-3. [Multi-session collaboration](docs/03-collaboration.md)
-4. [Settings UI design](docs/04-settings.md)
-5. [Sources and stability](docs/05-sources.md)
-6. [Proxy architecture](docs/06-proxy.md)
-7. [Self-evolution](docs/07-evolution.md)
-8. [Cost control](docs/08-cost.md)
-9. [Deployment](docs/09-deployment.md)
+| # | Document | Content |
+|---|---|---|
+| 01 | [Positioning and Core Concepts](docs/en/01-overview.md) | What it is, three-layer authorization, design philosophy |
+| 02 | [Complete Task Flow](docs/en/02-flow.md) | Every step from incoming message to reply |
+| 03 | [Multi-Session Collaboration](docs/en/03-collaboration.md) | How tasks split, rescue, and verify |
+| 04 | [Settings UI Design](docs/en/04-settings.md) | Eight groups, field by field |
+| 05 | [Sources and Stability](docs/en/05-sources.md) | Seven entry points and how they stay connected |
+| 06 | [Proxy Architecture](docs/en/06-proxy.md) | Three layers and switching strategy |
+| 07 | [Self-Evolution](docs/en/07-evolution.md) | How it improves itself |
+| 08 | [Cost Control](docs/en/08-cost.md) | Coping with high API usage |
+| 09 | [Deployment](docs/en/09-deployment.md) | How to install, how long it takes |
 
 ### Relationship to DeepSeek Harness
 
@@ -124,43 +113,39 @@ MIT
 
 ### これは何か
 
-Super Agent は [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) の上に構築されています。**自ら仕事を探すエージェント**です。
+[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) の上に構築された、**自ら仕事を探すエージェント**です。
 
 通常の AI アシスタント：質問すれば答える。
 
 Super Agent：あなたがいない間も働きます。メールが届いたり、GitHub でメンションされたり、QQ でメッセージが来たりすると、**その仕事を引き受けるべきか**、**どこまでできるか**を自分で判断し、実行して報告します。
 
-### 3 つの能力の組み合わせ
+### 中核能力
 
 | 能力 | 説明 |
 |---|---|
 | **マルチソース受信** | GitHub、Feishu、WeCom、メール、QQ、WeChat を統一エントリで |
-| **権限判定** | 誰が依頼できるか、引き受けるべきか、範囲はどこまでか — すべて設定可能 |
-| **マルチモデル協調** | 難しいタスクを複数のサブセッションに分割し、異なるモデルが並行して補完し合う |
+| **3 層の権限モデル** | ゲート（コード）→ 評価（モデル）→ 委任（資格情報）。メッセージ内容では権限を変更できません |
+| **マルチセッション協調** | 難しいタスクを複数のサブセッションに分割し、異なるモデルが並行して補完し合います |
+| **自己進化** | 振り返り → 経験を記録 → 自己最適化 |
 
-### 2 つの形態
+### 2 つの形態 · 2 つの状態
 
-- **統合版** — 既存の DSH にインストール、サイドバーに項目が 1 つ増えるだけ
-- **スタンドアロン版** — 空の DSH にこれだけをインストール、公式の更新経路に従う
+- **形態**：統合版（既存 DSH に導入）/ スタンドアロン版（空の DSH、公式更新経路）
+- **状態**：対話状態（表示）/ サイレント状態（バックグラウンド、メッセージで起動）
 
-### 2 つの状態
+### ドキュメント
 
-- **対話状態** — UI 表示、話しかけた時だけ動作、中断可能
-- **サイレント状態** — プロセス常駐、アイドル時の計算コストはほぼゼロ、メッセージ受信で起動
-
-どちらの状態も**フローは完全に同一**で、UI 表示の有無だけが異なります。
-
-### 読み始める場所
-
-1. [位置づけと中核概念](docs/01-overview.md)
-2. [タスクフロー全体](docs/02-flow.md)
-3. [マルチセッション協調](docs/03-collaboration.md)
-4. [設定 UI 設計](docs/04-settings.md)
-5. [ソースと安定性](docs/05-sources.md)
-6. [プロキシ設計](docs/06-proxy.md)
-7. [自己進化](docs/07-evolution.md)
-8. [コスト管理](docs/08-cost.md)
-9. [デプロイ](docs/09-deployment.md)
+| # | ドキュメント | 内容 |
+|---|---|---|
+| 01 | [位置づけと中核概念](docs/ja/01-overview.md) | 何であるか、3 層権限、設計思想 |
+| 02 | [タスクフロー全体](docs/ja/02-flow.md) | メッセージ受信から返信までの全ステップ |
+| 03 | [マルチセッション協調](docs/ja/03-collaboration.md) | 分割・救済・検証の仕組み |
+| 04 | [設定 UI 設計](docs/ja/04-settings.md) | 8 つのグループ、項目ごとの説明 |
+| 05 | [ソースと安定性](docs/ja/05-sources.md) | 7 つの入口と接続維持の方法 |
+| 06 | [プロキシ設計](docs/ja/06-proxy.md) | 3 層構成と切り替え戦略 |
+| 07 | [自己進化](docs/ja/07-evolution.md) | どのように自己改善するか |
+| 08 | [コスト管理](docs/ja/08-cost.md) | API 使用量が多い場合の対応 |
+| 09 | [デプロイ](docs/ja/09-deployment.md) | 導入手順と所要期間 |
 
 ### DeepSeek Harness との関係
 

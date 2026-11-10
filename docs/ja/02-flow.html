@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>タスクフロー全体 · Super Agent</title>
+<link rel="stylesheet" href="../../assets/style.css">
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="brand">
+      <span class="logo">◆</span>
+      <span class="brand-name">Super Agent</span>
+      <span class="brand-sub">for DeepSeek Harness</span>
+    </div>
+    <nav class="lang-switch" aria-label="Language">
+      <a href="../zh/02-flow.html" data-lang="zh">中文</a>
+      <a href="../en/02-flow.html" data-lang="en">English</a>
+      <a href="../ja/02-flow.html" class="active" data-lang="ja">日本語</a>
+    </nav>
+  </div>
+</header>
+
+<main class="doc">
+<h1>タスクフロー全体</h1>
+<p>本稿は<strong>時系列</strong>に沿って、1 通のメッセージが到着してから返信されるまで、各段階で何が起き、どのインターフェースを使うのかを完全に再現します。</p>
+<hr>
+<h2>1. フェーズ 0：プロセス起動</h2>
+<table><thead><tr><th>手順</th><th>動作</th><th>場所</th></tr></thead><tbody>
+<tr><td>1</td><td>設定ファイルを読む</td><td><code>~/.dsh/profiles/&lt;name&gt;/cordis.patch.yml</code></td></tr>
+<tr><td>2</td><td>データベースを開き、ファイルロックを取る</td><td><code>&lt;stateDir&gt;/orchestrator.sqlite</code></td></tr>
+<tr><td>3</td><td>アカウントを検出（<code>gh api user</code> など）</td><td>デプロイ時チェック</td></tr>
+<tr><td>4</td><td>worker コマンドのシムディレクトリを書く</td><td><code>&lt;stateDir&gt;/worker-bin</code></td></tr>
+<tr><td>5</td><td>メインセッションを作成</td><td>専用プリセットを使用</td></tr>
+<tr><td>6</td><td>スケジューリングループを起動</td><td>2 秒ごと</td></tr>
+</tbody></table>
+<p><strong>注意</strong>：スケジューリングは<strong>ポーリング</strong>（2 秒ごとにスキャン）であり、イベント駆動ではありません。これは公式実装であり、後続の「サイレント状態」への改修でこの層を置き換えます。</p>
+<hr>
+<h2>2. フェーズ 1：メッセージ到着（パッシブ経路）</h2>
+<h3>2.1 シーケンス</h3>
+<pre><code>[1] プラットフォームに新着メッセージ
+      ↓ ポーリング（既定 60 秒ごと）
+[2] Source が取得
+      ↓
+[3] Trigger に翻訳
+      ↓ 記録：送信者、本文、スレッド識別子、言及の有無
+[4] 格納 + 重複排除
+      ↓ 同じ Trigger は 1 回だけ保存
+[5] 帰属を判定
+      ├─ 新規スレッド → スレッドを作成し、評価キューに投入
+      └─ 既存スレッド → 購読中のチケットへファンアウト（コンテキストとして。委任はしない）
+[6] スケジューリングループが検出
+      ↓
+[7] 候補カードを組み立て
+      ↓
+[8] メインセッションへ投入</code></pre>
+<h3>2.2 主要インターフェース</h3>
+<table><thead><tr><th>動作</th><th>インターフェース</th></tr></thead><tbody>
+<tr><td>メッセージ取得</td><td>各プラットフォームの API / CLI</td></tr>
+<tr><td>Trigger の保存</td><td><code>Engine.receive(trigger)</code></td></tr>
+<tr><td>候補コンテキストの参照</td><td><code>orchestrator_eval</code></td></tr>
+<tr><td>追加コンテキストの読み込み</td><td><code>orchestrator_eval_read</code></td></tr>
+<tr><td>決定の記録</td><td><code>orchestrator_eval_decide</code></td></tr>
+<tr><td>決定のルーティング</td><td><code>orchestrator_route</code></td></tr>
+</tbody></table>
+<hr>
+<h2>3. フェーズ 2：ゲート（純粋なコード）</h2>
+<pre><code>Trigger が到着
+   ↓
+gate(trigger, thread, tickets)     ← 純粋関数、モデルなし
+   ↓
+手順：
+   ① 送信者が許可リストにいるか確認
+   ② ボットアカウントか確認
+   ③ 受入表の該当セルを確認
+   ↓
+出力は 3 択：
+   explicit   —— 明示的リクエスト
+   inferred   —— 推定候補
+   not admitted —— 破棄</code></pre>
+<p><strong>この段階ではメッセージの内容を見ません。</strong> これが権限防衛線の基盤です。</p>
+<h3>3.1 受入表</h3>
+<p>各ソースには受入表があり、行が「受信範囲」、列が 3 つの状況です。</p>
+<table><thead><tr><th>セル</th><th>選択肢</th><th>既定</th></tr></thead><tbody>
+<tr><td>名簿にいるが指名されていない</td><td>推定 / 無視</td><td>推定</td></tr>
+<tr><td>名簿にいないが指名された</td><td>明示 / 推定 / 無視</td><td>無視</td></tr>
+<tr><td>名簿にもいないし指名もされていない</td><td>推定 / 無視</td><td>無視</td></tr>
+</tbody></table>
+<p><strong>例</strong>：「名簿にいないが指名された」を「明示」に設定すると、「この範囲で誰でも @ すれば仕事を依頼できる」という意味になります。専用のカスタマーサポートグループに向いています。</p>
+<hr>
+<h2>4. フェーズ 3：評価（モデル）</h2>
+<h3>4.1 成立が必要な 3 つの事実</h3>
+<table><thead><tr><th>事実</th><th>判断基準</th></tr></thead><tbody>
+<tr><td><strong>① 議論が本プロジェクトを対象にしている</strong></td><td>他社製品の話ではなく、仮定の仮定でもありません</td></tr>
+<tr><td><strong>② 実装の意図がある</strong></td><td>具体的な変更を実現したいと明確に述べています</td></tr>
+<tr><td><strong>③ 方向性が確定している</strong></td><td>小範囲の局所修正を直接行え、まだ設計を議論している段階ではありません</td></tr>
+</tbody></table>
+<p><strong>3 つすべてが成立したときだけ受注します。</strong> 1 つでも欠ければ無視します。</p>
+<h3>4.2 出力構造</h3>
+<pre><code class="language-json">{
+  "rule_assessments": [
+    { "rule_id": "copy",   "matched": true,  "reason": "文案の変更を明確に要求" },
+    { "rule_id": "visual", "matched": false, "reason": "視覚調整には該当しない" }
+  ],
+  "direction": {
+    "implementation_requested": true,
+    "target_basis": "existing-standard",
+    "requires_design_decision": false,
+    "evidence": ["原文の引用"]
+  },
+  "acknowledgement": "何を行うかを一言で説明"
+}</code></pre>
+<p><strong>注意</strong>：<code>rule_assessments</code> は<strong>有効なルールごとに必ず 1 件ずつ</strong>返す必要があり、合致の有無は問いません。欠けるとエラーになります。</p>
+<h3>4.3 コンテキストウィンドウ</h3>
+<p>評価時に参照できるもの：</p>
+<table><thead><tr><th>内容</th><th>長さ</th></tr></thead><tbody>
+<tr><td>トリガーの本文</td><td>最大 4000 文字</td></tr>
+<tr><td>スレッドの直近 5 メッセージ</td><td>各 400 文字まで</td></tr>
+<tr><td>トリガーの前後 5 件ずつ</td><td>隣接する 2 件は 1200 文字まで</td></tr>
+<tr><td>関連チケット</td><td>最大 8 件、進行中のものを優先</td></tr>
+<tr><td>その他のメッセージ</td><td>50 文字の要約、id 指定で展開可能</td></tr>
+</tbody></table>
+<hr>
+<h2>5. フェーズ 4：受注</h2>
+<pre><code>orchestrator_route {kind: "accept", ...}
+   ↓
+単一トランザクション内で完了：
+   ├─ Decision を作成
+   ├─ Ticket を作成
+   ├─ Mandate を作成（ポリシーバージョン / 範囲 / 強度 / 合致ルールを記録）
+   ├─ Assignment を作成（起動待ち）
+   ├─ Subscription を作成（関連する全スレッドを購読）
+   └─ 確認メッセージの送信をキューに投入
+   ↓
+実行キューへ</code></pre>
+<p><strong>冪等性</strong>：同じ Trigger ID で重複して受注しても、チケットは 1 つだけ作成されます。</p>
+<hr>
+<h2>6. フェーズ 5：実行</h2>
+<h3>6.1 エグゼキュータの起動</h3>
+<pre><code>[1] prepare コマンドを実行（設定されている場合）—— 制限時間 10 分
+[2] ディレクトリ &lt;stateDir&gt;/work/&lt;短縮名&gt; を作成
+[3] セッションを起動し、worker-&lt;チケットID&gt; と命名
+[4] 最初のメッセージを送信：タイトル + タスク説明 + ソースイベントカード</code></pre>
+<h3>6.2 エグゼキュータのツールセット</h3>
+<table><thead><tr><th>カテゴリ</th><th>ツール</th></tr></thead><tbody>
+<tr><td>ファイル</td><td><code>read</code> <code>write</code> <code>edit</code> <code>glob</code> <code>grep</code> <code>read_image</code></td></tr>
+<tr><td>コマンド</td><td><code>bash</code> / <code>pwsh</code> <code>job_output</code> <code>job_list</code> <code>job_kill</code></td></tr>
+<tr><td>ネットワーク</td><td><code>web_search</code> <code>web_fetch</code></td></tr>
+<tr><td>協調</td><td><code>subagent</code> <code>send_message</code> <code>list_agents</code> <code>interrupt_agent</code></td></tr>
+<tr><td>その他</td><td><code>skill</code> <code>todo_write</code></td></tr>
+</tbody></table>
+<h3>6.3 ワークフロー</h3>
+<pre><code>1. リポジトリ内の AGENTS.md を読む（プロジェクト固有のルール）
+2. 範囲を判断：この作業は自分の委任の範囲内か？
+   ├─ 範囲外 → 差し戻し（handback）
+   └─ 範囲内 → 続行
+3. 着手前に確認：何をするのかを一言で明確にする
+4. 作業：コード変更 / テスト実行 / 自己検査
+5. 長いコマンドはバックグラウンドへ（フォアグラウンドで 5 秒を超えたら自動移行）
+6. 報告</code></pre>
+<h3>6.4 6 種類のレポート状態</h3>
+<table><thead><tr><th>状態</th><th>意味</th><th>結果</th></tr></thead><tbody>
+<tr><td><code>progress</code></td><td>内部の進捗</td><td>誰にも通知しません</td></tr>
+<tr><td><code>waiting</code></td><td>このラウンドは完了、未解決の問い合わせなし</td><td>アイドルへ移行し、次のメッセージを待ちます</td></tr>
+<tr><td><code>ready</code></td><td>完了かつ自己検査に合格</td><td>「レビュー待ち」へ移行</td></tr>
+<tr><td><code>blocked</code></td><td>不足があり、人手の介入が必須</td><td>「ブロック」へ移行</td></tr>
+<tr><td><code>failed</code></td><td>失敗</td><td>「失敗」へ移行</td></tr>
+<tr><td><code>dropped</code></td><td>対応不要</td><td>クローズし、メッセージは送りません</td></tr>
+</tbody></table>
+<h3>6.5 バックグラウンド作業の制限</h3>
+<table><thead><tr><th>項目</th><th>値</th></tr></thead><tbody>
+<tr><td>1 ラウンドのバックグラウンド作業の最長時間</td><td>30 分</td></tr>
+<tr><td>期限到達時の処理</td><td>shell タスクを停止し、何を停止したかをレポートに明記</td></tr>
+<tr><td>サブエージェント</td><td>継続を許可</td></tr>
+<tr><td>人へ引き継ぐとき</td><td>サブエージェントは即時停止、shell タスクは継続可</td></tr>
+</tbody></table>
+<hr>
+<h2>7. フェーズ 6：返信</h2>
+<h3>7.1 3 つの経路</h3>
+<table><thead><tr><th>経路</th><th>タイミング</th><th>制約</th></tr></thead><tbody>
+<tr><td><strong>確認</strong></td><td>受注時 / 着手前</td><td><strong>厳格な上限 100 語</strong></td></tr>
+<tr><td><strong>結果</strong></td><td><code>ready</code> の報告時</td><td>チケットが実際に準備完了している必要があります</td></tr>
+<tr><td><strong>質問</strong></td><td>人による判断が必要なとき</td><td><strong>元の質問を逐語的にコピーすること</strong></td></tr>
+</tbody></table>
+<h3>7.2 送信先のルール</h3>
+<pre><code>チケットがどのスレッドから来たか → そこへ返す
+   例外：質問が人から出た場合 → 質問者のいるセッションへ返す</code></pre>
+<h3>7.3 100 語は厳格な制約</h3>
+<p>これは推奨ではなく、トランスポート層での拒否です。</p>
+<blockquote><p>原文：<em>"100 words is a hard ceiling, not a writing target. The transport rejects longer IM messages."</em></p></blockquote>
+<p>日本語では分かち書きの単位で計算され、Markdown リンクのラベルと URL もカウントされます。</p>
+<hr>
+<h2>8. フェーズ 7：後続メッセージ</h2>
+<h3>8.1 サブスクリプションの仕組み</h3>
+<p>チケットは受注時に、関連するすべてのスレッドを<strong>購読</strong>します。以降：</p>
+<ul>
+<li><strong>スレッド内のあらゆる新着メッセージ</strong> → 自動的にチケットへ到達（コンテキストとして。委任はしません）</li>
+<li><strong>再度 @ する必要はありません</strong></li>
+<li>ボットのメッセージや CI の結果も到達します</li>
+</ul>
+<h3>8.2 チケット終了後の継続</h3>
+<pre><code>チケット終了（ready/merged/closed）
+   ↓
+サブスクリプションは維持
+   ↓
+誰かが同じスレッドで話し続ける
+   ↓
+自動的に継続（同じ委任、再評価は不要）
+   ↓
+委任の条件が変わっていた場合 → 再検証に失敗 → 継続せず、評価からやり直し</code></pre>
+<hr>
+<h2>9. 完全なシーケンス例</h2>
+<h3>シナリオ：GitHub で文案変更の依頼が来た</h3>
+<pre><code>T+0      誰かが Issue で @ してコメント：「このボタンの文言を Save に変えて」
+T+60     ポーリング周期が来て、通知を取得
+T+60     Trigger に翻訳し、格納、スレッド作成、評価に投入
+T+62     スケジューリングループが検出、カードを組み立て、メインセッションへ投入
+T+65     モデルが判断：
+           ① 本プロジェクトが対象 ✓
+           ② 実装の意図あり ✓
+           ③ 方向性が確定（具体的に Save へ変更）✓
+          copy ルールに合致 → 受注
+T+65     チケット + 委任 + アサイン + サブスクリプションを作成（単一トランザクション）
+T+66     確認を送信：「了解しました：設定ページの『変更を保存』ボタンを『保存』に変更します」
+T+66     エグゼキュータ起動：ディレクトリ作成 → セッション起動 → タスク送信
+T+72     エグゼキュータが作業開始
+T+80     変更完了、テスト実行、自己検査
+T+95     ready を報告
+T+96     メインセッションが結果を元のスレッドへ送信
+T+97     完了</code></pre>
+<h3>シナリオ：メールで複雑な要件が届いた</h3>
+<pre><code>T+0      メール受信
+T+1      IMAP プッシュ → Trigger に翻訳
+T+2      ゲート判定：送信者が許可リストにいる → 明示的リクエスト
+T+3      メインセッションがまず難易度を事前判定（低い思考深度、約 50 token）
+T+5      「複雑」と判断 → 3 つのサブセッションに分割が必要
+T+6      サブセッション A/B/C を起動し、それぞれモデルを指定
+         → 詳細は [マルチセッション協調](03-collaboration.md)
+...
+T+167    最終検証に合格し、結果メールを送信</code></pre>
+<hr>
+<h2>10. 異常経路</h2>
+<h3>10.1 評価タイムアウト</h3>
+<pre><code>候補がメインセッションに到達した時点で計測開始（既定 120 秒）
+   ↓ タイムアウト
+キューに入れてリトライ
+   ↓ 2 回連続でタイムアウト
+3 回目は「未完了」（unavailable）として記録
+   ↓
+パネルで人手による対応を促す</code></pre>
+<h3>10.2 エグゼキュータの停止</h3>
+<table><thead><tr><th>状況</th><th>処理</th></tr></thead><tbody>
+<tr><td><code>blocked</code> を報告</td><td>自動入力を停止し、人を待ちます</td></tr>
+<tr><td><code>failed</code> を報告</td><td>同上</td></tr>
+<tr><td>ハートビートなし（タイムアウト）</td><td>停止の疑いとして記録し、メインセッションが引き継ぎ / 再起動を決定</td></tr>
+<tr><td>プロバイダの一時的な障害</td><td>自動で 3 回リトライ（5 秒から開始し、倍増して最大 300 秒）</td></tr>
+</tbody></table>
+<h3>10.3 ソースの失敗</h3>
+<table><thead><tr><th>状況</th><th>処理</th></tr></thead><tbody>
+<tr><td>単一の読み取り失敗</td><td>エラーをそのスレッドに記録し、次ラウンドでリトライ</td></tr>
+<tr><td>連続 N 回の失敗</td><td>ソースをエラーとしてマーク</td></tr>
+<tr><td>ある項目が 1 日失敗し続ける</td><td>その項目を破棄し、ポーリングをブロックしない</td></tr>
+</tbody></table>
+<h3>10.4 返信の失敗</h3>
+<table><thead><tr><th>状況</th><th>処理</th></tr></thead><tbody>
+<tr><td>送信失敗</td><td>5 秒後からリトライし、倍増して最大 300 秒</td></tr>
+<tr><td>セッションがすでに存在しない</td><td>「破棄」としてマークし、他の場所へは再送しません</td></tr>
+<tr><td>ソースが閉じている</td><td>待機し、破棄しません</td></tr>
+</tbody></table>
+<hr>
+<p><a href="01-overview.html">← 前へ：プロジェクトの位置づけ</a> | <a href="../../index.html">README に戻る</a> | <a href="03-collaboration.html">次へ：マルチセッション協調 →</a></p>
+<nav class="doc-nav">
+<a class="prev" href="01-overview.html">← 前へ：位置づけと中核概念</a>
+<a class="next" href="03-collaboration.html">次へ：マルチセッション協調 →</a>
+</nav>
+</main>
+
+<footer>
+  <p><a href="../ja/index.html" style="color:inherit">ホーム</a> · MIT License</p>
+</footer>
+
+</body>
+</html>

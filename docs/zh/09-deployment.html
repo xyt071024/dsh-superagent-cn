@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>部署与工程量 · Super Agent</title>
+<link rel="stylesheet" href="../../assets/style.css">
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="brand">
+      <span class="logo">◆</span>
+      <span class="brand-name">Super Agent</span>
+      <span class="brand-sub">for DeepSeek Harness</span>
+    </div>
+    <nav class="lang-switch" aria-label="Language">
+      <a href="../zh/09-deployment.html" class="active" data-lang="zh">中文</a>
+      <a href="../en/09-deployment.html" data-lang="en">English</a>
+      <a href="../ja/09-deployment.html" data-lang="ja">日本語</a>
+    </nav>
+  </div>
+</header>
+
+<main class="doc">
+<h1>部署与工程量</h1>
+<h2>1. 前提</h2>
+<table><thead><tr><th>项</th><th>要求</th></tr></thead><tbody>
+<tr><td>DeepSeek Harness</td><td>0.2.x 或更高</td></tr>
+<tr><td>Node.js</td><td>22.19+ 或 24+</td></tr>
+<tr><td>包管理器</td><td>pnpm</td></tr>
+<tr><td>系统</td><td>Windows 10/11、macOS、Linux</td></tr>
+</tbody></table>
+<hr>
+<h2>2. 两种安装形态</h2>
+<h3>2.1 融合版</h3>
+<p><strong>装进你现有的 DSH，多一个入口，不动其它插件。</strong></p>
+<pre><code class="language-sh"># 1. 创建独立 profile（不覆盖现有）
+dsh superagent --from-default-profile web --dump-config &gt; /dev/null
+
+# 2. 安装插件包
+dsh plugin --profile superagent add link:&lt;项目路径&gt;
+
+# 3. 配置
+# 编辑 ~/.dsh/profiles/superagent/cordis.patch.yml
+# 设置 stateDir 和端口
+
+# 4. 启动
+dsh --profile superagent</code></pre>
+<p><strong>关键</strong>：必须开启「隔离进程环境变量」，否则会影响其它插件的 <code>gh</code> / CLI 调用。</p>
+<h3>2.2 纯净版</h3>
+<p><strong>全新白板 DSH，只装这个，走官方更新路径。</strong></p>
+<pre><code class="language-sh"># 1. 用官方方式安装 DSH（如果还没有）
+npm install -g @deepseek-ai/dsh
+
+# 2. 创建白板 profile
+dsh superagent --from-default-profile web --dump-config &gt; /dev/null
+
+# 3. 安装
+dsh plugin --profile superagent add link:&lt;项目路径&gt;
+
+# 4. 启动
+dsh --profile superagent</code></pre>
+<p><strong>优点</strong>：干净，无历史包袱，可随官方版本升级。</p>
+<hr>
+<h2>3. 配置</h2>
+<h3>3.1 最小配置</h3>
+<pre><code class="language-yaml"># ~/.dsh/profiles/superagent/cordis.patch.yml
+- id: webserver
+  config:
+    host: 127.0.0.1
+    port: 3082
+
+- id: superagent
+  config:
+    stateDir: &lt;绝对路径&gt;/state/superagent</code></pre>
+<p><strong>注意</strong>：<code>stateDir</code> 必须是绝对路径。Windows 下用 <code>C:/path/with/forward/slash</code> 格式。</p>
+<h3>3.2 完整配置</h3>
+<p>推荐在界面上配置，不要手改文件。</p>
+<p>见 <a href="04-settings.html">设置界面</a> 的八个分组。</p>
+<hr>
+<h2>4. 首次启动</h2>
+<pre><code>1. 启动进程
+   ↓
+2. 打开面板（终端会打印带 token 的地址）
+   ↓
+3. 首次向导开始：
+   · 配置 GitHub（仓库 + CLI）
+   · 配置其它来源（按需）
+   · 配置代理（如需要）
+   · 设置权限白名单
+   · 设置预算
+   ↓
+4. 用「观察模式」跑一周
+   ↓
+5. 看它记录的决定，觉得准了再切「自动模式」</code></pre>
+<hr>
+<h2>5. 每种来源需要你提供什么</h2>
+<table><thead><tr><th>来源</th><th>需要</th><th>怎么获取</th></tr></thead><tbody>
+<tr><td><strong>GitHub</strong></td><td>仓库 + CLI 授权</td><td>已登录即可</td></tr>
+<tr><td><strong>企业微信</strong></td><td>企业 ID + 应用 Secret + AgentId</td><td>企业管理员后台建应用</td></tr>
+<tr><td><strong>QQ邮箱</strong></td><td>授权码</td><td>邮箱设置 → 账户 → 开启 IMAP → 生成授权码</td></tr>
+<tr><td><strong>飞书</strong></td><td>App ID + App Secret</td><td>开放平台建自建应用</td></tr>
+<tr><td><strong>Gmail</strong></td><td>应用专用密码</td><td>开启两步验证 → 生成应用密码</td></tr>
+<tr><td><strong>QQ</strong></td><td>已有桥接</td><td>无需额外配置</td></tr>
+<tr><td><strong>微信</strong></td><td>本地客户端授权</td><td>首次扫码登录</td></tr>
+</tbody></table>
+<hr>
+<h2>6. 工程量估算</h2>
+<h3>6.1 分阶段</h3>
+<table><thead><tr><th>阶段</th><th>内容</th><th>天数</th></tr></thead><tbody>
+<tr><td><strong>P0</strong></td><td>修 GitHub 来源 + 环境隔离开关</td><td>0.5</td></tr>
+<tr><td><strong>P1</strong></td><td>设置界面骨架（八分组）</td><td>3</td></tr>
+<tr><td><strong>P2</strong></td><td>模型授权 + 分档 + 省流</td><td>2</td></tr>
+<tr><td><strong>P3</strong></td><td>多会话协同（互通/任务板/救援/回测）</td><td>4</td></tr>
+<tr><td><strong>P4</strong></td><td>代理系统（三层 + 拖拽识别）</td><td>3</td></tr>
+<tr><td><strong>P5</strong></td><td>自我进化机制</td><td>2</td></tr>
+<tr><td><strong>P6</strong></td><td>七个连接源</td><td>6</td></tr>
+<tr><td><strong>P7</strong></td><td>稳定性加固（五层）</td><td>2</td></tr>
+<tr><td><strong>P8</strong></td><td>浏览器授权向导</td><td>2</td></tr>
+<tr><td><strong>P9</strong></td><td>双状态 + 前后台切换</td><td>1.5</td></tr>
+<tr><td><strong>P10</strong></td><td>打包 + 三语文档</td><td>2.5</td></tr>
+<tr><td><strong>合计</strong></td><td></td><td><strong>~28.5 天</strong></td></tr>
+</tbody></table>
+<h3>6.2 建议分批</h3>
+<p><strong>第一批（3.5 天）</strong>：P0 + P1 + P2</p>
+<p>→ 能看见完整的设置界面，能配模型</p>
+<p><strong>第二批（7 天）</strong>：P3 + P4</p>
+<p>→ 多会话协同和代理能跑</p>
+<p><strong>第三批（10 天）</strong>：P5 + P6 + P7</p>
+<p>→ 自我进化、七源接入、稳定性</p>
+<p><strong>第四批（5.5 天）</strong>：P8 + P9 + P10</p>
+<p>→ 浏览器向导、双状态、打包</p>
+<p><strong>为什么不一次做完</strong>：中间需要你验收和调整方向，一次做完容易跑偏。</p>
+<hr>
+<h2>7. 依赖的外部组件</h2>
+<table><thead><tr><th>组件</th><th>用途</th><th>是否必需</th></tr></thead><tbody>
+<tr><td>DeepSeek Harness</td><td>运行环境</td><td>必需</td></tr>
+<tr><td>Node.js</td><td>运行时</td><td>必需</td></tr>
+<tr><td>Git</td><td>代码操作</td><td>必需</td></tr>
+<tr><td>Playwright</td><td>浏览器自动化</td><td>授权向导需要</td></tr>
+<tr><td>Microsoft Edge</td><td>内置浏览器</td><td>授权向导需要</td></tr>
+<tr><td>IMAP 库</td><td>邮件收信</td><td>邮箱来源需要</td></tr>
+</tbody></table>
+<hr>
+<h2>8. 数据位置</h2>
+<pre><code>&lt;stateDir&gt;/
+  orchestrator.sqlite    ← 主数据库
+  worker-bin/            ← 命令垫片
+  work/                  ← 工单工作目录
+  lessons/               ← 经验库
+  logs/                  ← 日志
+  config-backup/         ← 配置备份</code></pre>
+<p><strong>备份策略</strong>：整个 <code>&lt;stateDir&gt;</code> 目录定期备份即可。</p>
+<hr>
+<h2>9. 升级</h2>
+<h3>9.1 融合版升级</h3>
+<pre><code class="language-sh"># 插件升级
+dsh plugin --profile superagent update
+
+# DSH 本体升级（跟随你的主版本）
+# 注意：主版本大升级可能影响兼容性</code></pre>
+<h3>9.2 纯净版升级</h3>
+<pre><code class="language-sh"># 完全跟随官方
+npm update -g @deepseek-ai/dsh</code></pre>
+<h3>9.3 升级前的检查清单</h3>
+<table><thead><tr><th>#</th><th>检查</th></tr></thead><tbody>
+<tr><td>1</td><td>备份 <code>&lt;stateDir&gt;</code></td></tr>
+<tr><td>2</td><td>记录当前配置（导出）</td></tr>
+<tr><td>3</td><td>确认没有正在跑的任务</td></tr>
+<tr><td>4</td><td>如果是本地补丁版本，确认补丁能重新应用</td></tr>
+</tbody></table>
+<hr>
+<h2>10. 故障排查</h2>
+<h3>10.1 启动失败</h3>
+<table><thead><tr><th>症状</th><th>原因</th><th>解决</th></tr></thead><tbody>
+<tr><td><code>EADDRINUSE</code></td><td>端口被占</td><td>杀掉旧进程或换端口</td></tr>
+<tr><td><code>ValidationError: stateDir</code></td><td>路径格式不对</td><td>用绝对路径 + 正斜杠</td></tr>
+<tr><td><code>cannot resolve profile bundle</code></td><td>包名不对</td><td>检查 <code>package.json</code> 里的包名</td></tr>
+<tr><td><code>spawn env ENOENT</code></td><td>平台不兼容</td><td>见下节</td></tr>
+</tbody></table>
+<h3>10.2 来源不工作</h3>
+<table><thead><tr><th>症状</th><th>检查</th></tr></thead><tbody>
+<tr><td>状态 <code>error</code></td><td>看具体错误信息</td></tr>
+<tr><td>状态 <code>paused</code></td><td>配置未完成</td></tr>
+<tr><td>收到 0 条</td><td>白名单/接收范围没配对</td></tr>
+<tr><td>连续轮询失败</td><td>CLI 路径或授权问题</td></tr>
+</tbody></table>
+<p><strong>关键</strong>：看<strong>业务层的状态</strong>，不是只看 <code>runtime: ready</code>。</p>
+<h3>10.3 平台兼容性</h3>
+<p>在某些平台上，原版实现可能需要小幅调整：</p>
+<table><thead><tr><th>问题</th><th>表现</th><th>处理方向</th></tr></thead><tbody>
+<tr><td>无 <code>env</code> 命令</td><td><code>spawn env ENOENT</code></td><td>改用进程参数传环境</td></tr>
+<tr><td>路径格式</td><td><code>stateDir</code> 校验失败</td><td>用平台对应格式</td></tr>
+<tr><td>命令名不同</td><td>工具注册失败</td><td>按平台选对应的 shell</td></tr>
+<tr><td>端口自我抢占</td><td>重启时 <code>EADDRINUSE</code></td><td>先停旧进程再起</td></tr>
+</tbody></table>
+<hr>
+<h2>11. 安全建议</h2>
+<table><thead><tr><th>#</th><th>建议</th><th>原因</th></tr></thead><tbody>
+<tr><td>1</td><td><strong>独立账号</strong></td><td>智能体用专用账号，不和你混用</td></tr>
+<tr><td>2</td><td><strong>最小权限</strong></td><td>白名单只放必要的人</td></tr>
+<tr><td>3</td><td><strong>观察模式起步</strong></td><td>先看它想干什么</td></tr>
+<tr><td>4</td><td><strong>预算上限</strong></td><td>防止意外烧钱</td></tr>
+<tr><td>5</td><td><strong>危险操作二次确认</strong></td><td>删文件、推送、发消息</td></tr>
+<tr><td>6</td><td><strong>不开自主装插件</strong></td><td>除非你信任</td></tr>
+<tr><td>7</td><td><strong>定期看审计记录</strong></td><td>知道它做了什么</td></tr>
+</tbody></table>
+<hr>
+<h2>12. 最小可用配置</h2>
+<p>如果你想先跑起来看看，这是最简配置：</p>
+<pre><code class="language-yaml">来源：只开 GitHub
+模式：观察（observe）
+预算：日 ¥10
+自主权限：全关</code></pre>
+<p><strong>跑一周，看它记录的决定。</strong> 觉得准了，再逐步放开。</p>
+<hr>
+<p><a href="08-cost.html">← 上一篇：省流与成本</a> | <a href="../../index.html">返回 README</a></p>
+<nav class="doc-nav">
+<a class="prev" href="08-cost.html">← 上一篇：省流与成本控制</a>
+
+</nav>
+</main>
+
+<footer>
+  <p><a href="../index.html" style="color:inherit">返回首页</a> · MIT License</p>
+</footer>
+
+</body>
+</html>

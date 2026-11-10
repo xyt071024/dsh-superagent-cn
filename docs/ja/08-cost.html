@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>コスト管理 · Super Agent</title>
+<link rel="stylesheet" href="../../assets/style.css">
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="brand">
+      <span class="logo">◆</span>
+      <span class="brand-name">Super Agent</span>
+      <span class="brand-sub">for DeepSeek Harness</span>
+    </div>
+    <nav class="lang-switch" aria-label="Language">
+      <a href="../zh/08-cost.html" data-lang="zh">中文</a>
+      <a href="../en/08-cost.html" data-lang="en">English</a>
+      <a href="../ja/08-cost.html" class="active" data-lang="ja">日本語</a>
+    </nav>
+  </div>
+</header>
+
+<main class="doc">
+<h1>コスト管理</h1>
+<h2>1. なぜコスト管理が必要なのか</h2>
+<p>マルチセッション協調では、<strong>1 つのタスクで 6 つのセッションを開く</strong>ことがあります。そのすべてで最強モデル・最高思考深度を使うと、コストは単一セッションの十数倍になります。</p>
+<p><strong>コストが制御不能になる典型例</strong>：</p>
+<pre><code>「中程度」のタスク
+   ↓ 難易度の事前判定をしなかった
+サブセッションを 6 個開いた
+   ↓ すべて最強モデル
+   ↓ すべて最高思考深度
+   ↓ 各セッションが同じコンテキストを重複して読む
+総消費 = 単一セッションの 20 倍以上</code></pre>
+<p><strong>コスト管理の目的は「出費を減らすこと」ではなく、「無駄な出費をしないこと」です。</strong></p>
+<hr>
+<h2>2. 3 段階の制御</h2>
+<h3>L1：タスク難易度の事前判定（最も効果的）</h3>
+<pre><code>タスクが到着
+   ↓
+非常に軽量なモデルで 1 回だけ分類を実行
+   · モデル：最も安いもの
+   · 思考深度：極低
+   · 出力：1 語
+   ↓
+約 50 token
+   ↓
+以降の方針を決定</code></pre>
+<p><strong>50 token で数百から数千 token の節約になる。これがコストパフォーマンス最良の一手です。</strong></p>
+<h3>L2：難易度別の段階分け</h3>
+<table><thead><tr><th>難易度</th><th>モデル階層</th><th>思考深度</th><th>サブセッション数</th></tr></thead><tbody>
+<tr><td><strong>simple</strong></td><td>安価なモデル</td><td>低</td><td>0（自分で実行）</td></tr>
+<tr><td><strong>medium</strong></td><td>標準モデル</td><td>中</td><td>0-2</td></tr>
+<tr><td><strong>complex</strong></td><td>強力なモデル</td><td>高</td><td>3-4</td></tr>
+<tr><td><strong>extreme</strong></td><td>強力なモデル</td><td>最高</td><td>5-6</td></tr>
+</tbody></table>
+<h3>L3：実行中の縮退</h3>
+<pre><code>実際の消費を監視
+   ↓
+予算の 80% を超過
+   ↓
+⚠ 警告 + 以降のタスクを段階を下げる
+   ↓
+100% を超過
+   ↓
+一時停止（あなたの決定待ち）</code></pre>
+<hr>
+<h2>3. 難易度事前判定の実装</h2>
+<h3>3.1 プロンプト</h3>
+<pre><code>このタスクの複雑度を判定し、1 語だけ出力してください：
+
+simple  —— 単一ファイルの小さな変更、簡単な質疑応答、書式調整
+medium  —— 複数ファイルの調整、コンテキストの理解が必要
+complex —— モジュール横断のリファクタリング、設計案が必要
+extreme —— アーキテクチャ判断が必要、複数システムの統合
+
+タスク：
+{task}</code></pre>
+<h3>3.2 なぜ「極低」思考深度を使うのか</h3>
+<p>分類タスクに深い推論は不要です。「極低」を使う理由：</p>
+<ul>
+<li>コストは「最高」の約 1/16</li>
+<li>精度の低下はわずか（タスク記述は通常十分に明確なため）</li>
+</ul>
+<h3>3.3 誤判定への対処</h3>
+<p><strong>事前判定は外れることがあります。</strong> 2 つのケースがあります：</p>
+<table><thead><tr><th>ケース</th><th>対処</th></tr></thead><tbody>
+<tr><td>「簡単」と判定したが実際は難しい</td><td>実行中に詰まりを検知 → 昇格して再判定</td></tr>
+<tr><td>「複雑」と判定したが実際は簡単</td><td>最初の 2 分で進展がなければ → 降格して自分で実行</td></tr>
+</tbody></table>
+<p><strong>判断の根拠</strong>：実行から 2 分後に進捗を確認し、「簡単」タスクがまったく進んでいなければ再評価します。</p>
+<hr>
+<h2>4. コンテキストの再利用</h2>
+<h3>4.1 問題</h3>
+<p>同じスレッドのメッセージを、複数のチケットが読む必要があります。毎回読み直す = 重複消費です。</p>
+<h3>4.2 解決策</h3>
+<pre><code>あるスレッドを初めて読む
+   ↓
+要約 + 重要断片をキャッシュ
+   ↓
+以降のチケットは読む → キャッシュにヒット
+   ↓
+追加された部分だけ補う</code></pre>
+<p><strong>キャッシュの有効期間</strong>：スレッドに新着メッセージがあれば、該当部分を無効化します。</p>
+<h3>4.3 キャッシュの粒度</h3>
+<table><thead><tr><th>内容</th><th>キャッシュ方針</th></tr></thead><tbody>
+<tr><td>スレッドの全履歴</td><td>要約キャッシュ（重要事実を保持）</td></tr>
+<tr><td>リポジトリのファイル</td><td>commit hash 単位でキャッシュ</td></tr>
+<tr><td>モデルの応答</td><td>KV Cache（同一プレフィックスを再利用）</td></tr>
+</tbody></table>
+<hr>
+<h2>5. 結果のキャッシュ</h2>
+<h3>5.1 キャッシュできるもの</h3>
+<table><thead><tr><th>キャッシュ可</th><th>キャッシュ不可</th></tr></thead><tbody>
+<tr><td>コード分析の結果</td><td>リアルタイム状態に関わるもの</td></tr>
+<tr><td>ドキュメントの要約</td><td>現在時刻に依存するもの</td></tr>
+<tr><td>ファイル構造</td><td>最新データが必要なもの</td></tr>
+<tr><td>類似タスクの解法</td><td>ユーザーが明示的にやり直しを求めたもの</td></tr>
+</tbody></table>
+<h3>5.2 キャッシュキー</h3>
+<pre><code>key = hash(タスク種別 + 対象ファイル + 対象ファイルの hash + 主要パラメータ)</code></pre>
+<p><strong>ファイルが変われば、キャッシュは無効になります。</strong></p>
+<hr>
+<h2>6. モデル段階分けの方針</h2>
+<h3>6.1 3 つの方針の比較</h3>
+<table><thead><tr><th>方針</th><th>コスト</th><th>効果</th><th>適用場面</th></tr></thead><tbody>
+<tr><td><strong>統一モデル</strong></td><td>中</td><td>安定</td><td>タスクが同質な場合</td></tr>
+<tr><td><strong>段階分けモデル</strong></td><td>最も安い</td><td>必要に応じて</td><td>ほとんどの場面</td></tr>
+<tr><td><strong>複数モデル並列</strong></td><td>最も高い</td><td>最良</td><td>重要なタスク</td></tr>
+</tbody></table>
+<h3>6.2 段階分け設定の例</h3>
+<pre><code>難易度事前判定 → 最も安いモデル   極低思考
+簡単なタスク   → flash 級         低思考
+中程度のタスク → 標準級           中思考
+複雑なタスク   → 強力なモデル     高思考
+極めて複雑     → 最強モデル       最高思考
+自己進化       → 最強モデル       最高思考（頻度が低いので妥当）</code></pre>
+<h3>6.3 思考深度とコストの関係</h3>
+<table><thead><tr><th>階層</th><th>相対 token 消費</th></tr></thead><tbody>
+<tr><td>極低</td><td>1x</td></tr>
+<tr><td>低</td><td>2x</td></tr>
+<tr><td>中</td><td>4x</td></tr>
+<tr><td>高</td><td>8x</td></tr>
+<tr><td>最高</td><td>16x</td></tr>
+</tbody></table>
+<p><strong>だからこそ「難易度事前判定は極低で」がこれほど重要なのです。</strong></p>
+<hr>
+<h2>7. 予算管理</h2>
+<h3>7.1 3 層の予算</h3>
+<table><thead><tr><th>層</th><th>超過後</th></tr></thead><tbody>
+<tr><td><strong>日次予算</strong></td><td>一時停止（段階を下げる設定も可）</td></tr>
+<tr><td><strong>月次予算</strong></td><td>一時停止 + 通知</td></tr>
+<tr><td><strong>単一タスク予算</strong></td><td>段階を下げる、または中止</td></tr>
+</tbody></table>
+<h3>7.2 予算の表示</h3>
+<p>パネルにリアルタイム表示：</p>
+<pre><code>日次予算  ¥50
+使用済み  ¥12.4  ▓▓▓▓▓░░░░░░░░░░░░░░░  24.8%
+本日のタスク 8 件、平均 ¥1.55/タスク</code></pre>
+<h3>7.3 予算超過時の処理</h3>
+<pre><code>予算に接近（80%）
+   ↓
+⚠ 警告：以降のタスクは自動的に段階を下げる
+
+予算超過（100%）
+   ↓
+⦿ 一時停止（既定）：新規タスクはキューに入り、あなたの決定待ち
+○ 段階を下げる：継続するが安価なモデルのみ使用
+○ 制限なし：通常どおり実行を継続</code></pre>
+<hr>
+<h2>8. マルチセッションによるコストの増幅</h2>
+<h3>8.1 コストモデル</h3>
+<pre><code>単一セッションのコスト = C
+
+N 個のセッションを並列実行：
+  理論コスト = N × C
+  実際コスト = N × C × 1.3（調整のオーバーヘッド）
+
+ただし節約できる時間 = N 倍</code></pre>
+<p><strong>つまりマルチセッションは「お金で時間を買う」ということです。</strong></p>
+<h3>8.2 いつ価値があるか</h3>
+<table><thead><tr><th>価値がある</th><th>価値がない</th></tr></thead><tbody>
+<tr><td>タスクが本当に並列化できる</td><td>強い順序依存がある</td></tr>
+<tr><td>時間に敏感</td><td>急いでいない</td></tr>
+<tr><td>複雑度が高い</td><td>簡単なタスク</td></tr>
+<tr><td>コストが許容範囲</td><td>予算が厳しい</td></tr>
+</tbody></table>
+<h3>8.3 コスト上限の保護</h3>
+<pre><code>☑ 単一タスクのコスト上限  ¥ [ 10 ]
+超過後：一時停止して確認</code></pre>
+<p><strong>1 つのタスクが誤って 1 日分の予算を焼き尽くすのを防ぎます。</strong></p>
+<hr>
+<h2>9. 実測データの参考値</h2>
+<p>以下は<strong>サンプルデータ</strong>です。実際はタスクとモデルによって異なります：</p>
+<table><thead><tr><th>シナリオ</th><th>単一セッション</th><th>マルチセッション（4 個）</th><th>倍率</th></tr></thead><tbody>
+<tr><td>簡単な文言修正</td><td>¥0.05</td><td>分割せず</td><td>1x</td></tr>
+<tr><td>中程度の機能変更</td><td>¥0.8</td><td>¥2.4（3 個）</td><td>3x</td></tr>
+<tr><td>複雑なリファクタリング</td><td>¥5</td><td>¥18（5 個）</td><td>3.6x</td></tr>
+<tr><td>極めて複雑なシステム</td><td>¥20</td><td>¥60（6 個）</td><td>3x</td></tr>
+</tbody></table>
+<p><strong>注意</strong>：マルチセッションは N 倍のコストにはなりません。セッションごとのタスク範囲がより小さく、単一セッションあたりのコストが下がるためです。</p>
+<hr>
+<h2>10. コスト管理チェックリスト</h2>
+<p>リリース前の確認用：</p>
+<table><thead><tr><th>#</th><th>項目</th><th>既定</th><th>説明</th></tr></thead><tbody>
+<tr><td>1</td><td>☑ タスク難易度の事前判定</td><td>オン</td><td>最も効果的なコスト管理手段</td></tr>
+<tr><td>2</td><td>☑ 事前判定は極低思考</td><td>オン</td><td>16x のコスト差</td></tr>
+<tr><td>3</td><td>☑ 結果キャッシュ</td><td>オン</td><td>同一タスクを繰り返さない</td></tr>
+<tr><td>4</td><td>☑ コンテキスト再利用</td><td>オン</td><td>同一スレッドを読み直さない</td></tr>
+<tr><td>5</td><td>☑ 日次予算上限</td><td>必須</td><td>事故防止</td></tr>
+<tr><td>6</td><td>☑ 単一タスク上限</td><td>入力推奨</td><td>単一タスクの暴走防止</td></tr>
+<tr><td>7</td><td>☑ 予算超過時の自動段階下げ</td><td>オン推奨</td><td>なだらかな処理</td></tr>
+<tr><td>8</td><td>☐ 複数モデル並列</td><td>必要時</td><td>重要なタスクのみ</td></tr>
+<tr><td>9</td><td>☑ 自己進化の頻度低減</td><td>毎週</td><td>毎タスクの振り返りは不要</td></tr>
+</tbody></table>
+<hr>
+<h2>11. アンチパターン</h2>
+<table><thead><tr><th>アンチパターン</th><th>問題</th></tr></thead><tbody>
+<tr><td>すべて最強モデルを使う</td><td>コスト 10 倍で、効果の向上は限定的</td></tr>
+<tr><td>すべて最高思考を使う</td><td>同上</td></tr>
+<tr><td>すべてのタスクをマルチセッションに分割</td><td>調整オーバーヘッド &gt; 利益</td></tr>
+<tr><td>難易度事前判定をしない</td><td>小さなタスクでも重い工程を通る</td></tr>
+<tr><td>予算上限を設定しない</td><td>一度の事故で焼き尽くす</td></tr>
+<tr><td>毎タスクで深い振り返りをする</td><td>振り返りコスト &gt; タスクコスト</td></tr>
+</tbody></table>
+<hr>
+<p><a href="07-evolution.html">← 前へ：自己進化</a> | <a href="../../index.html">README に戻る</a> | <a href="09-deployment.html">次へ：デプロイ →</a></p>
+<nav class="doc-nav">
+<a class="prev" href="07-evolution.html">← 前へ：自己進化</a>
+<a class="next" href="09-deployment.html">次へ：デプロイ →</a>
+</nav>
+</main>
+
+<footer>
+  <p><a href="../ja/index.html" style="color:inherit">ホーム</a> · MIT License</p>
+</footer>
+
+</body>
+</html>

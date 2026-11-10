@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>自我进化机制 · Super Agent</title>
+<link rel="stylesheet" href="../../assets/style.css">
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="brand">
+      <span class="logo">◆</span>
+      <span class="brand-name">Super Agent</span>
+      <span class="brand-sub">for DeepSeek Harness</span>
+    </div>
+    <nav class="lang-switch" aria-label="Language">
+      <a href="../zh/07-evolution.html" class="active" data-lang="zh">中文</a>
+      <a href="../en/07-evolution.html" data-lang="en">English</a>
+      <a href="../ja/07-evolution.html" data-lang="ja">日本語</a>
+    </nav>
+  </div>
+</header>
+
+<main class="doc">
+<h1>自我进化机制</h1>
+<h2>1. 四层进化</h2>
+<pre><code>┌─────────────────────────────────────────────┐
+│  L1 自检与复盘                                │
+│  每次任务完成后回顾：哪里好、哪里慢、哪里错      │
+└─────────────────────────────────────────────┘
+                  ↓ 积累
+┌─────────────────────────────────────────────┐
+│  L2 经验固化                                 │
+│  常用流程 → 技能；常见坑 → 检查清单            │
+└─────────────────────────────────────────────┘
+                  ↓ 优化
+┌─────────────────────────────────────────────┐
+│  L3 代码优化                                 │
+│  发现冗余 → 提清理建议；发现死代码 → 提移除     │
+└─────────────────────────────────────────────┘
+                  ↓ 扩展
+┌─────────────────────────────────────────────┐
+│  L4 能力扩展                                 │
+│  缺工具 → 装；缺知识 → 学（都要授权）          │
+└─────────────────────────────────────────────┘</code></pre>
+<hr>
+<h2>2. L1：自检与复盘</h2>
+<h3>2.1 触发时机</h3>
+<table><thead><tr><th>时机</th><th>内容</th></tr></thead><tbody>
+<tr><td>任务完成</td><td>这次的完整复盘</td></tr>
+<tr><td>任务失败</td><td>失败原因分析</td></tr>
+<tr><td>定时（每周）</td><td>汇总近期经验</td></tr>
+</tbody></table>
+<h3>2.2 复盘内容</h3>
+<pre><code>1. 这次做对了什么？
+   · 哪个判断准
+   · 哪个方案有效
+   · 哪个工具好用
+
+2. 这次哪里慢？
+   · 卡在哪个环节
+   · 有没有多余的步骤
+   · 上下文是不是读多了
+
+3. 这次哪里错？
+   · 判断失误在哪
+   · 有没有返工
+   · 用户有没有纠正
+
+4. 下次遇到同类任务，应该怎么做？
+   · 具体动作
+   · 要避免什么</code></pre>
+<h3>2.3 经验格式</h3>
+<pre><code class="language-json">{
+  "id": "lesson-001",
+  "createdAt": "2026-11-10T23:00:00Z",
+  "taskType": "code-modification",
+  "context": "用户要求修改一个 React 组件的样式",
+  "whatWorked": [
+    "先读 AGENTS.md 再动手，避免违反项目规范",
+    "改动前先跑一次测试，确认基线是绿的"
+  ],
+  "whatFailed": [
+    "一开始没看清是哪个分支，改错了地方"
+  ],
+  "lesson": "动手前先确认当前分支，并检查目标文件是否在预期分支上",
+  "appliesWhen": ["修改已有代码", "多分支项目"]
+}</code></pre>
+<h3>2.4 经验的使用</h3>
+<p><strong>不是每次都全量加载</strong>（那样太贵）。而是<strong>按任务类型检索</strong>：</p>
+<pre><code>新任务到达
+   ↓
+识别任务类型（改代码 / 写文档 / 排查问题 / ...）
+   ↓
+检索相关经验（按 taskType + 关键词）
+   ↓
+只加载前 N 条（默认 5 条）
+   ↓
+注入到执行器的上下文</code></pre>
+<p><strong>成本控制</strong>：5 条经验约 500 token，换来避免重复踩坑。</p>
+<hr>
+<h2>3. L2：经验固化</h2>
+<h3>3.1 什么情况下固化成技能</h3>
+<pre><code>同类任务做了 3 次以上
+   ↓
+流程基本固定
+   ↓
+抽取成技能（SKILL.md）
+   ↓
+下次直接调用，不用重新推理</code></pre>
+<h3>3.2 技能的好处</h3>
+<table><thead><tr><th>好处</th><th>说明</th></tr></thead><tbody>
+<tr><td>省 token</td><td>不用每次重新推理流程</td></tr>
+<tr><td>更稳定</td><td>固定流程比临场发挥可靠</td></tr>
+<tr><td>可审查</td><td>你可以看技能内容</td></tr>
+</tbody></table>
+<h3>3.3 固化的判断标准</h3>
+<table><thead><tr><th>该固化</th><th>不该固化</th></tr></thead><tbody>
+<tr><td>步骤固定、重复出现</td><td>一次性任务</td></tr>
+<tr><td>有明确的成功标准</td><td>结果主观</td></tr>
+<tr><td>容易出错的环节</td><td>很简单的操作</td></tr>
+<tr><td>需要多步协调</td><td>单步操作</td></tr>
+</tbody></table>
+<hr>
+<h2>4. L3：代码自我优化</h2>
+<h3>4.1 扫描什么</h3>
+<table><thead><tr><th>类型</th><th>检测方法</th></tr></thead><tbody>
+<tr><td><strong>重复代码</strong></td><td>相似度分析，找 3 行以上完全相同的块</td></tr>
+<tr><td><strong>死代码</strong></td><td>没有被任何地方引用的函数/变量</td></tr>
+<tr><td><strong>过长函数</strong></td><td>超过阈值（如 100 行）</td></tr>
+<tr><td><strong>复杂条件</strong></td><td>嵌套超过 4 层</td></tr>
+<tr><td><strong>未使用依赖</strong></td><td>package.json 里有但代码没用到</td></tr>
+</tbody></table>
+<h3>4.2 改动方式（重要）</h3>
+<pre><code>发现可优化项
+   ↓
+生成改动建议
+   ↓
+⦿ 走 PR 流程（默认）
+   · 创建分支
+   · 提交改动
+   · 开 PR
+   · 等你看
+   ↓
+○ 直接改（需显式开启）</code></pre>
+<p><strong>为什么默认走 PR</strong>：自我修改是高风险操作。你可能不同意它的判断，PR 让你有机会拦下来。</p>
+<h3>4.3 自我修改的红线</h3>
+<p><strong>以下内容不允许自动修改</strong>：</p>
+<table><thead><tr><th>红线</th><th>原因</th></tr></thead><tbody>
+<tr><td>权限判定逻辑</td><td>改坏了等于开后门</td></tr>
+<tr><td>白名单检查</td><td>同上</td></tr>
+<tr><td>审计日志</td><td>改坏了查不到问题</td></tr>
+<tr><td>熔断/限流</td><td>改坏了会失控</td></tr>
+<tr><td>配置文件</td><td>由你控制</td></tr>
+</tbody></table>
+<p><strong>这些位置即使发现「可优化」，也只提建议，不改。</strong></p>
+<hr>
+<h2>5. L4：能力扩展</h2>
+<h3>5.1 三种扩展</h3>
+<table><thead><tr><th>扩展</th><th>触发条件</th><th>授权要求</th></tr></thead><tbody>
+<tr><td><strong>装插件</strong></td><td>发现缺某个能力</td><td>权限页勾选</td></tr>
+<tr><td><strong>写技能</strong></td><td>发现某流程常用</td><td>权限页勾选</td></tr>
+<tr><td><strong>学知识</strong></td><td>发现缺某领域知识</td><td>只需记录，不需授权</td></tr>
+</tbody></table>
+<h3>5.2 装插件的流程</h3>
+<pre><code>发现缺能力
+   ↓
+搜索可用插件（npm / GitHub）
+   ↓
+⚠ 安全检查：
+   · 来源是否可信
+   · 是否有已知漏洞
+   · 权限范围是否过大
+   ↓
+生成建议：「需要装 X，理由是 Y，风险是 Z」
+   ↓
+⦿ 等你确认（默认）
+○ 直接装（需显式开启）</code></pre>
+<p><strong>为什么默认等确认</strong>：装插件等于引入第三方代码，风险不可控。</p>
+<h3>5.3 能力缺口记录</h3>
+<p>即使不能自己装，它也会<strong>记录下来</strong>：</p>
+<pre><code class="language-json">{
+  "gap": "缺少 PDF 解析能力",
+  "encounteredAt": "2026-11-10",
+  "timesNeeded": 3,
+  "suggestedSolution": "安装 pdf-parse 或类似库",
+  "status": "pending-user-decision"
+}</code></pre>
+<p><strong>积累到一定次数（默认 3 次）才提建议</strong>，避免为一次性需求装东西。</p>
+<hr>
+<h2>6. 进化的边界</h2>
+<h3>6.1 能进化的</h3>
+<table><thead><tr><th>项</th><th>范围</th></tr></thead><tbody>
+<tr><td>经验库</td><td>无限增长（定期归档）</td></tr>
+<tr><td>技能</td><td>可新增、可修改</td></tr>
+<tr><td>自己的代码</td><td>走 PR，只改非红线部分</td></tr>
+<tr><td>插件</td><td>需授权</td></tr>
+</tbody></table>
+<h3>6.2 不能进化的</h3>
+<table><thead><tr><th>项</th><th>原因</th></tr></thead><tbody>
+<tr><td>权限判定逻辑</td><td>安全红线</td></tr>
+<tr><td>白名单</td><td>由你控制</td></tr>
+<tr><td>授权凭证</td><td>由你控制</td></tr>
+<tr><td>熔断阈值</td><td>防止自己关掉保护</td></tr>
+<tr><td>审计记录</td><td>不可篡改</td></tr>
+</tbody></table>
+<h3>6.3 进化的刹车</h3>
+<pre><code>发现自我修改频率过高
+   ↓ 比如一周内提了 10 个自我优化 PR
+暂停自我优化
+   ↓
+提示：「近期自我修改较多，建议先稳定一段时间」</code></pre>
+<p><strong>为什么要刹车</strong>：频繁自我修改会让系统变得不可预测。</p>
+<hr>
+<h2>7. 经验库结构</h2>
+<pre><code>&lt;stateDir&gt;/
+  lessons/
+    2026-11/
+      lesson-001.json
+      lesson-002.json
+      ...
+    index.json          ← 索引，按 taskType 分组
+    archived/           ← 归档（超过 90 天且未被引用）</code></pre>
+<p><strong>index.json</strong>：</p>
+<pre><code class="language-json">{
+  "byTaskType": {
+    "code-modification": ["lesson-001", "lesson-005"],
+    "bug-investigation": ["lesson-002"],
+    "documentation": ["lesson-003"]
+  },
+  "byKeyword": {
+    "git-branch": ["lesson-001"],
+    "testing": ["lesson-001", "lesson-004"]
+  }
+}</code></pre>
+<hr>
+<h2>8. 效果衡量</h2>
+<p>怎么知道它真的在变好？</p>
+<table><thead><tr><th>指标</th><th>怎么看</th></tr></thead><tbody>
+<tr><td>同类任务耗时</td><td>应该逐渐下降</td></tr>
+<tr><td>返工率</td><td>应该逐渐下降</td></tr>
+<tr><td>用户纠正次数</td><td>应该逐渐下降</td></tr>
+<tr><td>一次通过率</td><td>应该逐渐上升</td></tr>
+<tr><td>平均 token 消耗</td><td>应该逐渐下降（因为复用经验）</td></tr>
+</tbody></table>
+<p><strong>面板上应该有这些数字的趋势图。</strong></p>
+<hr>
+<h2>9. 配置项</h2>
+<p>见 <a href="04-settings.html#分组-7自我进化">设置界面 · 分组 7：自我进化</a>。</p>
+<p>关键开关：</p>
+<table><thead><tr><th>开关</th><th>默认</th><th>说明</th></tr></thead><tbody>
+<tr><td>自我复盘</td><td>开</td><td>每次任务后回顾</td></tr>
+<tr><td>记录经验</td><td>开</td><td>写入经验库</td></tr>
+<tr><td>代码扫描</td><td>开</td><td>找冗余</td></tr>
+<tr><td>改动方式</td><td><strong>走 PR</strong></td><td>不直接改</td></tr>
+<tr><td>自主装插件</td><td><strong>关</strong></td><td>需显式开启</td></tr>
+<tr><td>自主写技能</td><td><strong>关</strong></td><td>需显式开启</td></tr>
+<tr><td>缺能力时提建议</td><td>开</td><td>只建议不动手</td></tr>
+</tbody></table>
+<hr>
+<p><a href="06-proxy.html">← 上一篇：代理方案</a> | <a href="../../index.html">返回 README</a> | <a href="08-cost.html">下一篇：省流与成本 →</a></p>
+<nav class="doc-nav">
+<a class="prev" href="06-proxy.html">← 上一篇：代理方案</a>
+<a class="next" href="08-cost.html">下一篇：省流与成本控制 →</a>
+</nav>
+</main>
+
+<footer>
+  <p><a href="../index.html" style="color:inherit">返回首页</a> · MIT License</p>
+</footer>
+
+</body>
+</html>

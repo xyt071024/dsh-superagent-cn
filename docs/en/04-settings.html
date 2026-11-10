@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Settings UI Design · Super Agent</title>
+<link rel="stylesheet" href="../../assets/style.css">
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="brand">
+      <span class="logo">◆</span>
+      <span class="brand-name">Super Agent</span>
+      <span class="brand-sub">for DeepSeek Harness</span>
+    </div>
+    <nav class="lang-switch" aria-label="Language">
+      <a href="../zh/04-settings.html" data-lang="zh">中文</a>
+      <a href="../en/04-settings.html" class="active" data-lang="en">English</a>
+      <a href="../ja/04-settings.html" data-lang="ja">日本語</a>
+    </nav>
+  </div>
+</header>
+
+<main class="doc">
+<h1>Settings UI Design</h1>
+<p>The settings page uses an <strong>eight-group</strong> layout: navigation on the left, content on the right. Every capability can be adjusted in the UI; no config file editing is needed.</p>
+<hr>
+<h2>Overall Structure</h2>
+<pre><code>┌──────────────────────────────────────────────────────────────────────────────────────┐
+│ Super Agent Settings                                                          [Save] │
+├──────────────────────────┼───────────────────────────────────────────────────────────┤
+│ ▸ Basics                 │                                                           │
+│ ▸ Models &amp; compute       │ Content area of the current group                         │
+│ ▸ Execution mode         │                                                           │
+│ ▸ Sources                │                                                           │
+│ ▸ Proxy                  │                                                           │
+│ ▸ Permissions &amp; security │                                                           │
+│ ▸ Self-evolution         │                                                           │
+│ ▸ Advanced               │                                                           │
+└──────────────────────────┴───────────────────────────────────────────────────────────┘</code></pre>
+<hr>
+<h1>Group 1: Basics</h1>
+<pre><code>┌──────────────────────────────────────────────────────────────────────────────────────┐
+│   Basics                                                                             │
+├──────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                      │
+│   Enabled status                                                   [ ●──── ] Enabled │
+│                                                                                      │
+│   Run mode                                                                           │
+│    ⦿ Integrated (installed into the existing DSH, one more entry)                    │
+│    ○ Standalone (a separate, plain DSH)                                              │
+│                                                                                      │
+│   Data directory                                                                     │
+│    [ &lt;home&gt;/.dsh/state/superagent        ] [Browse]                                  │
+│                                                                                      │
+│   Panel port                                                                         │
+│    [ 3082 ]                                                                          │
+│                                                                                      │
+│   UI language                                                                        │
+│    [ Simplified Chinese   ▾ ]   ○Chinese ○English ○Japanese                          │
+│                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────┘</code></pre>
+<h3>Field Reference</h3>
+<table><thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead><tbody>
+<tr><td>Enabled status</td><td>Toggle</td><td>Turning it off stops the process</td></tr>
+<tr><td>Run mode</td><td>Radio</td><td>Integrated / standalone; switching requires redeployment</td></tr>
+<tr><td>Data directory</td><td>Path</td><td>The database, working directories and logs all live here</td></tr>
+<tr><td>Panel port</td><td>Number</td><td>3082 by default; a conflict is flagged automatically</td></tr>
+<tr><td>UI language</td><td>Dropdown</td><td>Chinese / English / Japanese</td></tr>
+</tbody></table>
+<hr>
+<h1>Group 2: Models &amp; Compute</h1>
+<p><strong>This is the most important group.</strong></p>
+<pre><code>┌──────────────────────────────────────────────────────────────────────────────────────┐
+│   Models &amp; compute                                                                   │
+├──────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                      │
+│ ┏━ Model authorization scope ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ │
+│ ┃                                                                                ┃   │
+│ ┃ Allowed models (pinnable to a version):                                        ┃   │
+│ ┃                                                                                ┃   │
+│ ┃ ▼ DeepSeek                                                                     ┃   │
+│ ┃    ☑ deepseek-v4-pro          [budget ¥___/day]                                ┃   │
+│ ┃    ☑ deepseek-v4.1-flash      [budget ¥___/day]                                ┃   │
+│ ┃    ☐ deepseek-v3                                                               ┃   │
+│ ┃                                                                                ┃   │
+│ ┃ ▼ Moonshot (Kimi)                                                              ┃   │
+│ ┃    ☑ kimi-k2-turbo            [budget ¥___/day]                                ┃   │
+│ ┃    ☐ kimi-k2-thinking                                                          ┃   │
+│ ┃                                                                                ┃   │
+│ ┃ ▼ Anthropic                                                                    ┃   │
+│ ┃    ☐ claude-opus-4                                                             ┃   │
+│ ┃    ☑ claude-sonnet-4          [budget ¥___/day]                                ┃   │
+│ ┃                                                                                ┃   │
+│ ┃ ▼ OpenAI                                                                       ┃   │
+│ ┃    ☐ gpt-5                                                                     ┃   │
+│ ┃    ☑ gpt-5-mini               [budget ¥___/day]                                ┃   │
+│ ┃                                                                                ┃   │
+│ ┃ ▼ Local / free                                                                 ┃   │
+│ ┃    ☑ Free-tier channel models                                                  ┃   │
+│ ┃    ☐ Local models (LM Studio / Ollama)                                         ┃   │
+│ ┃                                                                                ┃   │
+│ ┃ [+ Add a custom provider]                                                      ┃   │
+│ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ │
+│                                                                                      │
+│ ┏━ Model usage policy ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ │
+│ ┃                                                                                ┃   │
+│ ┃ ⦿ Unified model: every session uses the same one                               ┃   │
+│ ┃      model     [ deepseek-v4-pro   ▾ ]                                         ┃   │
+│ ┃      thinking  [ high              ▾ ]                                         ┃   │
+│ ┃                                                                                ┃   │
+│ ┃ ○ Tiered models: picked automatically by task difficulty                       ┃   │
+│ ┃      simple   → [ deepseek-v4.1-flash ▾ ] [low ▾]                              ┃   │
+│ ┃      medium   → [ deepseek-v4-pro     ▾ ] [medium ▾]                           ┃   │
+│ ┃      complex  → [ kimi-k2-turbo       ▾ ] [high ▾]                             ┃   │
+│ ┃      extreme  → [ claude-sonnet-4     ▾ ] [max ▾]                              ┃   │
+│ ┃                                                                                ┃   │
+│ ┃ ○ Multi-model parallel: a different model per sub-session                      ┃   │
+│ ┃      sub-session A → [ kimi-k2-turbo    ▾ ] [high ▾]                           ┃   │
+│ ┃      sub-session B → [ claude-sonnet-4  ▾ ] [medium ▾]                         ┃   │
+│ ┃      sub-session C → [ deepseek-v4-pro  ▾ ] [high ▾]                           ┃   │
+│ ┃      [+ Add sub-session config]                                                ┃   │
+│ ┃      rotation [ sequential ▾ ] / [ by difficulty ▾ ] / [ random ▾ ]            ┃   │
+│ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ │
+│                                                                                      │
+│ ┏━ Thinking depth ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ │
+│ ┃                                                                                ┃   │
+│ ┃ Main session          [ high    ▾ ]                                            ┃   │
+│ ┃ Sub-session default   [ medium  ▾ ]                                            ┃   │
+│ ┃ Difficulty pre-judge  [ lowest  ▾ ]   ← cost-control key                       ┃   │
+│ ┃ Self-evolution        [ max     ▾ ]                                            ┃   │
+│ ┃                                                                                ┃   │
+│ ┃ ☑ Allow thinking depth to be adjusted automatically per task                   ┃   │
+│ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ │
+│                                                                                      │
+│ ┏━ Cost control plan ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ │
+│ ┃                                                                                ┃   │
+│ ┃ ☑ Task difficulty pre-judgment (probe with a small model first)               ┃   │
+│ ┃ ☑ Result cache (the same task is never redone)                                 ┃   │
+│ ┃ ☑ Auto-downgrade when the budget is exceeded mid-run                           ┃   │
+│ ┃                                                                                ┃   │
+│ ┃ Daily cap       [ ¥ 50 ]   ⚠ when exceeded [ pause ▾ ]                         ┃   │
+│ ┃ Monthly cap     [ ¥ 1000 ]                                                     ┃   │
+│ ┃ Current usage   ¥ 12.4 / ¥ 50 (24.8%)                                          ┃   │
+│ ┃ ▓▓▓▓▓░░░░░░░░░░░░░░░░░░░░░░░░░░░                                               ┃   │
+│ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ │
+│                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────┘</code></pre>
+<h3>Comparison of the Three Policies</h3>
+<table><thead><tr><th>Policy</th><th>Pros</th><th>Cons</th><th>Suited to</th></tr></thead><tbody>
+<tr><td><strong>Unified model</strong></td><td>Cheap, predictable</td><td>Poor on hard problems</td><td>Homogeneous tasks</td></tr>
+<tr><td><strong>Tiered models</strong></td><td>Pay as needed</td><td>Tiers must be configured</td><td>Most scenarios</td></tr>
+<tr><td><strong>Multi-model parallel</strong></td><td>Best results</td><td>Most expensive</td><td>Critical tasks</td></tr>
+</tbody></table>
+<h3>What Thinking Depth Does</h3>
+<p>Thinking depth directly affects token consumption and reasoning quality:</p>
+<table><thead><tr><th>Level</th><th>Relative cost</th><th>Suited to</th></tr></thead><tbody>
+<tr><td>Lowest</td><td>1x</td><td>Difficulty pre-judgment, classification</td></tr>
+<tr><td>Low</td><td>2x</td><td>Simple rewrites, formatting</td></tr>
+<tr><td>Medium</td><td>4x</td><td>Routine coding</td></tr>
+<tr><td>High</td><td>8x</td><td>Complex logic, architecture design</td></tr>
+<tr><td>Max</td><td>16x</td><td>Very hard reasoning, self-evolution</td></tr>
+</tbody></table>
+<p><strong>Using "lowest" for difficulty pre-judgment is the key to cost control</strong>: a 50-token judgment avoids hundreds of tokens of wasted work.</p>
+<hr>
+<h1>Group 3: Execution Mode</h1>
+<pre><code>┌──────────────────────────────────────────────────────────────────────────────────────┐
+│   Execution mode                                                                     │
+├──────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                      │
+│ ┏━ Run state ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ │
+│ ┃                                                                                ┃   │
+│ ┃ ⦿ Conversational: runs only while you are talking to it                        ┃   │
+│ ┃ ○ Silent: the process stays resident, wakes up on a message                    ┃   │
+│ ┃ ○ Dual: both at once                                                           ┃   │
+│ ┃                                                                                ┃   │
+│ ┃ Silent-mode wake-up conditions:                                                ┃   │
+│ ┃    ☑ Email received      ☑ QQ message                                          ┃   │
+│ ┃    ☑ WeCom message       ☑ GitHub @-mention                                    ┃   │
+│ ┃    ☑ Feishu message      ☐ WeChat message (client required)                    ┃   │
+│ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ │
+│                                                                                      │
+│ ┏━ Execution location ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ │
+│ ┃                                                                                ┃   │
+│ ┃ ⦿ Foreground: a window opens, you can watch it work                            ┃   │
+│ ┃ ○ Background: fully in the background, never in your way                       ┃   │
+│ ┃ ○ Decided by the task: simple ones in the background,                          ┃   │
+│ ┃    complex ones asked in the foreground                                        ┃   │
+│ ┃                                                                                ┃   │
+│ ┃ In background mode:                                                            ┃   │
+│ ┃    ☑ Notify me when done                                                       ┃   │
+│ ┃    ☑ Only pop up when something cannot be decided                              ┃   │
+│ ┃    ☐ Stay silent throughout, records only in the panel                         ┃   │
+│ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ │
+│                                                                                      │
+│ ┏━ Multi-session collaboration (sub-sessions) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ │
+│ ┃                                                                                ┃   │
+│ ┃ ☑ Allow the main session to open sub-sessions automatically                    ┃   │
+│ ┃                                                                                ┃   │
+│ ┃ Max sub-sessions        [ 6 ]                                                  ┃   │
+│ ┃ Difficulty threshold    [ medium ▾ ]   (split only above this)                 ┃   │
+│ ┃                                                                                ┃   │
+│ ┃ ☑ Sub-sessions may talk to each other                                          ┃   │
+│ ┃ ☑ Shared task board (each sees the others' progress)                           ┃   │
+│ ┃ ☑ Mutual rescue allowed (one gets stuck, another takes over)                   ┃   │
+│ ┃      rescue mode [ take over after reading the log ▾ ]                         ┃   │
+│ ┃ ☑ Mutual help when done (whoever finishes helps the rest)                      ┃   │
+│ ┃                                                                                ┃   │
+│ ┃ Heartbeat interval      [ 30 s ]                                               ┃   │
+│ ┃ Stuck criterion         [ 90 s without heartbeat ]                             ┃   │
+│ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ │
+│                                                                                      │
+│ ┏━ Regression verification ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ │
+│ ┃ ☑ After all sub-sessions finish, the main session runs the                     ┃   │
+│ ┃    final regression                                                            ┃   │
+│ ┃ ☑ If the regression fails, hand back to that sub-session to fix                ┃   │
+│ ┃ Max handback rounds     [ 3 ]                                                  ┃   │
+│ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ │
+│                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────┘</code></pre>
+<h3>Why "Execution Location" Matters</h3>
+<table><thead><tr><th>Mode</th><th>Experience</th><th>Suited to</th></tr></thead><tbody>
+<tr><td><strong>Foreground</strong></td><td>You can watch it work step by step</td><td>You want to learn, or you are uneasy</td></tr>
+<tr><td><strong>Background</strong></td><td>No interruption, notified when done</td><td>Everyday use</td></tr>
+<tr><td><strong>Decided by the task</strong></td><td>Simple ones silent, complex ones ask</td><td>Balanced</td></tr>
+</tbody></table>
+<p><strong>This option is for you, not for it.</strong> You can change it at any time.</p>
+<h3>The Difference Between the Three Run States</h3>
+<table><thead><tr><th>State</th><th>Process</th><th>UI</th><th>Compute (when idle)</th></tr></thead><tbody>
+<tr><td>Conversational</td><td>Started on demand</td><td>Yes</td><td>0</td></tr>
+<tr><td>Silent</td><td>Resident</td><td>No</td><td>Close to 0 (waiting for events)</td></tr>
+<tr><td>Dual</td><td>Resident</td><td>Yes</td><td>Close to 0 (waiting for events)</td></tr>
+</tbody></table>
+<hr>
+<h1>Group 4: Sources</h1>
+<pre><code>┌──────────────────────────────────────────────────────────────────────────────────────┐
+│   Sources                                                                            │
+├──────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                      │
+│  Status  Platform    Connection        Health   Actions                              │
+│  ───────────────────────────────────────────────────────────                         │
+│  🟢      GitHub      CLI + mirror      ●●●●●    [Config] [Stop]                      │
+│  🟢      Feishu      CLI               ●●●●●    [Config] [Stop]                      │
+│  🟢      WeCom       official API      ●●●●●    [Config] [Stop]                      │
+│  🟢      QQ Mail     IMAP/SMTP         ●●●●●    [Config] [Stop]                      │
+│  🟡      Gmail       IMAP              ●●●●○    [Config] [Stop]                      │
+│  🟡      QQ          WebSocket         ●●●●○    [Config] [Stop]                      │
+│  🟠      WeChat      local client      ●●●●○    [Config] [Stop]                      │
+│                                                                                      │
+│ [+ Add a custom source]                                                              │
+│                                                                                      │
+│ ┏━ Selected source: GitHub ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ │
+│ ┃                                                                                ┃   │
+│ ┃ Repository     [ owner/repo               ]                                    ┃   │
+│ ┃ CLI path       [ &lt;path&gt;/gh-wrapper         ]                                   ┃   │
+│ ┃ Poll interval  [ 60 s ]                                                        ┃   │
+│ ┃                                                                                ┃   │
+│ ┃ Receive scope:                                                                 ┃   │
+│ ┃    ☑ New issue      ☑ New PR                                                   ┃   │
+│ ┃    ☑ Comments       ☑ CI status                                                ┃   │
+│ ┃                                                                                ┃   │
+│ ┃ Mirror fallback:                                                               ┃   │
+│ ┃    ☑ Primary site                                                              ┃   │
+│ ┃    ☑ Mirror 1 (acceleration proxy)                                             ┃   │
+│ ┃    ☑ Mirror 2 (local cache)                                                    ┃   │
+│ ┃    ☑ Mirror 3 (packaged download)                                              ┃   │
+│ ┃                                                                                ┃   │
+│ ┃ [Test connection]   [Re-authorize]                                             ┃   │
+│ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ │
+│                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────┘</code></pre>
+<p><strong>Detailed configuration for each source is in <a href="05-sources.html">Sources and Stability</a>.</strong></p>
+<hr>
+<h1>Group 5: Proxy</h1>
+<pre><code>┌──────────────────────────────────────────────────────────────────────────────────────┐
+│   Proxy settings                                                                     │
+├──────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                      │
+│ ┏━ Proxy priority ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ │
+│ ┃                                                                                ┃   │
+│ ┃ ⦿ Auto: user proxy → system proxy → built-in → direct                          ┃   │
+│ ┃ ○ Use only the specified proxy                                                 ┃   │
+│ ┃ ○ Direct connection only                                                       ┃   │
+│ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ │
+│                                                                                      │
+│ ┏━ 1. Your own proxy ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ │
+│ ┃                                                                                ┃   │
+│ ┃ ☑ Enabled                                                                      ┃   │
+│ ┃                                                                                ┃   │
+│ ┃ Option 1: fill it in manually                                                  ┃   │
+│ ┃    HTTP    [ http://127.0.0.1:____     ]                                       ┃   │
+│ ┃    SOCKS5  [ socks5://127.0.0.1:____   ]                                       ┃   │
+│ ┃                                                                                ┃   │
+│ ┃ Option 2: drop the program here for auto-detection                             ┃   │
+│ ┃   ┌──────────────────────────────────────────────────────┐                     ┃   │
+│ ┃   │                                                      │                     ┃   │
+│ ┃   │    Drop the proxy program's exe or folder here       │                     ┃   │
+│ ┃   │                                                      │                     ┃   │
+│ ┃   │            [ drag area / click to choose ]           │                     ┃   │
+│ ┃   │                                                      │                     ┃   │
+│ ┃   └──────────────────────────────────────────────────────┘                     ┃   │
+│ ┃                                                                                ┃   │
+│ ┃ Detected proxies: (auto-scanned, listed here)                                  ┃   │
+│ ┃    ● Proxy A   &lt;path&gt;            [Config][Test]                                ┃   │
+│ ┃    ● Proxy B   &lt;path&gt;            [Config][Test]                                ┃   │
+│ ┃                                                                                ┃   │
+│ ┃ ☑ Start detected proxies automatically                                         ┃   │
+│ ┃ ☑ Handle prompts automatically (watch an ad, click confirm)                    ┃   │
+│ ┃ ☑ Connect automatically when not connected                                     ┃   │
+│ ┃ ☑ Retry automatically on failure (at most [ 3 ] times)                         ┃   │
+│ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ │
+│                                                                                      │
+│ ┏━ 2. System proxy ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ │
+│ ┃ ☑ Use the system proxy automatically when one is detected                      ┃   │
+│ ┃ Current system proxy:  not enabled                                             ┃   │
+│ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ │
+│                                                                                      │
+│ ┏━ 3. Built-in proxy ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ │
+│ ┃                                                                                ┃   │
+│ ┃ ☐ Enable the built-in proxy                                                    ┃   │
+│ ┃                                                                                ┃   │
+│ ┃ Node source:                                                                   ┃   │
+│ ┃    ○ Use a subscription I provide [______________] [Import]                    ┃   │
+│ ┃    ○ Reuse an existing local proxy                                             ┃   │
+│ ┃    ○ Built-in free node pool                                                   ┃   │
+│ ┃                                                                                ┃   │
+│ ┃ ⚠ About free nodes: most public free nodes are not clean                       ┃   │
+│ ┃     · IPs are shared by many; mainstream services reject them                  ┃   │
+│ ┃     · your credentials are at risk of interception                             ┃   │
+│ ┃     · use your own subscription, or reuse a local proxy                        ┃   │
+│ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ │
+│                                                                                      │
+│ ┏━ 4. Per-domain policy ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ │
+│ ┃                                                                                ┃   │
+│ ┃ Domain                   Use proxy?   Which one                                ┃   │
+│ ┃ ─────────────────────────────────────────────────────                          ┃   │
+│ ┃ api.github.com              ☑        [ auto ▾ ]                                ┃   │
+│ ┃ raw.githubusercontent       ☑        [ auto ▾ ]                                ┃   │
+│ ┃ imap.gmail.com              ☑        [ auto ▾ ]                                ┃   │
+│ ┃ imap.qq.com                 ☐        [ direct ▾ ]                              ┃   │
+│ ┃ WeCom API                   ☐        [ direct ▾ ]                              ┃   │
+│ ┃ Feishu API                  ☐        [ direct ▾ ]                              ┃   │
+│ ┃                                                                                ┃   │
+│ ┃ ☑ Unlisted domains go direct by default                                        ┃   │
+│ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ │
+│                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────┘</code></pre>
+<p><strong>The full explanation of the proxy scheme is in <a href="06-proxy.html">Proxy Scheme</a>.</strong></p>
+<hr>
+<h1>Group 6: Permissions &amp; Security</h1>
+<pre><code>┌──────────────────────────────────────────────────────────────────────────────────────┐
+│   Permissions &amp; security                                                             │
+├──────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                      │
+│ ┏━ Who may assign work ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ │
+│ ┃                                                                                ┃   │
+│ ┃ GitHub accounts                                                                ┃   │
+│ ┃    ● &lt;account 1&gt;               [Remove]                                        ┃   │
+│ ┃    [+ Add]                                                                     ┃   │
+│ ┃                                                                                ┃   │
+│ ┃ Email addresses                                                                ┃   │
+│ ┃    [____________________]   [+ Add]                                            ┃   │
+│ ┃                                                                                ┃   │
+│ ┃ QQ numbers                                                                     ┃   │
+│ ┃    ● &lt;number&gt;                  [Remove]                                        ┃   │
+│ ┃                                                                                ┃   │
+│ ┃ WeCom / Feishu                                                                 ┃   │
+│ ┃    [+ Add]                                                                     ┃   │
+│ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ │
+│                                                                                      │
+│ ┏━ Unified contact center ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ │
+│ ┃ ☑ Enable cross-platform identity recognition                                   ┃   │
+│ ┃                                                                                ┃   │
+│ ┃ One person across platforms:                                                   ┃   │
+│ ┃ ┌──────────────────────────────────────────────────────────┐                   ┃   │
+│ ┃ │ Identity "me"                                            │                   ┃   │
+│ ┃ │  · GitHub:   &lt;account&gt;                                   │                   ┃   │
+│ ┃ │  · QQ:       &lt;number&gt;                                    │                   ┃   │
+│ ┃ │  · Email:    &lt;address&gt;                                   │                   ┃   │
+│ ┃ │  · WeCom:    (not bound)                                 │                   ┃   │
+│ ┃ │  · Feishu:   (not bound)                                 │                   ┃   │
+│ ┃ └──────────────────────────────────────────────────────────┘                   ┃   │
+│ ┃ [+ Add identity]                                                               ┃   │
+│ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ │
+│                                                                                      │
+│ ┏━ Autonomous permissions (granted item by item) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ │
+│ ┃                                                                                ┃   │
+│ ┃ ☑ Accept explicit requests on its own (an allowlisted person names it)         ┃   │
+│ ┃ ☐ Accept inferred requests on its own (nobody named it, it judges)             ┃   │
+│ ┃ ☐ Install plugins on its own                                                   ┃   │
+│ ┃ ☐ Install skills on its own                                                    ┃   │
+│ ┃ ☐ Change its own code on its own                                               ┃   │
+│ ┃ ☐ Open PRs against its own repository on its own                               ┃   │
+│ ┃ ☐ Merge PRs on its own                                                         ┃   │
+│ ┃ ☐ Send email on its own                                                        ┃   │
+│ ┃ ☐ Send IM messages on its own                                                  ┃   │
+│ ┃ ☐ Delete files on its own                                                      ┃   │
+│ ┃ ☐ Run shell commands on its own                                                ┃   │
+│ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ │
+│                                                                                      │
+│ ┏━ Second confirmation for dangerous actions ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ │
+│ ┃ ☑ Delete files      ☑ Change config                                            ┃   │
+│ ┃ ☑ Push code         ☑ Send external messages                                   ┃   │
+│ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ │
+│                                                                                      │
+│ ┏━ Blocked commands ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ │
+│ ┃ [ command pattern 1       ] [×]                                                ┃   │
+│ ┃ [ command pattern 2       ] [×]                                                ┃   │
+│ ┃ [____________________] [+]                                                     ┃   │
+│ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ │
+│                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────┘</code></pre>
+<h3>About the Unified Contact Center</h3>
+<p>The official design <strong>deliberately does not</strong> map identities across sources. This project adds that layer, because "the same person counts as allowlisted everywhere" is a hard requirement.</p>
+<pre><code class="language-json">{
+  "uid": "owner",
+  "identities": {
+    "github": ["&lt;account&gt;"],
+    "email": ["&lt;address&gt;"],
+    "qq": ["&lt;number&gt;"],
+    "wecom": ["&lt;account&gt;"],
+    "feishu": ["&lt;open_id&gt;"]
+  },
+  "policy": {
+    "canRequest": true,
+    "canProactive": false
+  }
+}</code></pre>
+<h3>Why Autonomous Permissions Are Split Item by Item</h3>
+<p><strong>"Allow it to act autonomously" is not one yes/no question; it is a dozen yes/no questions.</strong></p>
+<table><thead><tr><th>Permission</th><th>Risk</th></tr></thead><tbody>
+<tr><td>Accept inferred requests on its own</td><td>May do things you did not want</td></tr>
+<tr><td>Install plugins on its own</td><td>May pull in untrusted code</td></tr>
+<tr><td>Change its own code</td><td>May break itself</td></tr>
+<tr><td>Send messages on its own</td><td>May say the wrong thing</td></tr>
+<tr><td>Delete files on its own</td><td>Irreversible</td></tr>
+</tbody></table>
+<p><strong>Recommendation</strong>: turn everything off first, observe for a week, then enable item by item.</p>
+<hr>
+<h1>Group 7: Self-Evolution</h1>
+<pre><code>┌──────────────────────────────────────────────────────────────────────────────────────┐
+│   Self-evolution                                                                     │
+├──────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                      │
+│ ┏━ Self-check and retrospective ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ │
+│ ┃ ☑ Self-retrospective after every completed task                                ┃   │
+│ ┃ ☑ Record lessons in the lesson library                                         ┃   │
+│ ┃ ☑ Periodic consolidation (every [ 7 ] days)                                    ┃   │
+│ ┃                                                                                ┃   │
+│ ┃ Lesson library    [ &lt;stateDir&gt;/lessons/ ]                                      ┃   │
+│ ┃ Current entries   [ 0 ]                                                        ┃   │
+│ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ │
+│                                                                                      │
+│ ┏━ Code self-optimization ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ │
+│ ┃                                                                                ┃   │
+│ ┃ ☑ Scan its own code for redundancy                                             ┃   │
+│ ┃ ☑ Suggest a merge when duplicated code is found                                ┃   │
+│ ┃ ☑ Suggest a removal when dead code is found                                    ┃   │
+│ ┃                                                                                ┃   │
+│ ┃ Change method:                                                                 ┃   │
+│ ┃    ⦿ Through a PR, wait for my review                                          ┃   │
+│ ┃    ○ Directly (not recommended)                                                ┃   │
+│ ┃                                                                                ┃   │
+│ ┃ Scan frequency  [ weekly ▾ ]                                                   ┃   │
+│ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ │
+│                                                                                      │
+│ ┏━ Capability extension ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ │
+│ ┃ ☐ Let it install plugins itself (also enable it on the permissions page)       ┃   │
+│ ┃ ☐ Let it write skills itself                                                   ┃   │
+│ ┃ ☑ Suggest when a capability is missing, wait for my decision                   ┃   │
+│ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ │
+│                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────┘</code></pre>
+<p><strong>Mechanism details are in <a href="07-evolution.html">Self-Evolution</a>.</strong></p>
+<hr>
+<h1>Group 8: Advanced</h1>
+<pre><code>┌──────────────────────────────────────────────────────────────────────────────────────┐
+│   Advanced                                                                           │
+├──────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                      │
+│ ┏━ Execution environment ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ │
+│ ┃ prepare command    [ git worktree add ... ]                                    ┃   │
+│ ┃ Concurrency cap    [ 3 ]                                                       ┃   │
+│ ┃ Per-task directory [ &lt;stateDir&gt;/work/ ]                                        ┃   │
+│ ┃ ☑ Isolate process environment variables (mandatory in integrated mode)         ┃   │
+│ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ │
+│                                                                                      │
+│ ┏━ Stability ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ │
+│ ┃ ☑ Process watchdog (liveness probe every 15 s)                                 ┃   │
+│ ┃ ☑ Port arbitration (cleans up zombie processes automatically)                  ┃   │
+│ ┃ ☑ Circuit breaker (degrade after [ 5 ] consecutive failures)                   ┃   │
+│ ┃ ☑ Message deduplication                                                        ┃   │
+│ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ │
+│                                                                                      │
+│ ┏━ Session limits ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ │
+│ ┃ IM message word ceiling  [ 100 ] words (hard limit, not configurable)          ┃   │
+│ ┃ Eval timeout             [ 120 ] s                                             ┃   │
+│ ┃ Max background work      [ 30 ] min                                            ┃   │
+│ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ │
+│                                                                                      │
+│ ┏━ Maintenance ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ │
+│ ┃ [Export config]   [Import config]   [Back up data]   [Clear data]              ┃   │
+│ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ │
+│                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────┘</code></pre>
+<h3>Why "Isolate Process Environment Variables" Matters</h3>
+<p>This plugin modifies the process's <code>PATH</code>, inserting the <code>gh</code> and <code>lark-cli</code> wrapper scripts at the front.</p>
+<p><strong>In integrated mode this affects other plugins in the same process.</strong> With isolation enabled, it uses its own environment internally and does not pollute the global one.</p>
+<p><strong>Integrated mode must have this enabled.</strong></p>
+<hr>
+<h1>Main Panel (Not Settings)</h1>
+<pre><code>┌──────────────────────────────────────────────────────────────────────────────────────┐
+│ Super Agent                                            [● Silent]  [⚙ Settings]  [⟳] │
+├───────────────────────────────────────┼──────────────────────────────────────────────┤
+│                                       │                                              │
+│  Needs you (2)                        │  System health                               │
+│   ┌──────────────────────────────────┐│    runtime   ● ready                         │
+│   │ ⚠ #12 needs your answer          ││    github    ● ready                         │
+│   │    "Which branch?"               ││    email     ● ready                         │
+│   │                 [View]           ││    wecom     ● ready                         │
+│   └──────────────────────────────────┘│    proxy     ● not configured                │
+│   ┌──────────────────────────────────┐│                                              │
+│   │ 👀 #15 needs your review         ││  Today                                       │
+│   │    "Done, PR #23"                ││    12 received                               │
+│   │                 [View]           ││    8 accepted                                │
+│   └──────────────────────────────────┘│    6 completed                               │
+│                                       │    ¥12.4 spent                               │
+│  In progress (3)                      │                                              │
+│   ┌──────────────────────────────────┐│  Executors                                   │
+│   │ #18 working                45%   ││    ▓▓▓░░  3/6 running                        │
+│   └──────────────────────────────────┘│                                              │
+│   ┌──────────────────────────────────┐│                                              │
+│   │ #19 queued                       ││                                              │
+│   └──────────────────────────────────┘│                                              │
+│                                       │                                              │
+└───────────────────────────────────────┴──────────────────────────────────────────────┘</code></pre>
+<h2>Sub-Session Collaboration View</h2>
+<pre><code>┌──────────────────────────────────────────────────────────────────────────────────────┐
+│   Ticket #18 — sub-session view                                                      │
+├──────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                      │
+│ Main session   deepseek-v4-pro   high thinking     [progress 45%]                    │
+│    │                                                                                 │
+│    ├─ A   kimi-k2-turbo     high     🟢 running  60%                                 │
+│    ├─ B   claude-sonnet-4   medium   🟡 waiting  20%                                 │
+│    └─ C   deepseek-v4-pro   high     🔴 stuck     --   [take over]                   │
+│                                                                                      │
+│ Shared task board:                                                                   │
+│   ┌──────────────────────────────────────────────────────┐                           │
+│   │ Task            Owner   Status      Progress         │                           │
+│   │ Analyze         A       ✅ done     100%             │                           │
+│   │ Design          B       🟡 running  20%              │                           │
+│   │ Write code      A       🟢 running  60%              │                           │
+│   │ Write tests     C       🔴 stuck    --               │                           │
+│   └──────────────────────────────────────────────────────┘                           │
+│                                                                                      │
+│ [Let A take over C]   [Restart C]   [View C's log]                                   │
+│                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────┘</code></pre>
+<hr>
+<p><a href="03-collaboration.html">← Previous: Multi-Session Collaboration</a> | <a href="../../index.html">Back to README</a> | <a href="05-sources.html">Next: Sources →</a></p>
+<nav class="doc-nav">
+<a class="prev" href="03-collaboration.html">← Previous：Multi-Session Collaboration</a>
+<a class="next" href="05-sources.html">Next：Sources and Stability →</a>
+</nav>
+</main>
+
+<footer>
+  <p><a href="../en/index.html" style="color:inherit">Home</a> · MIT License</p>
+</footer>
+
+</body>
+</html>

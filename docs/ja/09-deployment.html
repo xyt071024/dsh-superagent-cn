@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>デプロイ · Super Agent</title>
+<link rel="stylesheet" href="../../assets/style.css">
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="brand">
+      <span class="logo">◆</span>
+      <span class="brand-name">Super Agent</span>
+      <span class="brand-sub">for DeepSeek Harness</span>
+    </div>
+    <nav class="lang-switch" aria-label="Language">
+      <a href="../zh/09-deployment.html" data-lang="zh">中文</a>
+      <a href="../en/09-deployment.html" data-lang="en">English</a>
+      <a href="../ja/09-deployment.html" class="active" data-lang="ja">日本語</a>
+    </nav>
+  </div>
+</header>
+
+<main class="doc">
+<h1>デプロイ</h1>
+<h2>1. 前提条件</h2>
+<table><thead><tr><th>項目</th><th>要件</th></tr></thead><tbody>
+<tr><td>DeepSeek Harness</td><td>0.2.x 以上</td></tr>
+<tr><td>Node.js</td><td>22.19+ または 24+</td></tr>
+<tr><td>パッケージマネージャ</td><td>pnpm</td></tr>
+<tr><td>OS</td><td>Windows 10/11、macOS、Linux</td></tr>
+</tbody></table>
+<hr>
+<h2>2. 2 つのインストール形態</h2>
+<h3>2.1 融合版</h3>
+<p><strong>既存の DSH に組み込み、入り口を 1 つ増やす。他のプラグインには手を付けません。</strong></p>
+<pre><code class="language-sh"># 1. 独立した profile を作成（既存を上書きしない）
+dsh superagent --from-default-profile web --dump-config &gt; /dev/null
+
+# 2. プラグインパッケージをインストール
+dsh plugin --profile superagent add link:&lt;プロジェクトパス&gt;
+
+# 3. 設定
+# ~/.dsh/profiles/superagent/cordis.patch.yml を編集
+# stateDir とポートを設定
+
+# 4. 起動
+dsh --profile superagent</code></pre>
+<p><strong>重要</strong>：必ず「分離プロセス環境変数」を有効にしてください。そうしないと他のプラグインの <code>gh</code> / CLI 呼び出しに影響します。</p>
+<h3>2.2 クリーン版</h3>
+<p><strong>まっさらな DSH にこれだけを入れ、公式の更新経路に乗ります。</strong></p>
+<pre><code class="language-sh"># 1. 公式の方法で DSH をインストール（まだ無い場合）
+npm install -g @deepseek-ai/dsh
+
+# 2. まっさらな profile を作成
+dsh superagent --from-default-profile web --dump-config &gt; /dev/null
+
+# 3. インストール
+dsh plugin --profile superagent add link:&lt;プロジェクトパス&gt;
+
+# 4. 起動
+dsh --profile superagent</code></pre>
+<p><strong>利点</strong>：クリーンで過去の負債がなく、公式バージョンに追随してアップグレードできます。</p>
+<hr>
+<h2>3. 設定</h2>
+<h3>3.1 最小構成</h3>
+<pre><code class="language-yaml"># ~/.dsh/profiles/superagent/cordis.patch.yml
+- id: webserver
+  config:
+    host: 127.0.0.1
+    port: 3082
+
+- id: superagent
+  config:
+    stateDir: &lt;絶対パス&gt;/state/superagent</code></pre>
+<p><strong>注意</strong>：<code>stateDir</code> は絶対パスである必要があります。Windows では <code>C:/path/with/forward/slash</code> の形式を使ってください。</p>
+<h3>3.2 完全な設定</h3>
+<p>画面から設定することを推奨します。ファイルを手で編集しないでください。</p>
+<p><a href="04-settings.html">設定画面</a> の 8 つのグループを参照してください。</p>
+<hr>
+<h2>4. 初回起動</h2>
+<pre><code>1. プロセスを起動
+   ↓
+2. パネルを開く（ターミナルに token 付きのアドレスが表示されます）
+   ↓
+3. 初回ウィザードが開始：
+   · GitHub の設定（リポジトリ + CLI）
+   · その他のソースの設定（必要に応じて）
+   · プロキシの設定（必要なら）
+   · 権限ホワイトリストの設定
+   · 予算の設定
+   ↓
+4. 「観察モード」で 1 週間動かす
+   ↓
+5. 記録された決定を見て、的確だと判断できたら「自動モード」に切り替え</code></pre>
+<hr>
+<h2>5. 各ソースで用意が必要なもの</h2>
+<table><thead><tr><th>ソース</th><th>必要</th><th>取得方法</th></tr></thead><tbody>
+<tr><td><strong>GitHub</strong></td><td>リポジトリ + CLI 委任</td><td>すでにログイン済みならそのまま</td></tr>
+<tr><td><strong>企業微信</strong></td><td>企業 ID + アプリ Secret + AgentId</td><td>企業管理者コンソールでアプリを作成</td></tr>
+<tr><td><strong>QQ メール</strong></td><td>認可コード</td><td>メール設定 → アカウント → IMAP を有効化 → 認可コードを生成</td></tr>
+<tr><td><strong>飛書</strong></td><td>App ID + App Secret</td><td>オープンプラットフォームで自社アプリを作成</td></tr>
+<tr><td><strong>Gmail</strong></td><td>アプリ専用パスワード</td><td>2 段階認証を有効化 → アプリパスワードを生成</td></tr>
+<tr><td><strong>QQ</strong></td><td>既存のブリッジ</td><td>追加設定は不要</td></tr>
+<tr><td><strong>WeChat</strong></td><td>ローカルクライアントの委任</td><td>初回に QR コードでログイン</td></tr>
+</tbody></table>
+<hr>
+<h2>6. 工数の見積もり</h2>
+<h3>6.1 フェーズ別</h3>
+<table><thead><tr><th>フェーズ</th><th>内容</th><th>日数</th></tr></thead><tbody>
+<tr><td><strong>P0</strong></td><td>GitHub ソースの修正 + 環境分離スイッチ</td><td>0.5</td></tr>
+<tr><td><strong>P1</strong></td><td>設定画面の骨格（8 グループ）</td><td>3</td></tr>
+<tr><td><strong>P2</strong></td><td>モデル委任 + 段階分け + コスト管理</td><td>2</td></tr>
+<tr><td><strong>P3</strong></td><td>マルチセッション協調（相互通信 / タスクボード / レスキュー / バックテスト）</td><td>4</td></tr>
+<tr><td><strong>P4</strong></td><td>プロキシシステム（3 層 + ドラッグ認識）</td><td>3</td></tr>
+<tr><td><strong>P5</strong></td><td>自己進化の仕組み</td><td>2</td></tr>
+<tr><td><strong>P6</strong></td><td>7 つの接続ソース</td><td>6</td></tr>
+<tr><td><strong>P7</strong></td><td>安定性の強化（5 層）</td><td>2</td></tr>
+<tr><td><strong>P8</strong></td><td>ブラウザ委任ウィザード</td><td>2</td></tr>
+<tr><td><strong>P9</strong></td><td>二重状態 + 前面/背面の切り替え</td><td>1.5</td></tr>
+<tr><td><strong>P10</strong></td><td>パッケージング + 3 言語ドキュメント</td><td>2.5</td></tr>
+<tr><td><strong>合計</strong></td><td></td><td><strong>~28.5 日</strong></td></tr>
+</tbody></table>
+<h3>6.2 バッチ分割の推奨</h3>
+<p><strong>第 1 バッチ（3.5 日）</strong>：P0 + P1 + P2</p>
+<p>→ 設定画面の全体が見え、モデルも設定できる</p>
+<p><strong>第 2 バッチ（7 日）</strong>：P3 + P4</p>
+<p>→ マルチセッション協調とプロキシが動く</p>
+<p><strong>第 3 バッチ（10 日）</strong>：P5 + P6 + P7</p>
+<p>→ 自己進化、7 ソース接続、安定性</p>
+<p><strong>第 4 バッチ（5.5 日）</strong>：P8 + P9 + P10</p>
+<p>→ ブラウザウィザード、二重状態、パッケージング</p>
+<p><strong>なぜ一度に完成させないのか</strong>：途中であなたの受け入れ確認と方向修正が必要です。一度に作り切ると逸脱しやすくなります。</p>
+<hr>
+<h2>7. 依存する外部コンポーネント</h2>
+<table><thead><tr><th>コンポーネント</th><th>用途</th><th>必須か</th></tr></thead><tbody>
+<tr><td>DeepSeek Harness</td><td>実行環境</td><td>必須</td></tr>
+<tr><td>Node.js</td><td>ランタイム</td><td>必須</td></tr>
+<tr><td>Git</td><td>コード操作</td><td>必須</td></tr>
+<tr><td>Playwright</td><td>ブラウザ自動化</td><td>委任ウィザードで必要</td></tr>
+<tr><td>Microsoft Edge</td><td>内蔵ブラウザ</td><td>委任ウィザードで必要</td></tr>
+<tr><td>IMAP ライブラリ</td><td>メール受信</td><td>メールソースで必要</td></tr>
+</tbody></table>
+<hr>
+<h2>8. データの保存場所</h2>
+<pre><code>&lt;stateDir&gt;/
+  orchestrator.sqlite    ← メインデータベース
+  worker-bin/            ← コマンドシム
+  work/                  ← チケットの作業ディレクトリ
+  lessons/               ← 経験ライブラリ
+  logs/                  ← ログ
+  config-backup/         ← 設定バックアップ</code></pre>
+<p><strong>バックアップ方針</strong>：<code>&lt;stateDir&gt;</code> ディレクトリ全体を定期的にバックアップすれば十分です。</p>
+<hr>
+<h2>9. アップグレード</h2>
+<h3>9.1 融合版のアップグレード</h3>
+<pre><code class="language-sh"># プラグインのアップグレード
+dsh plugin --profile superagent update
+
+# DSH 本体のアップグレード（メジャーバージョンに追随）
+# 注意：メジャーバージョンの大幅アップグレードは互換性に影響する場合があります</code></pre>
+<h3>9.2 クリーン版のアップグレード</h3>
+<pre><code class="language-sh"># 完全に公式に追随
+npm update -g @deepseek-ai/dsh</code></pre>
+<h3>9.3 アップグレード前のチェックリスト</h3>
+<table><thead><tr><th>#</th><th>確認項目</th></tr></thead><tbody>
+<tr><td>1</td><td><code>&lt;stateDir&gt;</code> をバックアップ</td></tr>
+<tr><td>2</td><td>現在の設定を記録（エクスポート）</td></tr>
+<tr><td>3</td><td>実行中のタスクがないことを確認</td></tr>
+<tr><td>4</td><td>ローカルパッチ版の場合、パッチを再適用できることを確認</td></tr>
+</tbody></table>
+<hr>
+<h2>10. トラブルシューティング</h2>
+<h3>10.1 起動失敗</h3>
+<table><thead><tr><th>症状</th><th>原因</th><th>対処</th></tr></thead><tbody>
+<tr><td><code>EADDRINUSE</code></td><td>ポートが使用中</td><td>古いプロセスを終了するか、ポートを変更</td></tr>
+<tr><td><code>ValidationError: stateDir</code></td><td>パスの形式が不正</td><td>絶対パス + スラッシュ（/）を使う</td></tr>
+<tr><td><code>cannot resolve profile bundle</code></td><td>パッケージ名が不正</td><td><code>package.json</code> のパッケージ名を確認</td></tr>
+<tr><td><code>spawn env ENOENT</code></td><td>プラットフォーム非互換</td><td>次節を参照</td></tr>
+</tbody></table>
+<h3>10.2 ソースが動かない</h3>
+<table><thead><tr><th>症状</th><th>確認項目</th></tr></thead><tbody>
+<tr><td>状態が <code>error</code></td><td>具体的なエラーメッセージを見る</td></tr>
+<tr><td>状態が <code>paused</code></td><td>設定が未完了</td></tr>
+<tr><td>0 件しか受信しない</td><td>ホワイトリスト/受信範囲が合っていない</td></tr>
+<tr><td>ポーリングが連続で失敗</td><td>CLI のパスまたは委任の問題</td></tr>
+</tbody></table>
+<p><strong>重要</strong>：<code>runtime: ready</code> だけを見るのではなく、<strong>業務レイヤーの状態</strong>を見てください。</p>
+<h3>10.3 プラットフォーム互換性</h3>
+<p>一部のプラットフォームでは、元の実装に小さな調整が必要になる場合があります：</p>
+<table><thead><tr><th>問題</th><th>症状</th><th>対処の方向性</th></tr></thead><tbody>
+<tr><td><code>env</code> コマンドが無い</td><td><code>spawn env ENOENT</code></td><td>プロセス引数で環境を渡す方式に変更</td></tr>
+<tr><td>パスの形式</td><td><code>stateDir</code> の検証失敗</td><td>プラットフォームに合った形式を使う</td></tr>
+<tr><td>コマンド名が異なる</td><td>ツール登録の失敗</td><td>プラットフォームに合った shell を選ぶ</td></tr>
+<tr><td>ポートの自己占有</td><td>再起動時に <code>EADDRINUSE</code></td><td>先に古いプロセスを止めてから起動</td></tr>
+</tbody></table>
+<hr>
+<h2>11. セキュリティ推奨事項</h2>
+<table><thead><tr><th>#</th><th>推奨</th><th>理由</th></tr></thead><tbody>
+<tr><td>1</td><td><strong>専用アカウント</strong></td><td>エージェントは専用アカウントを使い、あなたと共用しない</td></tr>
+<tr><td>2</td><td><strong>最小権限</strong></td><td>ホワイトリストには必要な人だけを入れる</td></tr>
+<tr><td>3</td><td><strong>観察モードから開始</strong></td><td>まず何をしようとするかを見る</td></tr>
+<tr><td>4</td><td><strong>予算上限</strong></td><td>事故による出費を防ぐ</td></tr>
+<tr><td>5</td><td><strong>危険な操作は二段階確認</strong></td><td>ファイル削除、プッシュ、メッセージ送信</td></tr>
+<tr><td>6</td><td><strong>プラグインの自律導入はオフ</strong></td><td>信頼できると判断した場合のみ</td></tr>
+<tr><td>7</td><td><strong>監査記録を定期的に見る</strong></td><td>何をしたかを把握する</td></tr>
+</tbody></table>
+<hr>
+<h2>12. 最小構成で動かす</h2>
+<p>まず動かして眺めたい場合、これが最も簡素な設定です：</p>
+<pre><code class="language-yaml">ソース：GitHub のみ有効
+モード：観察（observe）
+予算：日次 ¥10
+自律権限：すべてオフ</code></pre>
+<p><strong>1 週間動かして、記録された決定を見てください。</strong> 的確だと判断できたら、少しずつ開放していきます。</p>
+<hr>
+<p><a href="08-cost.html">← 前へ：コスト管理とコスト</a> | <a href="../../index.html">README に戻る</a></p>
+<nav class="doc-nav">
+<a class="prev" href="08-cost.html">← 前へ：コスト管理</a>
+
+</nav>
+</main>
+
+<footer>
+  <p><a href="../ja/index.html" style="color:inherit">ホーム</a> · MIT License</p>
+</footer>
+
+</body>
+</html>

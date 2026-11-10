@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sources and Stability · Super Agent</title>
+<link rel="stylesheet" href="../../assets/style.css">
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="brand">
+      <span class="logo">◆</span>
+      <span class="brand-name">Super Agent</span>
+      <span class="brand-sub">for DeepSeek Harness</span>
+    </div>
+    <nav class="lang-switch" aria-label="Language">
+      <a href="../zh/05-sources.html" data-lang="zh">中文</a>
+      <a href="../en/05-sources.html" class="active" data-lang="en">English</a>
+      <a href="../ja/05-sources.html" data-lang="ja">日本語</a>
+    </nav>
+  </div>
+</header>
+
+<main class="doc">
+<h1>Sources and Stability</h1>
+<h2>1. Design Principle</h2>
+<p><strong>Each Source does only three things</strong>: translate, reply, judge permissions. Everything else reuses the core logic.</p>
+<pre><code>Platform event
+   ↓ translate
+Unified Trigger
+   ↓ enter the core flow (unchanged)
+... (reuse all of the official logic)
+   ↓ reply
+Translate back into the platform format</code></pre>
+<p><strong>Adding a new Source = writing one translation layer</strong>; the core does not change.</p>
+<hr>
+<h2>2. The Seven Sources</h2>
+<table><thead><tr><th>#</th><th>Platform</th><th>Protocol</th><th>Stability target</th><th>What it needs</th></tr></thead><tbody>
+<tr><td>1</td><td>WeCom</td><td>Official API + callbacks</td><td>★★★★★</td><td>Corp ID + app Secret</td></tr>
+<tr><td>2</td><td>QQ Mail</td><td>IMAP IDLE + SMTP</td><td>★★★★★</td><td>Authorization code</td></tr>
+<tr><td>3</td><td>Feishu</td><td>CLI + event stream</td><td>★★★★★</td><td>Self-built app credentials</td></tr>
+<tr><td>4</td><td>GitHub</td><td>CLI + four-level mirror</td><td>★★★★★</td><td>Already working</td></tr>
+<tr><td>5</td><td>Gmail</td><td>IMAP + app password</td><td>★★★★☆</td><td>Two-step verification</td></tr>
+<tr><td>6</td><td>QQ</td><td>WebSocket</td><td>★★★★☆</td><td>Already working</td></tr>
+<tr><td>7</td><td>WeChat</td><td>Local client</td><td>★★★★☆</td><td>Authorization</td></tr>
+</tbody></table>
+<hr>
+<h2>3. What Each Source Must Implement</h2>
+<h3>3.1 The Three Essentials</h3>
+<table><thead><tr><th>Item</th><th>Purpose</th></tr></thead><tbody>
+<tr><td><strong>Config form</strong></td><td>What is filled in on screen (server, account, key)</td></tr>
+<tr><td><strong>Trigger translation</strong></td><td>Platform message → unified Trigger</td></tr>
+<tr><td><strong>Reply channel</strong></td><td>Trigger → platform message</td></tr>
+</tbody></table>
+<h3>3.2 The Four Optional Items</h3>
+<table><thead><tr><th>Item</th><th>Purpose</th><th>What happens without it</th></tr></thead><tbody>
+<tr><td><strong>Permission scope</strong></td><td>Judge who may assign work</td><td>The default allowlist is used</td></tr>
+<tr><td><strong>Context reading</strong></td><td>Read more during Eval</td><td>Only the single message is visible</td></tr>
+<tr><td><strong>Health check</strong></td><td>Report connection state</td><td>No status shown</td></tr>
+<tr><td><strong>Search capability</strong></td><td>Find history by keyword</td><td>Nothing can be traced back</td></tr>
+</tbody></table>
+<h3>3.3 Translation Example: Email</h3>
+<pre><code>An email arrives
+   ↓
+Translated into a Trigger:
+   actor      = sender address
+   text       = subject + body
+   threadKey  = subject (the same subject groups into one Thread)
+   mention    = whether it is among the recipients
+   meta       = { messageId, references, inReplyTo }
+   ↓
+Enter the core flow</code></pre>
+<p><strong>Reply</strong>:</p>
+<pre><code>The Ticket needs to reply
+   ↓
+Translated into an email:
+   to       = the original sender (or as specified)
+   subject  = Re: the original subject
+   body     = the message content
+   In-Reply-To = the original messageId
+   ↓
+Send over SMTP</code></pre>
+<hr>
+<h2>4. Stability: Five Layers of Hardening</h2>
+<p>Goal: <strong>every Source at 4 stars or better.</strong></p>
+<h3>4.1 L1 — Process Watchdog</h3>
+<pre><code>An independent watchdog
+   ↓ every 15 seconds
+Liveness probe: is the process alive? is the port reachable?
+   ↓
+Abnormal → automatic restart (exponential backoff: 5s → 10s → 20s → 40s, cap 5 minutes)
+   ↓
+5 consecutive failures → stop restarting, raise an alarm</code></pre>
+<p><strong>Why backoff</strong>: without it, one broken dependency gets restarted endlessly and drags the whole system down.</p>
+<h3>4.2 L2 — Port Arbitration</h3>
+<pre><code>Check the target port before starting
+   ↓
+In use?
+   ├─ our own zombie process → force cleanup
+   ├─ another program → switch ports or use a spare port
+   └─ unsure → report the conflict and wait for a human decision</code></pre>
+<h3>4.3 L3 — Dual Channel</h3>
+<p><strong>Key design</strong>: every Source has at least two independent paths.</p>
+<table><thead><tr><th>Source</th><th>Primary channel</th><th>Backup channel</th></tr></thead><tbody>
+<tr><td>GitHub</td><td>API</td><td>Local git cache</td></tr>
+<tr><td>WeChat</td><td>Local client protocol</td><td>Window control reading</td></tr>
+<tr><td>Email</td><td>IMAP</td><td>POP3</td></tr>
+<tr><td>WeCom</td><td>Callbacks</td><td>Active polling</td></tr>
+</tbody></table>
+<p><strong>If the primary channel dies, it switches to the backup automatically.</strong></p>
+<h3>4.4 L4 — Message Deduplication</h3>
+<p>The same message may arrive over several paths. Deduplicate by <strong>platform message ID</strong>:</p>
+<pre><code>Message received
+   ↓
+Look up the ID cache
+   ├─ already processed → drop
+   └─ new message → process, remember the ID (kept 7 days)</code></pre>
+<h3>4.5 L5 — Circuit Breaker</h3>
+<pre><code>A Source keeps failing
+   ↓ threshold reached (5 by default)
+Marked "degraded"
+   ↓
+Behavior changes:
+   · no further active polling attempts
+   · record only, do not process
+   · the panel shows an orange warning
+   ↓
+Recovers after human intervention or a successful timed liveness probe</code></pre>
+<p><strong>Why it is needed</strong>: a broken Source that keeps retrying occupies every connection and drags the other Sources down.</p>
+<hr>
+<h2>5. Each Source in Detail</h2>
+<h3>5.1 WeCom (the most stable)</h3>
+<p><strong>Why it is the most stable</strong>: an enterprise-grade official API, stable protocol, complete documentation.</p>
+<p><strong>Two ways to connect</strong>:</p>
+<table><thead><tr><th>Method</th><th>Capability</th><th>Complexity</th></tr></thead><tbody>
+<tr><td>Group bot webhook</td><td>Send only, cannot receive</td><td>Very low</td></tr>
+<tr><td>App message API</td><td>Both send and receive</td><td>Medium</td></tr>
+</tbody></table>
+<p><strong>Recommendation</strong>: the app message API (it has to receive before it can be assigned work).</p>
+<p><strong>Configuration items</strong>:</p>
+<pre><code>Corp ID (corpid)
+App Secret
+AgentId
+Callback URL (optional; polling is used when it is not set)</code></pre>
+<h3>5.2 QQ Mail (the best scenario fit)</h3>
+<p><strong>Why it fits</strong>: email is naturally asynchronous, carries a sender, and has a subject that can group a Thread.</p>
+<p><strong>Technical points</strong>:</p>
+<table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody>
+<tr><td>Receive</td><td><code>imap.qq.com:993</code> (SSL)</td></tr>
+<tr><td>Send</td><td><code>smtp.qq.com:465</code> (SSL)</td></tr>
+<tr><td>Auth</td><td><strong>Authorization code</strong> (not the login password)</td></tr>
+<tr><td>Push</td><td>IMAP IDLE (the server pushes)</td></tr>
+</tbody></table>
+<p><strong>IMAP IDLE is the key</strong>: no polling; the server notifies on new mail, so the overhead is genuinely zero.</p>
+<p><strong>Disconnection handling</strong>:</p>
+<pre><code>The IDLE connection drops
+   ↓
+Reconnect immediately (1 second)
+   ↓
+Reconnect fails → backoff retries (5s / 15s / 60s)
+   ↓
+Reconnect succeeds → catch up on messages missed during the outage via the UID cursor</code></pre>
+<h3>5.3 Feishu</h3>
+<p><strong>The CLI already exists</strong>; app credentials are missing.</p>
+<p><strong>Configuration</strong>: a self-built app is required; obtain the App ID and App Secret.</p>
+<p><strong>Capability</strong>: event stream push + message send and receive.</p>
+<h3>5.4 GitHub (four-level mirror)</h3>
+<p><strong>This is a key design of the project</strong>, because GitHub access is unstable in some regions.</p>
+<pre><code>Level 1: api.github.com         direct
+    ↓ fails
+Level 2: acceleration mirror     third-party proxy
+    ↓ fails
+Level 3: local git cache         content already cloned
+    ↓ fails
+Level 4: packaged download       download the zip and extract it</code></pre>
+<p><strong>Each level degrades to the next automatically, with no manual intervention.</strong></p>
+<p><strong>Configuration items</strong>:</p>
+<pre><code>☑ Primary site
+☑ Mirror 1 (acceleration proxy)
+☑ Mirror 2 (local cache)
+☑ Mirror 3 (packaged download)</code></pre>
+<h3>5.5 Gmail</h3>
+<p><strong>Technical points</strong>:</p>
+<table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody>
+<tr><td>Receive</td><td><code>imap.gmail.com:993</code> (SSL)</td></tr>
+<tr><td>Auth</td><td>App-specific password (two-step verification must be on)</td></tr>
+<tr><td>Network</td><td><strong>A proxy is required</strong> (in some regions)</td></tr>
+</tbody></table>
+<p><strong>Note</strong>: a direct connection to Gmail times out in some regions; a proxy is mandatory.</p>
+<h3>5.6 QQ</h3>
+<p><strong>A bridge already exists</strong>, over WebSocket.</p>
+<p><strong>Hardening points</strong>:</p>
+<ul>
+<li>Keepalive heartbeat (one ping every 30 seconds)</li>
+<li>Automatic reconnect on disconnect</li>
+<li>Catch up on offline messages after reconnecting</li>
+</ul>
+<h3>5.7 WeChat (heavily hardened)</h3>
+<p><strong>This is the most fragile link and needs all five layers.</strong></p>
+<h4>Why It Is Fragile</h4>
+<table><thead><tr><th>Problem</th><th>Explanation</th></tr></thead><tbody>
+<tr><td>No official API</td><td>Only the local client is available</td></tr>
+<tr><td>Multi-process architecture</td><td>Four child processes; any one dying kills the whole thing</td></tr>
+<tr><td>Port contention</td><td>Two components fight over the same port</td></tr>
+<tr><td>Client redesigns</td><td>Every Tencent update has to be followed</td></tr>
+</tbody></table>
+<h4>Five Layers of Hardening</h4>
+<table><thead><tr><th>Layer</th><th>Means</th><th>Solves</th></tr></thead><tbody>
+<tr><td><strong>L1 watchdog</strong></td><td>15-second liveness probe, restart on crash</td><td>The process dying</td></tr>
+<tr><td><strong>L2 port arbitration</strong></td><td>Clean up zombie processes before starting</td><td>Port contention</td></tr>
+<tr><td><strong>L3 dual channel</strong></td><td>Primary dies → <strong>window control reading</strong></td><td>Single-point dependency</td></tr>
+<tr><td><strong>L4 deduplication</strong></td><td>Deduplicate by message ID</td><td>Duplicate processing</td></tr>
+<tr><td><strong>L5 circuit breaker</strong></td><td>Degrade and alarm after repeated failures</td><td>Dragging down everything</td></tr>
+</tbody></table>
+<h4>L3 Is the Key: Window Control Reading</h4>
+<p><strong>Principle</strong>: Windows UIAutomation can read the control tree inside the WeChat window directly (message list, input box, send button).</p>
+<p><strong>Advantages</strong>:</p>
+<ul>
+<li>No third-party injection required</li>
+<li>The WeChat client is not modified</li>
+<li>No private protocol is used</li>
+</ul>
+<p><strong>Disadvantages</strong>:</p>
+<ul>
+<li>The control structure may change after a WeChat redesign and needs adapting</li>
+<li>Reading is slower than a protocol</li>
+</ul>
+<p><strong>Why this reaches 4 stars</strong>: there are two independent paths; if one dies, the other remains.</p>
+<h4>Why It Cannot Reach 5 Stars</h4>
+<p><strong>It fundamentally depends on the behavior of Tencent's client.</strong> Tencent can redesign at any time; we can only follow.</p>
+<p><strong>4 stars is the honest ceiling</strong>; claiming 5 would be a lie.</p>
+<hr>
+<h2>6. Health Status</h2>
+<p>Every Source reports a health status:</p>
+<table><thead><tr><th>Status</th><th>Meaning</th><th>Panel color</th></tr></thead><tbody>
+<tr><td><code>ready</code></td><td>Running normally</td><td>Green</td></tr>
+<tr><td><code>starting</code></td><td>Starting up</td><td>Blue</td></tr>
+<tr><td><code>paused</code></td><td>Paused (configuration incomplete)</td><td>Gray</td></tr>
+<tr><td><code>error</code></td><td>Errored</td><td>Orange</td></tr>
+<tr><td><code>degraded</code></td><td>Degraded (circuit open)</td><td>Red</td></tr>
+</tbody></table>
+<p><strong>Status is broken down by component</strong>:</p>
+<pre><code>runtime  : ready     ← the host layer
+github   : error     ← the business layer; this is the one that matters
+email    : ready</code></pre>
+<p><strong>Note</strong>: <code>runtime: ready</code> does not mean the Source is fine. <strong>You must look at the business layer.</strong></p>
+<hr>
+<h2>7. Adding a New Source</h2>
+<p>If you want to connect a platform this project does not support, the steps are:</p>
+<ol>
+<li><strong>Determine the protocol</strong>: API / IMAP / WebSocket / local client</li>
+<li><strong>Implement the three essentials</strong>: config form, Trigger translation, reply channel</li>
+<li><strong>Register</strong>: declare it in the Source registry</li>
+<li><strong>Test</strong>: configure → test connection → send a test message</li>
+</ol>
+<p><strong>Effort</strong>: about 300-600 lines, 2-4 hours.</p>
+<hr>
+<h2>8. Source Comparison Summary</h2>
+<table><thead><tr><th>Dimension</th><th>WeCom</th><th>QQ Mail</th><th>Feishu</th><th>GitHub</th><th>Gmail</th><th>QQ</th><th>WeChat</th></tr></thead><tbody>
+<tr><td>Stability</td><td>★★★★★</td><td>★★★★★</td><td>★★★★★</td><td>★★★★★</td><td>★★★★☆</td><td>★★★★☆</td><td>★★★★☆</td></tr>
+<tr><td>Setup difficulty</td><td>Low</td><td>Low</td><td>Medium</td><td>Low</td><td>Medium</td><td>Low</td><td>High</td></tr>
+<tr><td>Requires</td><td>Corp account</td><td>Auth code</td><td>An app</td><td>Nothing</td><td>Two-step verification</td><td>Nothing</td><td>Authorization</td></tr>
+<tr><td>Async friendliness</td><td>Medium</td><td><strong>High</strong></td><td>Medium</td><td>Medium</td><td>High</td><td>Low</td><td>Low</td></tr>
+<tr><td>Recommendation</td><td>High</td><td><strong>Highest</strong></td><td>High</td><td>Essential</td><td>Depends</td><td>High</td><td>Fallback</td></tr>
+</tbody></table>
+<p><strong>If you connect only one, choose QQ Mail</strong>: the best scenario fit (asynchronous, carries a sender, groups into Threads), the fewest dependencies, a standard protocol.</p>
+<hr>
+<p><a href="04-settings.html">← Previous: Settings UI</a> | <a href="../../index.html">Back to README</a> | <a href="06-proxy.html">Next: Proxy Scheme →</a></p>
+<nav class="doc-nav">
+<a class="prev" href="04-settings.html">← Previous：Settings UI Design</a>
+<a class="next" href="06-proxy.html">Next：Proxy Architecture →</a>
+</nav>
+</main>
+
+<footer>
+  <p><a href="../en/index.html" style="color:inherit">Home</a> · MIT License</p>
+</footer>
+
+</body>
+</html>
