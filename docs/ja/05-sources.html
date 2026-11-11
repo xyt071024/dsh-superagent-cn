@@ -26,7 +26,7 @@
 <main class="doc">
 <h1>ソースと安定性</h1>
 <h2>1. 設計原則</h2>
-<p><strong>各ソースがやることは 3 つだけ</strong>です。翻訳、返信、権限判定。それ以外はすべてコアのロジックを再利用します。</p>
+<p><strong>各ソースがやることは 3 つだけ</strong>です。翻訳、返信、権限範囲の宣言。それ以外はすべてコアのロジックを再利用します。</p>
 <pre><code>プラットフォームのイベント
    ↓ 翻訳
 統一された Trigger
@@ -35,18 +35,21 @@
    ↓ 返信
 プラットフォームの形式へ翻訳</code></pre>
 <p><strong>新しいソースの追加 = 翻訳層を 1 つ書くこと</strong>であり、コアを変更する必要はありません。</p>
+<h3>権限の 2 つの関門を混同しないこと</h3>
+<p><strong>誰がアサインできるかはゲートウェイが強制します</strong>（純粋なコードで、メッセージ本文は読みません）：<code>policy.sources[ソース].allowed</code> のリストにこの <code>actor.id</code> があるかどうかの文字列比較であり、メッセージに「以前の指示を無視せよ」と書かれていてもこの判定は変わりません。</p>
+<p><strong>請けるかどうかはモデルの評価が決めます</strong>：リストが決めるのは「この人に依頼する資格があるか」だけです。その依頼を請けるか、どのくらいの範囲に切るかは、Eval のモデルがメッセージ本文を読んで判断するため、この層は<strong>メッセージ本文の影響を受け得ます</strong>。リストが与えるのは資格であり、結論ではありません。</p>
 <hr>
 <h2>2. 7 つのソース</h2>
-<table><thead><tr><th>#</th><th>プラットフォーム</th><th>プロトコル</th><th>安定性の目標</th><th>実装状態</th><th>必要なもの</th></tr></thead><tbody>
-<tr><td>1</td><td>企業微信</td><td>公式 API + コールバック</td><td>★★★★★</td><td>実装済み・未検証</td><td>企業 ID + アプリ Secret</td></tr>
-<tr><td>2</td><td>QQ メール</td><td>IMAP IDLE + SMTP</td><td>★★★★★</td><td>実装済み・未検証</td><td>認証コード</td></tr>
-<tr><td>3</td><td>飛書</td><td>CLI + イベントストリーム</td><td>★★★★★</td><td>実装済み・未検証</td><td>自社アプリの認証情報</td></tr>
+<table><thead><tr><th>#</th><th>プラットフォーム</th><th>プロトコル</th><th>安定性</th><th>実装状態</th><th>必要なもの</th></tr></thead><tbody>
+<tr><td>1</td><td>企業微信</td><td>公式 API + コールバック</td><td>未評価</td><td>実装済み・未検証</td><td>企業 ID + アプリ Secret</td></tr>
+<tr><td>2</td><td>QQ メール</td><td>IMAP ポーリング + SMTP</td><td>未評価</td><td>実装済み・未検証</td><td>認証コード</td></tr>
+<tr><td>3</td><td>飛書</td><td>CLI + イベントストリーム</td><td>未評価</td><td>実装済み・未検証</td><td>自社アプリの認証情報</td></tr>
 <tr><td>4</td><td>GitHub</td><td>CLI + 4 段ミラー</td><td>★★★★★</td><td><strong>実測済み</strong></td><td>設定済み</td></tr>
-<tr><td>5</td><td>Gmail</td><td>IMAP + アプリパスワード</td><td>★★★★☆</td><td>実装済み・未検証</td><td>2 段階認証</td></tr>
-<tr><td>6</td><td>QQ</td><td>WebSocket</td><td>★★★★☆</td><td><strong>実測済み</strong></td><td>設定済み</td></tr>
-<tr><td>7</td><td>WeChat</td><td>ローカルクライアント</td><td>★★★★☆</td><td>実装済み・未検証</td><td>委任</td></tr>
+<tr><td>5</td><td>Gmail</td><td>IMAP + アプリパスワード</td><td>未評価</td><td>実装済み・未検証</td><td>2 段階認証</td></tr>
+<tr><td>6</td><td>QQ</td><td>OneBot v11 HTTP</td><td>★★★★☆</td><td><strong>実測済み</strong></td><td>設定済み</td></tr>
+<tr><td>7</td><td>WeChat</td><td>ローカルクライアント</td><td>未評価</td><td>実装済み・未検証</td><td>委任</td></tr>
 </tbody></table>
-<p><strong>「安定性の目標」は設計目標であり、実測値ではありません。</strong> 現在つながって実測できているのは GitHub と QQ の 2 つだけです。残りの 4 つはコードは書けていますが、このマシンでは一度も接続していません（WeChat と企業微信は経路自体がなく、飛書はアプリの認証情報がなく、メールは認証コードがありません）。状態の表記は <code>実測済み</code> / <code>実装済み・未検証</code> / <code>計画中</code> の 3 段階で固定です。</p>
+<p><strong>評価を付けられるのは <code>実測済み</code> のソースだけです。</strong> GitHub と QQ の星はこのマシンでの実測に基づきます。残りの 5 つはコードは書けていますが、このマシンでは一度も接続していないため（WeChat と企業微信は経路自体がなく、メールは認証コードがありません）<code>未評価</code> と表記します。低評価でもなく、取り置きの高評価でもなく、まだ根拠がないという意味です。状態の表記は <code>実測済み</code> / <code>実装済み・未検証</code> / <code>計画中</code> の 3 段階で固定です。</p>
 <hr>
 <h2>3. 各ソースが実装すべきもの</h2>
 <h3>3.1 必須の 3 項目</h3>
@@ -84,52 +87,52 @@ Trigger に翻訳：
    ↓
 SMTP で送信</code></pre>
 <hr>
-<h2>4. 安定性：5 層の強化</h2>
-<p>目標：<strong>すべてのソースを 4 星以上に。</strong> これは設計目標であり、現状ではありません。現在実測でつながっているのは GitHub と QQ の 2 つだけで、残り 4 つの強化層は実際の経路で検証されていません。</p>
-<h3>4.1 L1 — プロセス監視</h3>
-<pre><code>独立したウォッチドッグ
-   ↓ 15 秒ごと
-生存確認：プロセスは生きているか？ポートは通じるか？
+<h2>4. 安定性：実際に実装されているもの</h2>
+<p><strong>先に断っておきます</strong>：この節には<strong>コードに実在する仕組みだけ</strong>を書きます。現時点で実測済みなのは GitHub と QQ の 2 つだけで、残りは <code>未評価</code> です。</p>
+<h3>4.1 ポーリング失敗で騒がない</h3>
+<p>どのソースにも <code>failuresBeforeError</code>（既定 3）があります：</p>
+<pre><code>1 回のラウンドが失敗
    ↓
-異常 → 自動再起動（指数バックオフ：5s → 10s → 20s → 40s、上限 5 分）
+カウント +1、次のラウンドを待つ（家庭回線の一時的なタイムアウトで警告を出さない）
    ↓
-5 回連続で失敗 → 再起動を停止し、警告</code></pre>
-<p><strong>なぜバックオフが必要か</strong>：バックオフしないと、壊れた依存が無限に再起動され、かえってシステムを圧迫します。</p>
-<h3>4.2 L2 — ポート調停</h3>
-<pre><code>起動前に対象ポートを確認
+連続で failuresBeforeError に達する
    ↓
-使用中？
-   ├─ 自分のゾンビプロセス → 強制クリーンアップ
-   ├─ 別のプログラム → ポートを変更、または予備ポートを使用
-   └─ 判別不能 → 競合を報告し、人の判断を待つ</code></pre>
-<h3>4.3 L3 — デュアルチャネル</h3>
-<p><strong>重要な設計</strong>：各ソースは少なくとも 2 本の独立した経路を持ちます。</p>
-<table><thead><tr><th>ソース</th><th>主チャネル</th><th>予備チャネル</th></tr></thead><tbody>
-<tr><td>GitHub</td><td>API</td><td>ローカル git キャッシュ</td></tr>
-<tr><td>WeChat</td><td>ローカルクライアントのプロトコル</td><td>ウィンドウコントロールの読み取り</td></tr>
-<tr><td>メール</td><td>IMAP</td><td>POP3</td></tr>
-<tr><td>企業微信</td><td>コールバック</td><td>能動的なポーリング</td></tr>
+パネルが error を表示し、最後のエラー内容を添える
+   ↓
+次のラウンドが成功すれば復帰し、カウントは 0 に戻る</code></pre>
+<p><strong>なぜ 1 回で警告しないのか</strong>：家庭回線では 1 回のタイムアウトは日常的で、すぐ赤くなるパネルは信用されなくなります。</p>
+<h3>4.2 プラットフォームのメッセージ ID で重複排除</h3>
+<p>同じメッセージは後続のポーリングでも再度見えますが、まだ見ていないものだけが Trigger になります。</p>
+<table><thead><tr><th>ソース</th><th>キー</th><th>記憶する件数</th></tr></thead><tbody>
+<tr><td>GitHub</td><td>Issue/PR コメント ID + ETag 条件付きリクエスト</td><td>カーソル + ETag</td></tr>
+<tr><td>QQ / WeChat / WeCom</td><td>message_id</td><td>インスタンスごとに直近 2000 件</td></tr>
+<tr><td>メール</td><td>Message-ID</td><td>アドレスごとに直近 2000 件</td></tr>
+<tr><td>飛書</td><td>トピックごとの既読メッセージ ID</td><td>トピック単位</td></tr>
 </tbody></table>
-<p><strong>主チャネルが落ちたら、自動で予備チャネルへ切り替えます。</strong></p>
-<h3>4.4 L4 — メッセージの重複排除</h3>
-<p>同じメッセージが複数の経路から届くことがあります。<strong>プラットフォームのメッセージ ID</strong> で重複を排除します：</p>
-<pre><code>メッセージを受信
-   ↓
-ID キャッシュを照会
-   ├─ 処理済み → 破棄
-   └─ 新規 → 処理し、ID を記録（7 日間保持）</code></pre>
-<h3>4.5 L5 — サーキットブレーカー保護</h3>
-<pre><code>あるソースが連続して失敗
-   ↓ しきい値に到達（既定 5 回）
-「縮退」としてマーク
-   ↓
-動作が変わる：
-   · 能動的なポーリングを行わない
-   · 記録するだけで処理しない
-   · パネルにオレンジの警告を表示
-   ↓
-人手による介入、または定期的な生存確認の成功で復帰</code></pre>
-<p><strong>なぜ必要か</strong>：壊れたソースが再試行を続けると、すべての接続を占有し、他のソースを圧迫します。</p>
+<p><strong>インスタンスごとに別々に保持する</strong>ので、1 つの kind で 2 つのアカウント（qq-work と qq）を持っても互いに干渉しません。</p>
+<h3>4.3 カーソルの永続化</h3>
+<p>「どこまで読んだか」はローカル DB に保存され、再起動しても再生されません：</p>
+<ul>
+<li>メッセージが Trigger になる前にカーソルを記録する</li>
+<li>再起動後はカーソルから続き、古いメッセージを再処理しない</li>
+<li>POLL_HORIZON_MS が遡る範囲を制限し、初回接続で全履歴を引き込まない</li>
+</ul>
+<h3>4.4 ポーリング間隔は設定可能</h3>
+<table><thead><tr><th>ソース</th><th>既定</th><th>範囲</th><th>説明</th></tr></thead><tbody>
+<tr><td>GitHub</td><td>60 秒</td><td>60-3600</td><td>ETag により変化がなければクォータを消費しない</td></tr>
+<tr><td>QQ / WeChat / WeCom</td><td>5 秒</td><td>2-3600</td><td>OneBot にプッシュ用カーソルがなく、定期読み取りのみ</td></tr>
+<tr><td>メール</td><td>120 秒</td><td>30-3600</td><td>メールは即時性を要する媒体ではない</td></tr>
+</tbody></table>
+<h3>4.5 実装していないもの</h3>
+<p>以下は<strong>本リポジトリにはありません</strong>。期待しないでください：</p>
+<ul>
+<li><strong>プロセス監視 / 自動再起動</strong>：ホスト（DSH）が動いている間だけポーリングし、ホストと共に止まります。独立した監視プロセスはありません</li>
+<li><strong>ポート調停</strong>：同じポートで 2 つ目のインスタンスを起動すると失敗し、その旨を報告します。別ポートを自動で選ぶことはしません</li>
+<li><strong>サーキットブレーカー</strong>：連続失敗はヘルス状態を変えるだけで、<strong>再試行を止めません</strong></li>
+<li><strong>UIAutomation によるウィンドウ読み取り</strong>：プロトコルを使わずクライアント UI を直接読む実装はありません</li>
+<li><strong>多段ミラー / 自動フェイルオーバー</strong>：GitHub は gh CLI 自身の再試行とプロキシ設定に任せています</li>
+</ul>
+<p><strong>この節を置く理由</strong>：「あるべき姿」の層を並べた文書は、インストールすれば付いてくるように読めてしまいます。<strong>やっていないこと</strong>を書くほうが、<strong>やる予定のこと</strong>を並べるより役に立ちます。</p>
 <hr>
 <h2>5. 各ソースの詳細</h2>
 <h3>5.1 企業微信（設計上は最も安定）</h3>
@@ -154,17 +157,19 @@ AgentId
 <tr><td>受信</td><td><code>imap.qq.com:993</code>（SSL）</td></tr>
 <tr><td>送信</td><td><code>smtp.qq.com:465</code>（SSL）</td></tr>
 <tr><td>認証</td><td><strong>認証コード</strong>（ログインパスワードではありません）</td></tr>
-<tr><td>プッシュ</td><td>IMAP IDLE（サーバー側からの能動通知）</td></tr>
+<tr><td>受信方式</td><td>定期ポーリング（既定 120 秒、30〜3600 で設定可）</td></tr>
 </tbody></table>
-<p><strong>IMAP IDLE が鍵</strong>です。ポーリング不要で、新着メールをサーバーが通知するため、実質ゼロコストです。</p>
+<p><strong>現在の実装はポーリングであり、IDLE ではありません。</strong> この版は用途に足る最小限の IMAP クライアント（ログイン、SELECT、最新 N 件の FETCH）を内蔵しており、IDLE プッシュは実装していません。そのため <code>pollSeconds</code> が経過したときに取りに行きます。「サーバーが能動的に通知し、実質ゼロコスト」にするには <code>imap.ts</code> に IDLE コマンドと切断時の再接続を追加する必要があり、それは今後の作業です。</p>
+<p><strong>重複排除は Message-ID で行います</strong>：同じメールはポーリングのたびに再び見えるため、まだ見ていない <code>Message-ID</code> だけが Trigger になります。記録はメールアドレスごとに別々（最新 2000 件）なので、2 つのメールボックスが同じ実装を共有しても干渉しません。</p>
 <p><strong>切断時の処理</strong>：</p>
-<pre><code>IDLE 接続が切断
+<pre><code>その回のポーリングが失敗
    ↓
-即座に再接続（1 秒）
+カウント +1、次の周期を待つ
    ↓
-再接続に失敗 → バックオフして再試行（5s / 15s / 60s）
+連続失敗が failuresBeforeError（既定 3）に達する
    ↓
-再接続に成功 → UID カーソルで切断期間のメッセージを補完取得</code></pre>
+パネルに error を表示し、最後のエラーを明示</code></pre>
+<p><strong>次のポーリングが成功すればカウントは 0 に戻る</strong>ため、単発のネットワーク断では通知されません。</p>
 <h3>5.3 飛書</h3>
 <blockquote><p>状態：実装済み・未検証 —— 上流が持つ実装です。このマシンにはアプリの認証情報が設定されておらず（lark-cli は未 bind）、<code>state: setup</code> です。</p></blockquote>
 <p><strong>CLI は既にあり</strong>、アプリの認証情報が不足しています。</p>
@@ -197,49 +202,34 @@ AgentId
 <p><strong>注意</strong>：Gmail は一部の地域で直結するとタイムアウトするため、必ずプロキシを経由します。</p>
 <h3>5.6 QQ</h3>
 <blockquote><p>状態：<strong>実測済み</strong> —— 3080 の稼働インスタンスの <code>/orchestrator/api/sources</code> が <code>state: ready</code> を返し、<code>stats.received = 14</code>（実際のグループメッセージ）です。</p></blockquote>
-<p><strong>ブリッジは既にあり</strong>、WebSocket を使います。</p>
-<p><strong>強化ポイント</strong>：</p>
+<p><strong>OneBot v11 の HTTP エンドポイント経由</strong>（SnowLuma / NapCat などの実装）です。受信は POST によるポーリング、返信も同じエンドポイントを使います。WebSocket の常時接続ではないため、ハートビートによるキープアライブ層はありません。</p>
+<p><strong>実際の強化手段</strong>：</p>
 <ul>
-<li>ハートビートによるキープアライブ（30 秒ごとに ping）</li>
-<li>切断時の自動再接続</li>
-<li>再接続後にオフラインメッセージを補完取得</li>
+<li><code>message_id</code> による重複排除（インスタンスごとに最新 2000 件）。ポーリングで同じメッセージを再び見ても二重処理しません</li>
+<li>連続失敗が <code>failuresBeforeError</code>（既定 3）に達して初めてパネルにエラーを出し、単発の揺らぎでは通知しません</li>
+<li>グループでは既定で @ されたメッセージだけが自分宛てになります。<code>observeAll</code> を有効にするとポリシーの受信表が判断します</li>
+<li>インスタンスごとに独立したポーリングループを持つため、1 つの端点が落ちても他が遅くなりません</li>
 </ul>
-<h3>5.7 WeChat（重点的な強化）</h3>
-<blockquote><p>状態：実装済み・未検証 —— OneBot プロトコルの実装を再利用しており、このマシンには WeChat 側のブリッジがなく、<code>state: setup</code> で、一度も接続していません。本節は強化の設計であり、実測結果ではありません。</p></blockquote>
-<p><strong>ここは設計上最も脆弱な部分であり、5 層の強化が必要です。</strong></p>
-<h4>なぜ脆弱なのか</h4>
-<table><thead><tr><th>問題</th><th>説明</th></tr></thead><tbody>
-<tr><td>公式 API がない</td><td>ローカルクライアント経由しかありません</td></tr>
-<tr><td>マルチプロセス構成</td><td>4 つの子プロセスがあり、どれかが落ちると全滅します</td></tr>
-<tr><td>ポートの取り合い</td><td>2 つのコンポーネントが同じポートを奪い合います</td></tr>
-<tr><td>クライアントの改版</td><td>Tencent が更新するたびに追随が必要です</td></tr>
+<p><strong>注意</strong>：OneBot にはプッシュ用カーソルがないため、最近のメッセージを一定間隔で読むしかなく、<code>pollSeconds</code>（既定 5 秒）が遅延の上限になります。</p>
+<h3>5.7 WeChat（微信側の OneBot ブリッジに依存）</h3>
+<blockquote><p>状態：実装済み・未検証 —— OneBot プロトコル実装を再利用しています。本機に微信側のブリッジがなく <code>state: setup</code>、一度も接続していません。</p></blockquote>
+<p><strong>実際の実装</strong>：QQ・WeCom と同一のコード（<code>oneBotKind()</code> ファクトリ、<code>kind: 'wechat'</code>）です。本プラグインは <strong>HTTP ポーリングと返信のみ</strong>を行い、微信クライアント自体には触れません。ブリッジは微信側の OneBot 実装が先に起動している必要があります。</p>
+<p><strong>なぜ外部依存が最も強いのか</strong>：</p>
+<table><thead><tr><th>項目</th><th>説明</th></tr></thead><tbody>
+<tr><td>プロトコル</td><td>OneBot v11 HTTP、エンドポイントは利用者の微信ブリッジが提供</td></tr>
+<tr><td>前提条件</td><td>微信側で動作する OneBot ブリッジが必要。本プラグインは起動しない</td></tr>
+<tr><td>上限</td><td>ブリッジが落ちた場合、本プラグインは状態を報告するだけで、再起動はできない</td></tr>
 </tbody></table>
-<h4>5 層の強化</h4>
-<table><thead><tr><th>層</th><th>手段</th><th>解決する問題</th></tr></thead><tbody>
-<tr><td><strong>L1 プロセス監視</strong></td><td>15 秒ごとの生存確認、クラッシュ時に再起動</td><td>プロセスの停止</td></tr>
-<tr><td><strong>L2 ポート調停</strong></td><td>起動前にゾンビプロセスを掃除</td><td>ポートの取り合い</td></tr>
-<tr><td><strong>L3 デュアルチャネル</strong></td><td>主チャネルが落ちたら → <strong>ウィンドウコントロールの読み取り</strong></td><td>単一障害点</td></tr>
-<tr><td><strong>L4 メッセージ重複排除</strong></td><td>メッセージ ID で重複排除</td><td>二重処理</td></tr>
-<tr><td><strong>L5 サーキットブレーカー</strong></td><td>連続失敗で縮退・警告</td><td>全体の圧迫</td></tr>
+<p><strong>本プラグインが実際に提供するもの</strong>（すべて <code>src/sources/qq.ts</code> 内）：</p>
+<table><thead><tr><th>仕組み</th><th>動作</th></tr></thead><tbody>
+<tr><td>ポーリング失敗時の再試行</td><td>1 回の失敗では何も報告せず、次のポーリングで再試行</td></tr>
+<tr><td>連続失敗カウント</td><td>連続 <code>failuresBeforeError</code> 回（既定 3）で初めてヘルスが <code>error</code> になる</td></tr>
+<tr><td>重複排除</td><td><code>message_id</code> による。インスタンスごとに直近 2000 件を記憶</td></tr>
+<tr><td>ヘルス状態</td><td>パネルに <code>ready</code> / <code>error</code> / <code>setup</code> と「新着 N 件、次回ポーリングまで N 秒以上」を表示</td></tr>
 </tbody></table>
-<h4>L3 が鍵：ウィンドウコントロールの読み取り</h4>
-<p><strong>原理</strong>：Windows の UIAutomation は、WeChat ウィンドウ内のコントロールツリー（メッセージ一覧、入力欄、送信ボタン）を直接読み取れます。</p>
-<p><strong>長所</strong>：</p>
-<ul>
-<li>サードパーティの注入に依存しません</li>
-<li>WeChat クライアントを改変しません</li>
-<li>独自プロトコルを使いません</li>
-</ul>
-<p><strong>短所</strong>：</p>
-<ul>
-<li>WeChat の改版でコントロール構造が変わる可能性があり、適応が必要です</li>
-<li>読み取り速度はプロトコルより遅いです</li>
-</ul>
-<p><strong>なぜこれで 4 星に届くのか</strong>：独立した経路が 2 本あり、片方が落ちてももう片方が残るからです。</p>
-<h4>なぜ 5 星に届かないのか</h4>
-<p><strong>本質的に Tencent クライアントの挙動に依存しているからです。</strong> Tencent はいつでも改版でき、こちらは追随するしかありません。</p>
-<p><strong>4 星が誠実な上限</strong>であり、5 星と言うのは嘘になります。</p>
-<hr>
+<p><strong>実装していないもの</strong>：プロセス監視、ポート調停、サーキットブレーカー、UIAutomation によるウィンドウ読み取り——いずれも本リポジトリにはありません。微信ブリッジが落ちる場合はブリッジ側の問題です。</p>
+<h4>表が星ではなく <code>未評価</code> な理由</h4>
+<p>この経路は本機で一度も接続できていません。未接続のものに星を付けるのは、根拠のない判断を読み手の代わりに下すことになります。</p>
 <h2>6. ヘルス状態</h2>
 <p>各ソースはヘルス状態を報告します：</p>
 <table><thead><tr><th>状態</th><th>意味</th><th>パネルの色</th></tr></thead><tbody>
@@ -279,13 +269,13 @@ email    : ready</code></pre>
 <h2>8. ソース比較のまとめ</h2>
 <table><thead><tr><th>観点</th><th>企業微信</th><th>QQ メール</th><th>飛書</th><th>GitHub</th><th>Gmail</th><th>QQ</th><th>WeChat</th></tr></thead><tbody>
 <tr><td><strong>実装状態</strong></td><td>実装済み・未検証</td><td>実装済み・未検証</td><td>実装済み・未検証</td><td><strong>実測済み</strong></td><td>実装済み・未検証</td><td><strong>実測済み</strong></td><td>実装済み・未検証</td></tr>
-<tr><td>安定性</td><td>★★★★★</td><td>★★★★★</td><td>★★★★★</td><td>★★★★★</td><td>★★★★☆</td><td>★★★★☆</td><td>★★★★☆</td></tr>
+<tr><td>安定性</td><td>未評価</td><td>未評価</td><td>未評価</td><td>★★★★★</td><td>未評価</td><td>★★★★☆</td><td>未評価</td></tr>
 <tr><td>接続の難しさ</td><td>低</td><td>低</td><td>中</td><td>低</td><td>中</td><td>低</td><td>高</td></tr>
 <tr><td>必要な準備</td><td>企業資格</td><td>認証コード</td><td>アプリ作成</td><td>なし</td><td>2 段階認証</td><td>なし</td><td>委任</td></tr>
 <tr><td>非同期との相性</td><td>中</td><td><strong>高</strong></td><td>中</td><td>中</td><td>高</td><td>低</td><td>低</td></tr>
 <tr><td>推奨度</td><td>高</td><td><strong>最高</strong></td><td>高</td><td>必須</td><td>要件次第</td><td>高</td><td>代替候補</td></tr>
 </tbody></table>
-<p><strong>注意</strong>：上表の「安定性」は設計目標であり、実測の評価ではありません。現在実測で動いているのは GitHub と QQ だけです。「実装済み・未検証」の 4 つについては、接続の難しさと推奨度はプロトコルの特性から下した判断であり、このマシンでは検証されていません。</p>
+<p><strong>「安定性」の行は実測したソースにだけ評価を付けます</strong>：GitHub と QQ にはこのマシンでの観測結果があるため星が付きます。残りの 5 つは、これを書いた時点でこのマシンで一度も接続していないため <code>未評価</code> です。接続の難しさ・必要な準備・非同期との相性・推奨度はプロトコルの特性から下した判断であり、実測の結論ではありません。</p>
 <p><strong>1 つだけ接続するなら QQ メールを選んでください</strong>：場面に最も合い（非同期、送信者が分かる、スレッドにまとめられる）、依存が最も少なく、プロトコルが標準的です。ただしこの経路はこのマシンでは実際の認証コードでまだつないでいないため、最初の設定では認証コードを入力して接続テストを 1 回行う必要があります。</p>
 <hr>
 <p><a href="04-settings.html">← 前へ：設定 UI</a> | <a href="../../index.html">README に戻る</a> | <a href="06-proxy.html">次へ：プロキシ方式 →</a></p>
