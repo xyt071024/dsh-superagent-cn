@@ -13,8 +13,11 @@ import type {} from '@deepseek-ai/dsh-subprocess'
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { lockSync } from 'proper-lockfile'
-import { Engine, key, reasonText, type EngineForSettings, type ReceiveResult, type Ticket, type Trigger } from '../core/index.ts'
+import { Engine, key, latestAssignment, reasonText, runningAssignment, type EngineForSettings, type ReceiveResult, type Ticket,
+  type Trigger } from '../core/index.ts'
 import { allowedSender, settingsPolicy } from '../policy.ts'
+import { ContextArchiver } from './archive.ts'
+import { UsageMeter } from './usage.ts'
 import { SourceRegistry } from '../sources/registry.ts'
 import { Commands } from '../infra/commands.ts'
 import type { Deployment, Machine } from '../deployment.ts'
@@ -66,6 +69,9 @@ export class Runtime extends Service implements SourceHost {
   readonly commands: Commands
   readonly sessions: Sessions
   readonly settings: Settings
+  readonly archive: ContextArchiver
+  /** Daily token accounting for the operator's limit; every Session the plugin drives feeds it. */
+  readonly usage = new UsageMeter()
   readonly executor: DshExecutor
   readonly assessor: MasterAssessor
   readonly outbox: Outbox
@@ -120,12 +126,19 @@ export class Runtime extends Service implements SourceHost {
         promptVersion: id => this.sessions.promptVersion(id), mayRead: (id, revision) => this.sessions.mayRead(id, revision),
         feishuPageSize: () => feishuSettings(sources).readPageSize, sourceLink: link }
       const sessions = this.sessions = new Sessions({ context: ctx, store, prompts, effects, health: board.claim('models'), masterId,
-        lifetime: this.lifetime,
+        lifetime: this.lifetime, usage: this.usage,
         closing: () => this.closing(), environment,
         tools: (agent, ticket) => ticket ? executorTools(this.toolHost, ticket) : mainTools(this.toolHost, agent) })
       const policyChanged: EngineForSettings['policyChanged'] = (from, to, effects) => { this.engine.policyChanged(from, to, effects) }
       this.settings = new Settings({ store, sources, engine: { policyChanged }, health: board, context: ctx, lifetime: this.lifetime, sessions,
         sourceHost: this, setup, requestPass: () => { this.passes.request() } })
+      const archiveHealth = board.claim('context', { state: 'ready', detail: 'No context archived yet' })
+      // Whether today's limit is reached is reported where an operator looks for why nothing new starts.
+      const budgetHealth = board.claim('budget', { state: 'ready', detail: 'No daily limit set' })
+      this.archive = new ContextArchiver({ context: ctx, managed: () => sessions.managed(),
+        budget: () => ({ percent: store.settings().budget.archivePercent, enabled: store.settings().budget.archiveEnabled }),
+        steer: (id, requestId, text) => sessions.prompt(id, requestId, text, 'steer'),
+        report: detail => archiveHealth.set({ state: 'ready', detail, at: now() }) })
       this.executor = new DshExecutor({ context: ctx, get engine() { return runtime.engine }, store, effects, health: board.claim('worker'), machine,
         lifetime: this.lifetime, sessions, closing: () => this.closing(), paused: () => this.paused(), environment, sourceLink: link,
         repliedTo: trigger => repliedTo({ store, sources }, trigger) })
@@ -154,6 +167,9 @@ export class Runtime extends Service implements SourceHost {
               : `Ticket ${event.data.ticketId} started.`
             sessions.relay(`ticket-started:${event.data.ticketId}`, text)
           }
+          // A run the operator asked to hear about speaks up once it has been going longer than they consider long, so a
+          // forgotten ticket is visible without a message per step. One per assignment, keyed so a retry says its own.
+          if (event.type === 'ticket.created' || event.type === 'assignment.started') this.watchLongTask(event.data.ticketId)
           // Notify the ticket's conversations whenever it ends via a pull request.
           const ended = event.type === 'ticket.ended' ? store.tickets.get(event.data.ticketId) : undefined
           if (ended && setup.configured()) {
@@ -163,7 +179,16 @@ export class Runtime extends Service implements SourceHost {
         } })
       // Update the `evals` health entry on every pass if an evaluation failed as unavailable within the last hour.
       const evals = board.claim('evals', { state: 'ready', detail: 'No unavailable Eval in the last hour' })
-      const evaluateDue = () => { engine.evaluateDue(); evals.set(evalsHealth(store)) }
+      const evaluateDue = () => {
+        engine.evaluateDue()
+        evals.set(evalsHealth(store))
+        // Refresh the budget entry on the same cadence, so the panel never shows a stale "no limit set" after one arrives.
+        const limit = store.settings().budget.dailyTokens
+        const { day, tokens } = runtime.usage.today()
+        budgetHealth.set(limit > 0 && tokens >= limit
+          ? { state: 'paused', detail: `${tokens} of ${limit} tokens used today (${day}); new work waits until tomorrow`, at: now() }
+          : { state: 'ready', detail: limit > 0 ? `${tokens} of ${limit} tokens used today (${day})` : `${tokens} tokens today; no limit set`, at: now() })
+      }
       const passes = this.passes = new Passes({ engine: { receive: trigger => engine.receive(trigger), evaluateDue }, effects,
         health: this.runtimeHealth, lifetime: this.lifetime, configured: () => setup.configured(), closing: () => this.closing() })
       this.sourceDeps = { store, engine, outbox, commands, sources, get ready() { return runtime.ready },
@@ -208,8 +233,38 @@ export class Runtime extends Service implements SourceHost {
   pump(): Promise<void> { return this.passes.pump() }
   sendReplies(): Promise<void> { return this.outbox.sent() }
   private closing(): boolean { return this.closingFlag }
+  /** Timers of the long-task watches in flight, cleared on shutdown so a stopping host leaves nothing running. */
+  private readonly longTasks = new Set<ReturnType<typeof setTimeout>>()
+  /**
+   * Arranges one notice for a run that is still going after `budget.longTaskMinutes`.
+   *
+   * It re-reads the ticket when the timer fires, so a run that ended is not announced and one that ended and was retried
+   * says nothing here — the retry's own `assignment.started` arms its own watch. Silent when the operator turned notices off.
+   */
+  private watchLongTask(ticketId: string): void {
+    const budget = this.store.settings().budget
+    if (!budget.notifyLongTask) return
+    const timer = setTimeout(() => {
+      this.longTasks.delete(timer)
+      const ticket = this.store.tickets.get(ticketId)
+      // Only a ticket still under way earns a notice; an ended or finished one has already reported.
+      if (!ticket || ticket.ended || !runningAssignment(ticket)) return
+      this.sessions.relay(`long-task:${ticketId}:${latestAssignment(ticket)?.id ?? ''}`,
+        `Ticket ${ticket.id} has been running for more than ${budget.longTaskMinutes} minutes: ${ticket.title}. `
+        + 'It is still working; say nothing back unless you want it stopped, and it will report when it ends.')
+    }, budget.longTaskMinutes * 60_000)
+    timer.unref?.()
+    this.longTasks.add(timer)
+  }
   /** Hold evaluation, dispatch, and outbound delivery while paused or awaiting setup; sources still record incoming triggers. */
-  private paused(): boolean { return !this.setup.configured() || this.store.settings().paused }
+  /**
+   * Whether new work is held back: setup is still pending, the operator paused processing, or today's token limit is
+   * reached. Already-running work finishes — an exceeded limit stops new dispatches, it does not cut a turn off halfway.
+   */
+  private paused(): boolean {
+    if (!this.setup.configured() || this.store.settings().paused) return true
+    return this.usage.exceeded(this.store.settings().budget.dailyTokens)
+  }
   private async initialize(): Promise<void> {
     // Register management HTTP routes before setup completes so operators can fix setup problems in the UI.
     this.disposers.push(registerHttp(this.ctx, this.httpHost()))
@@ -226,6 +281,7 @@ export class Runtime extends Service implements SourceHost {
     this.executor.resume()
     this.passes.start()
     this.effects.start()
+    this.archive.start()
     this.runtimeHealth.set({ state: 'ready', detail: 'Orchestrator is ready', at: now() })
   }
   private httpHost(): HttpHost {
@@ -241,12 +297,16 @@ export class Runtime extends Service implements SourceHost {
   stop(): Promise<void> { return this.stopping ??= this.shutdown() }
   private async shutdown(): Promise<void> {
     this.closingFlag = true; const passes = this.passes.stop(); this.stopped.abort()
+    // Stop the archiver before the Sessions are disposed: it must not start an archive on an agent being torn down.
+    const archive = this.archive?.stop()
+    for (const timer of this.longTasks) clearTimeout(timer)
+    this.longTasks.clear()
     try {
       this.assessor.stop()
       const ids = [this.masterId, ...this.store.tickets.list().map(ticket => workerSessionId(ticket.id))]
       const agents = ids.map(id => this.ctx.agents.get(id as SessionId)).filter((agent): agent is Agent => agent !== undefined)
       for (const agent of agents) agent.cancel({ kind: 'user' }, { keepInbox: true })
-      await Promise.allSettled([passes, this.effects.drain(), ...agents.map(agent => agent.whenIdle())])
+      await Promise.allSettled([passes, archive, this.effects.drain(), ...agents.map(agent => agent.whenIdle())])
       // The workers' jobs and subagents stop too: their ends would start worker turns without the tool limits released below.
       await this.executor.shutdown()
       this.executor.dispose()
