@@ -8,12 +8,16 @@ export const reference = <T>(value: T): Volatile<T> & { set(next: T): void } => 
   return { get: () => current as never, set: next => { current = next } }
 }
 export const testMachine = (overrides: Partial<Machine> = {}): Machine => ({
-  stateDir: '/tmp/dsh-superagent-test', promptMaxChars: reference(100000), admissionContextMaxPages: reference(10),
+  stateDir: '/tmp/dsh-superagent-test', isolateEnvironment: false, promptMaxChars: reference(100000), admissionContextMaxPages: reference(10),
   admissionContextTimeoutMs: reference(15000), ...overrides,
 })
+/**
+ * A resolved deployment. `token` is set because Windows binds the agent's `gh` through an isolated `GH_CONFIG_DIR` that is
+ * written from it; a CLI that only answers from an ambient GH_TOKEN has none and setup reports that.
+ */
 export const testDeployment = (overrides: Partial<Deployment> = {}): Deployment => ({
   ...testMachine(), repository: 'acme/widgets',
-  github: { cli: '/bin/false', login: 'agent-bot', noreply: '7+agent-bot@users.noreply.github.com' },
+  github: { cli: '/bin/false', login: 'agent-bot', noreply: '7+agent-bot@users.noreply.github.com', token: 'gho_testtoken' },
   feishu: { cli: '/bin/false', botId: 'ou_bot', appId: 'cli_bot', brand: 'feishu', name: 'Widgets Bot' },
   ...overrides,
 })
