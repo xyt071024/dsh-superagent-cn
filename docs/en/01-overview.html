@@ -81,7 +81,7 @@ Channel - the platform reply channel</code></pre>
 </tbody></table>
 <hr>
 <h2>3. The Three-Layer Permission Model</h2>
-<p>This is the most important design in the whole system. <strong>No message content can change permissions.</strong></p>
+<p>This is the most important design in the whole system. <strong>Who may originate work is decided by plain code and cannot be changed by message content; whether the work is taken is a model judgement and can be influenced by it.</strong> Do not read the two as one.</p>
 <h3>3.1 Layer One: Gate — Pure Code</h3>
 <pre><code>Message arrives
    ↓
