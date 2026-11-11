@@ -1,0 +1,92 @@
+# 构建与脚本语法检查。
+#
+# 源码在仓库的 `src-repo/` 子目录里：根目录是文档站与安装包，插件本体在子目录中，所以构建步骤都在那里跑。
+# 两个 job 都是「便宜的先做」：脚本语法一秒钟就能查完，构建要几分钟——语法错了就不必等构建。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # A newer push to the same branch makes an in-flight run pointless; `github.workflow` keeps this from cancelling
+  # anything else that might share the ref.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build the plugin bundle
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src-repo
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # pnpm 的版本由 src-repo/package.json 的 `packageManager` 字段钉住（pnpm@11），这里读那个字段，
+      # 免得 CI 用的 pnpm 与本地打包用的不是同一个大版本。
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: src-repo/package.json
+
+      # 没有提交 lockfile 的检出不能加 --frozen-lockfile：那会让「锁文件缺失」变成一个假装成安装失败的报错。
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build with tsdown
+        run: npx tsdown
+
+      # 构建「成功」不等于产物在。宿主按 `main` 字段解析 `lib/index.js`，它不在就等于装了个空包，
+      # 而 tsdown 在某些配置错误下会以 0 退出却什么都没写，所以这一条必须显式检查。
+      - name: Check the build output exists
+        run: |
+          test -f lib/index.js
+          echo "lib/index.js: $(wc -c < lib/index.js) bytes"
+          for entry in lib/index.js lib/client.js; do
+            if [ ! -f "$entry" ]; then
+              echo "::error file=src-repo/$entry::tsdown did not produce $entry"
+              exit 1
+            fi
+          done
+
+  lint-scripts:
+    name: Check the install scripts parse
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 安装脚本是「一条命令装好」的入口，语法错会让用户在最没有上下文的时候失败。
+      # 路径有两种可能：在本仓库里它们在根目录（发布仓库的根就是 `_publish/` 的内容），
+      # 而在工作树里它们在 `_publish/` 下。这里按实际存在的那个检查，不假设是哪一种。
+      - name: bash -n on the POSIX installer
+        run: |
+          set -eu
+          file=install.sh
+          [ -f "$file" ] || file=_publish/install.sh
+          bash -n "$file"
+          echo "bash -n $file: OK"
+
+      - name: PowerShell parser on the Windows installer
+        shell: pwsh
+        run: |
+          $file = 'install.ps1'
+          if (-not (Test-Path $file)) { $file = '_publish/install.ps1' }
+          $tokens = $null
+          $errors = $null
+          # ParseFile 只解析不执行：安装脚本会改用户环境，绝不能在这里跑起来。
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Host "::error file=$file::$($_.Message)" }
+            exit 1
+          }
+          Write-Host "PowerShell parse of $file: OK"
