@@ -3,7 +3,7 @@ import type { EngineForSources, ReceiveResult, Trigger } from '../core/index.ts'
 import type { Deployment } from '../deployment.ts'
 import type { Commands } from '../infra/commands.ts'
 import type { SetupProblem } from '../setup.ts'
-import type { SourceContext } from '../sources/host.ts'
+import type { SourceContext, Health } from '../sources/host.ts'
 import type { SourceRegistry } from '../sources/registry.ts'
 import type { Outbox } from './outbox.ts'
 import type { Store } from './store.ts'
@@ -39,16 +39,19 @@ export function sourceContextOf(deps: SourceContextDeps, kind: { kind: string; h
   // Several instances of one kind share the single entry the kind declares, so each instance's latest health is kept here
   // and the entry carries the aggregate. Without this a second account would silently overwrite the first one's state.
   const perInstance = new Map<string, Health>()
+  // Each declared entry keeps its own last value: a kind declares several (`feishu`, `history`), and one publishing must not
+  // overwrite another.
+  const declared = new Map<string, Health>()
   const publish = (): void => {
-    if (!perInstance.size) { health.get(baseEntry)?.set(health0 ?? { state: 'starting', detail: '' }); return }
+    for (const [name, value] of declared) health.get(name)?.set(value)
+    if (!perInstance.size) return
     const values = [...perInstance.entries()]
     // The worst state wins: one broken account must not read as healthy because another is fine.
     const rank: Record<Health['state'], number> = { error: 3, paused: 2, starting: 1, ready: 0 }
-    const worst = values.reduce((a, b) => rank[b[1].state] > rank[a[1].state] ? b : a)
+    const worst = values.reduce((a, b) => rank[b[1].state] > rank[a[1].state] ? b : a) as [string, Health]
     const detail = values.length === 1 ? worst[1].detail : values.map(([id, value]) => `${id}: ${value.detail}`).join(' · ')
     health.get(baseEntry)?.set({ ...worst[1], detail, instances: Object.fromEntries(values) })
   }
-  let health0: Health | undefined
   return {
     get deployment() { return deps.deployment },
     commands: deps.commands,
@@ -91,9 +94,11 @@ export function sourceContextOf(deps: SourceContextDeps, kind: { kind: string; h
      * values travel together in that entry's `instances`, and the entry itself shows the worst state of them.
      */
     report: (entry, value) => {
-      const named = kind.health.includes(entry) ? entry : baseEntry
-      if (!kind.health.includes(named)) throw new Error(`The ${kind.kind} Source has no health entry ${entry}`)
-      if (entry === named) { health0 = value; publish(); return }
+      // A suffixed instance reports under `baseEntry-<suffix>`; anything else must be an entry the kind really declares, so a
+      // typo fails loudly instead of quietly landing on the kind's own entry.
+      const named = kind.health.includes(entry) ? entry : entry.startsWith(`${baseEntry}-`) ? baseEntry : undefined
+      if (!named) throw new Error(`The ${kind.kind} Source has no health entry ${entry}`)
+      if (entry === named) { declared.set(named, value); publish(); return }
       perInstance.set(entry, value)
       publish()
     },
