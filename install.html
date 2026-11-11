@@ -41,8 +41,10 @@
 <pre><code>1. 把 profile 装到 ~/.dsh/profiles/superagent
 2. 把 stateDir 占位符替换成你的真实主目录
 3. npm install 装那一个依赖</code></pre>
-<p>约 15 秒。之后终端会打印一个带 token 的地址，形如：</p>
-<pre><code>dsh web: http://127.0.0.1:3082/?token=xxxxxxxx</code></pre>
+<p>约 15 秒。之后终端会打印一个带 token 的地址，形如（<strong>端口每次安装随机</strong>，落在 3082–3182，读你自己那行输出）：</p>
+<pre><code>dsh web: http://127.0.0.1:3118/?token=xxxxxxxx</code></pre>
+<blockquote><p>端口不设公共默认值：所有人都用同一个端口，等于给扫描器一个写好的号码，两台机器也没法并存。</p>
+<p>想固定就用 <code>--port=&lt;端口&gt;</code>（Windows：<code>-SaPort &lt;端口&gt;</code>）。</p></blockquote>
 <p>点开它。</p>
 <blockquote><p>如果之前已经装过 superagent，启动器会<strong>拒绝覆盖</strong>并提示你先移走旧的 <code>~/.dsh/profiles/superagent</code>。这是故意的：那个目录里有你的工单和设置。</p></blockquote>
 <h3>3. 配一个来源</h3>
@@ -88,7 +90,7 @@
 <hr>
 <h2>装不上时</h2>
 <table><thead><tr><th>现象</th><th>原因</th><th>怎么办</th></tr></thead><tbody>
-<tr><td><code>EADDRINUSE: 3082</code></td><td>端口被占</td><td>改 <code>cordis.patch.yml</code> 里的 <code>port</code>，或先停掉占用的进程</td></tr>
+<tr><td><code>EADDRINUSE: 3082</code></td><td>端口被占</td><td>重新跑安装器让它挑一个空闲端口，或改 <code>cordis.patch.yml</code> 里的 <code>port</code></td></tr>
 <tr><td><code>invalid config: stateDir</code></td><td>白板版漏了替换占位符</td><td>手动把 <code>cordis.patch.yml</code> 里的 <code>__STATE_DIR__</code> 换成真实绝对路径</td></tr>
 <tr><td><code>Lock file is already being held</code></td><td>上一个实例没退干净</td><td>杀掉占用端口的 node 进程再启动</td></tr>
 <tr><td><code>Cannot find module 'graceful-fs'</code></td><td>用的是早期发布的、没带依赖的包</td><td>重新下载本期包</td></tr>
