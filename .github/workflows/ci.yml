@@ -4,7 +4,8 @@
 # 两个 job 都是「便宜的先做」：脚本语法一秒钟就能查完，构建要几分钟——语法错了就不必等构建。
 name: CI
 
-on:
+# 键名加引号：YAML 1.1 的分词器会把裸 `on` 读成布尔 true，本地用 yaml 库预检或跑 linter 时会莫名其妙地报错。
+"on":
   push:
     branches: [main]
   pull_request:
@@ -39,9 +40,11 @@ jobs:
         with:
           package_json_file: src-repo/package.json
 
-      # 没有提交 lockfile 的检出不能加 --frozen-lockfile：那会让「锁文件缺失」变成一个假装成安装失败的报错。
+      # The lockfile is committed under src-repo/, so this is deterministic: a dependency change that was not meant to
+      # happen fails here instead of silently resolving something newer. If the lockfile ever goes missing, the error is
+      # about the missing lockfile, not a confusing install failure.
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Build with tsdown
         run: npx tsdown
@@ -84,9 +87,10 @@ jobs:
           $tokens = $null
           $errors = $null
           # ParseFile 只解析不执行：安装脚本会改用户环境，绝不能在这里跑起来。
-          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file), [ref]$tokens, [ref]$errors) | Out-Null
+          # 每个变量都写成 ${name}：紧跟冒号的 $name: 会被 PowerShell 当成驱动器引用（$file: 就是语法错误）。
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file).Path, [ref]$tokens, [ref]$errors) | Out-Null
           if ($errors.Count -gt 0) {
-            $errors | ForEach-Object { Write-Host "::error file=$file::$($_.Message)" }
+            $errors | ForEach-Object { Write-Host "::error file=${file}::$($_.Message)" }
             exit 1
           }
-          Write-Host "PowerShell parse of $file: OK"
+          Write-Host "PowerShell parse of ${file}: OK"
