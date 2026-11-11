@@ -66,7 +66,9 @@ describe('worker shims', () => {
     const legacy = (file: string, name: string) => writeFileSync(file, readFileSync(file, 'utf8').replace('Written by dsh-superagent', `Written by ${name}`))
     legacy(join(workerBin(dir), 'old-cli'), 'dsh-tag'); legacy(join(workerBin(dir), 'older-cli'), 'dsh-freelancer'); legacy(workerGitConfig(dir), 'dsh-go')
     await writeEnvironment(testDeployment({ stateDir: dir }), [])
-    expect(readdirSync(workerBin(dir)).sort()).toEqual(['gh', 'lark-cli'])
+    // Windows executes no `sh` shim, so there the `gh` account is bound through an isolated GH_CONFIG_DIR instead of a shim.
+    const shims = process.platform === 'win32' ? ['lark-cli'] : ['gh', 'lark-cli']
+    expect(readdirSync(workerBin(dir)).sort()).toEqual(shims)
     expect(readFileSync(workerGitConfig(dir), 'utf8')).toContain('Written by dsh-superagent')
   })
 })
