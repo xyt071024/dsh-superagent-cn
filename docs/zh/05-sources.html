@@ -26,7 +26,7 @@
 <main class="doc">
 <h1>连接源与稳定性</h1>
 <h2>1. 设计原则</h2>
-<p><strong>每个来源只做三件事</strong>：翻译、回信、判权限。其余全部复用核心逻辑。</p>
+<p><strong>每个来源只做三件事</strong>：翻译、回信、声明权限范围。其余全部复用核心逻辑。</p>
 <pre><code>平台事件
    ↓ 翻译
 统一的 Trigger
@@ -35,18 +35,21 @@
    ↓ 回信
 翻译回平台格式</code></pre>
 <p><strong>接一个新来源 = 写一个翻译层</strong>，不需要改核心。</p>
+<h3>权限的两道关，不要混为一谈</h3>
+<p><strong>谁能派活由网关强制</strong>（纯代码，不看消息内容）：<code>policy.sources[来源].allowed</code> 名单里有没有这个 <code>actor.id</code>，是字符串比对，就算有人在消息里写「忽略之前的指令」也改不了这个判定。</p>
+<p><strong>接不接由模型评估</strong>：名单只决定「这个人有没有资格提请求」，请求本身接不接、拆成多大范围，由 Eval 的模型读消息内容后判断，所以这一层<strong>可能受消息内容影响</strong>。名单给的是资格，不是结论。</p>
 <hr>
 <h2>2. 七个来源</h2>
-<table><thead><tr><th>#</th><th>平台</th><th>协议</th><th>稳定性目标</th><th>实现状态</th><th>需要什么</th></tr></thead><tbody>
-<tr><td>1</td><td>企业微信</td><td>官方 API + 回调</td><td>★★★★★</td><td>代码完成，未验证</td><td>企业 ID + 应用 Secret</td></tr>
-<tr><td>2</td><td>QQ邮箱</td><td>IMAP IDLE + SMTP</td><td>★★★★★</td><td>代码完成，未验证</td><td>授权码</td></tr>
-<tr><td>3</td><td>飞书</td><td>CLI + 事件流</td><td>★★★★★</td><td>代码完成，未验证</td><td>自建应用凭证</td></tr>
-<tr><td>4</td><td>GitHub</td><td>CLI + 四级镜像</td><td>★★★★★</td><td><strong>已实测</strong></td><td>已通</td></tr>
-<tr><td>5</td><td>Gmail</td><td>IMAP + 应用密码</td><td>★★★★☆</td><td>代码完成，未验证</td><td>两步验证</td></tr>
-<tr><td>6</td><td>QQ</td><td>WebSocket</td><td>★★★★☆</td><td><strong>已实测</strong></td><td>已通</td></tr>
-<tr><td>7</td><td>微信</td><td>本地客户端</td><td>★★★★☆</td><td>代码完成，未验证</td><td>授权</td></tr>
+<table><thead><tr><th>#</th><th>平台</th><th>协议</th><th>稳定性</th><th>实现状态</th><th>需要什么</th></tr></thead><tbody>
+<tr><td>1</td><td>企业微信</td><td>OneBot v11 HTTP（经企微桥）</td><td>未评级</td><td>代码完成，未验证</td><td>一个企微端的 OneBot 端点</td></tr>
+<tr><td>2</td><td>QQ邮箱</td><td>IMAP 轮询 + SMTP</td><td>未评级</td><td>代码完成，未验证</td><td>授权码</td></tr>
+<tr><td>3</td><td>飞书</td><td>CLI 事件流 + 历史轮询</td><td>未评级</td><td>代码完成，未验证</td><td>自建应用凭证</td></tr>
+<tr><td>4</td><td>GitHub</td><td>gh CLI 通知 + 轮询</td><td>★★★★★</td><td><strong>已实测</strong></td><td>已通</td></tr>
+<tr><td>5</td><td>Gmail</td><td>IMAP 轮询 + SMTP</td><td>未评级</td><td>代码完成，未验证</td><td>两步验证</td></tr>
+<tr><td>6</td><td>QQ</td><td>OneBot v11 HTTP</td><td>★★★★☆</td><td><strong>已实测</strong></td><td>已通</td></tr>
+<tr><td>7</td><td>微信</td><td>OneBot v11 HTTP（经微信桥）</td><td>未评级</td><td>代码完成，未验证</td><td>一个微信端的 OneBot 端点</td></tr>
 </tbody></table>
-<p><strong>「稳定性目标」是设计目标，不是实测结果。</strong> 当前只有 GitHub 和 QQ 两个源跑通并被实测过；其余四个源代码已写完，但从没在本机连通过（微信、企微零链路，飞书缺应用凭证，邮箱缺授权码）。三档状态的写法固定为 <code>已实测</code> / <code>代码完成，未验证</code> / <code>规划中</code>。</p>
+<p><strong>只有 <code>已实测</code> 的源才有评级。</strong> GitHub 与 QQ 的星级来自本机实测观察；其余五个源代码已写完，但从没在本机连通过（微信、企微零链路，飞书缺应用凭证，邮箱缺授权码），所以写 <code>未评级</code> —— 不是差评，也不是预留的好评，就是还没有证据。三档状态的写法固定为 <code>已实测</code> / <code>代码完成，未验证</code> / <code>规划中</code>。</p>
 <hr>
 <h2>3. 每个源要实现什么</h2>
 <h3>3.1 必需的三项</h3>
@@ -84,68 +87,63 @@
    ↓
 SMTP 发送</code></pre>
 <hr>
-<h2>4. 稳定性：五层加固</h2>
-<p>目标：<strong>所有来源 ≥4 星。</strong> 这是设计目标，不代表现状——当前只有 GitHub、QQ 两个源实测跑通，其余四个源的加固层尚未在真实链路上验证过。</p>
-<h3>4.1 L1 — 进程守护</h3>
-<pre><code>独立看门狗
-   ↓ 每 15 秒
-探活：进程还在吗？端口通吗？
+<h2>4. 稳定性：实际做了哪些兜底</h2>
+<p><strong>先说清楚</strong>：这一节只写代码里<strong>真的有</strong>的机制。当前只有 GitHub、QQ 两个源实测跑通，其余是 <code>未评级</code>。</p>
+<h3>4.1 轮询失败不吵人</h3>
+<p>每个源都有 <code>failuresBeforeError</code>（默认 3）：</p>
+<pre><code>这一轮失败
    ↓
-异常 → 自动重启（指数退避：5s → 10s → 20s → 40s，上限 5 分钟）
+计数 +1，等下一轮（单次网络抖动不该报警）
    ↓
-连续失败 5 次 → 停止重启，告警</code></pre>
-<p><strong>为什么要退避</strong>：不做退避的话，一个坏掉的依赖会被无限重启，反而拖垮系统。</p>
-<h3>4.2 L2 — 端口仲裁</h3>
-<pre><code>启动前检查目标端口
+连续达到 failuresBeforeError
    ↓
-被占用？
-   ├─ 是自己的僵尸进程 → 强制清理
-   ├─ 是别的程序 → 换端口或用备用端口
-   └─ 不确定 → 报告冲突，等人决定</code></pre>
-<h3>4.3 L3 — 双通道</h3>
-<p><strong>关键设计</strong>：每个来源至少有两条独立路径。</p>
-<table><thead><tr><th>来源</th><th>主通道</th><th>备通道</th></tr></thead><tbody>
-<tr><td>GitHub</td><td>API</td><td>本地 git 缓存</td></tr>
-<tr><td>微信</td><td>本地客户端协议</td><td>窗口控件读取</td></tr>
-<tr><td>邮箱</td><td>IMAP</td><td>POP3</td></tr>
-<tr><td>企微</td><td>回调</td><td>主动拉取</td></tr>
+面板标 error，写明最后一次的错误
+   ↓
+下一轮成功即恢复，计数归零</code></pre>
+<p><strong>为什么不是「一失败就报」</strong>：家用网络一次超时是常态，一失败就标红会让人对面板失去信任。</p>
+<h3>4.2 消息去重：按平台消息 ID</h3>
+<p>同一个消息可能被多轮轮询反复看到，只有之前没见过的才会变成 Trigger。</p>
+<table><thead><tr><th>源</th><th>去重依据</th><th>记住多少</th></tr></thead><tbody>
+<tr><td>GitHub</td><td>Issue/PR 评论 ID + ETag 条件请求</td><td>游标 + ETag</td></tr>
+<tr><td>QQ / 微信 / 企微</td><td><code>message_id</code></td><td>每实例最近 2000 条</td></tr>
+<tr><td>邮箱</td><td><code>Message-ID</code></td><td>每邮箱地址最近 2000 条</td></tr>
+<tr><td>飞书</td><td>每个话题的已见消息 ID 列表</td><td>按话题</td></tr>
 </tbody></table>
-<p><strong>主通道挂掉，自动切备通道。</strong></p>
-<h3>4.4 L4 — 消息去重</h3>
-<p>同一消息可能从多条路到达。用<strong>平台消息 ID</strong> 去重：</p>
-<pre><code>收到消息
-   ↓
-查 ID 缓存
-   ├─ 已处理 → 丢弃
-   └─ 新消息 → 处理，记 ID（保留 7 天）</code></pre>
-<h3>4.5 L5 — 熔断保护</h3>
-<pre><code>某来源连续失败
-   ↓ 达到阈值（默认 5 次）
-标记为「降级」
-   ↓
-行为改变：
-   · 不再尝试主动拉取
-   · 只记录不处理
-   · 面板显示橙色警告
-   ↓
-人工介入或定时探活成功后恢复</code></pre>
-<p><strong>为什么需要</strong>：一个坏掉的来源如果一直重试，会占满所有连接，拖垮其它来源。</p>
+<p><strong>每个实例各记一份</strong>，所以同一个 kind 接两个账号（<code>qq-work</code> 和 <code>qq</code>）不会互相干扰。</p>
+<h3>4.3 游标持久化</h3>
+<p>「上次读到哪」存在本地数据库里，重启不重放：</p>
+<ul>
+<li>收到消息先记游标，再变成 Trigger</li>
+<li>进程重启后从游标继续，不会把旧消息再处理一遍</li>
+<li><code>POLL_HORIZON_MS</code> 限制回看窗口，避免第一次接入时把历史全部拉出来</li>
+</ul>
+<h3>4.4 轮询间隔可调</h3>
+<table><thead><tr><th>源</th><th>默认</th><th>范围</th><th>说明</th></tr></thead><tbody>
+<tr><td>GitHub</td><td>60 秒</td><td>60–3600</td><td>带 ETag，无变化时不耗配额</td></tr>
+<tr><td>QQ / 微信 / 企微</td><td>5 秒</td><td>2–3600</td><td>OneBot 没有推送游标，只能定期读</td></tr>
+<tr><td>邮箱</td><td>120 秒</td><td>30–3600</td><td>邮件不是即时场景</td></tr>
+</tbody></table>
+<h3>4.5 没有做的</h3>
+<p>下面这些<strong>不在本仓库里</strong>，别指望它们：</p>
+<ul>
+<li><strong>进程守护 / 自动重启</strong>：宿主（DSH）活着就轮询，宿主挂了就一起停，没有独立看门狗</li>
+<li><strong>端口仲裁</strong>：装了两个实例撞端口时，第二个人起不来并报错，不会自动换端口</li>
+<li><strong>熔断降级</strong>：连续失败只改健康状态，<strong>不会停止重试</strong></li>
+<li><strong>UIAutomation 窗口读取</strong>：没有绕过协议直接读客户端界面的实现</li>
+<li><strong>多级镜像 / 自动降级</strong>：GitHub 走 <code>gh</code> CLI 自己的重试与代理配置</li>
+</ul>
+<p><strong>为什么写这一节</strong>：文档里列一堆「设计上应该有」的加固层，读者会以为装上就有。写清「没做什么」，比写满「打算做什么」有用。</p>
 <hr>
 <h2>5. 各来源详解</h2>
-<h3>5.1 企业微信（设计上最稳定）</h3>
+<h3>5.1 企业微信（同样的桥，不同的账号）</h3>
 <blockquote><p>状态：代码完成，未验证 —— 本机零链路，从未连通过，<code>/orchestrator/api/sources</code> 返回 <code>state: setup</code>。</p></blockquote>
-<p><strong>为什么说它稳</strong>：企业级官方 API，协议稳定，有完整文档。这是对协议本身的判断，不是对本机链路的验收结论。</p>
-<p><strong>两种接入方式</strong>：</p>
-<table><thead><tr><th>方式</th><th>能力</th><th>复杂度</th></tr></thead><tbody>
-<tr><td>群机器人 Webhook</td><td>只能发，不能收</td><td>极低</td></tr>
-<tr><td>应用消息 API</td><td>能收能发</td><td>中</td></tr>
+<p><strong>实际实现</strong>：企业微信走的是 <strong>OneBot v11 桥</strong>，和 QQ、微信用的是同一份代码（<code>src/sources/qq.ts</code> 的 <code>oneBotKind()</code> 工厂，<code>kind: 'wecom'</code>），只是换了名字和界面文案。它<strong>不是</strong>企微官方 API 回调 —— 本仓库里没有 <code>corpid</code> / <code>AgentId</code> / 回调地址这些字段。</p>
+<p><strong>要准备什么</strong>：</p>
+<table><thead><tr><th>项</th><th>说明</th></tr></thead><tbody>
+<tr><td>一个企微端的 OneBot 端点</td><td>形如 <code>http://127.0.0.1:PORT</code>，能响应 OneBot v11 的 HTTP action</td></tr>
+<tr><td>访问令牌（可选）</td><td>端点要求时填，作为 Bearer 头发送，不写进日志</td></tr>
 </tbody></table>
-<p><strong>推荐</strong>：应用消息 API（能收才能派活）。</p>
-<p><strong>配置项</strong>：</p>
-<pre><code>企业 ID (corpid)
-应用 Secret
-AgentId
-接收回调地址（可选，不配则轮询）</code></pre>
+<p><strong>为什么用桥而不是官方 API</strong>：一套代码能同时服务 QQ / 微信 / 企微三端，每个端各自拥有独立的白名单、游标和健康状态。代价是必须先有一个能跑的 OneBot 桥。</p>
 <h3>5.2 QQ邮箱（场景最匹配）</h3>
 <blockquote><p>状态：代码完成，未验证 —— 本机从未用真实授权码连过，<code>/orchestrator/api/sources</code> 返回 <code>state: paused</code>、<code>code: mailUnconfigured</code>。Gmail 与 QQ 邮箱共用同一份 IMAP + SMTP 实现，两者状态相同。</p></blockquote>
 <p><strong>为什么适合</strong>：邮件天然异步、带发件人、有主题可归线程。</p>
@@ -154,38 +152,36 @@ AgentId
 <tr><td>收信</td><td><code>imap.qq.com:993</code>（SSL）</td></tr>
 <tr><td>发信</td><td><code>smtp.qq.com:465</code>（SSL）</td></tr>
 <tr><td>认证</td><td><strong>授权码</strong>（不是登录密码）</td></tr>
-<tr><td>推送</td><td>IMAP IDLE（服务器主动推）</td></tr>
+<tr><td>收信方式</td><td>定时轮询（默认 120 秒一次，可配 30–3600）</td></tr>
 </tbody></table>
-<p><strong>IMAP IDLE 是关键</strong>：不用轮询，服务器有新邮件主动通知，真正零开销。</p>
+<p><strong>当前实现是轮询，不是 IDLE。</strong> 这一版自带一个够用的最小 IMAP 客户端（登录、SELECT、FETCH 最近 N 封），没有实现 IDLE 推送，所以 <code>pollSeconds</code> 到了才去拉一次。要做到「服务器主动推、真正零开销」，得在 <code>imap.ts</code> 里补 IDLE 命令与断线重连，那是下一步的事。</p>
+<p><strong>去重靠 Message-ID</strong>：同一封信在多轮轮询里会被反复看到，只有 <code>Message-ID</code> 之前没见过的才会变成 Trigger；每个邮箱地址各记一份（最近 2000 条），所以两个邮箱共用一个实现也互不干扰。</p>
 <p><strong>断线处理</strong>：</p>
-<pre><code>IDLE 连接断开
+<pre><code>这一轮轮询失败
    ↓
-立即重连（1 秒）
+计数 +1，等下一次轮询
    ↓
-重连失败 → 退避重试（5s / 15s / 60s）
+连续失败达到 failuresBeforeError（默认 3）
    ↓
-重连成功 → 用 UID 游标补拉断线期间的消息</code></pre>
+面板报 error，并写明最后一次的错误</code></pre>
+<p><strong>下一轮成功即恢复</strong>，计数归零；单次网络中断不会吵你。</p>
 <h3>5.3 飞书</h3>
 <blockquote><p>状态：代码完成，未验证 —— 上游自带实现，本机没配应用凭证（lark-cli 未 bind），<code>state: setup</code>。</p></blockquote>
 <p><strong>已有 CLI</strong>，缺应用凭证。</p>
 <p><strong>配置</strong>：需要自建应用，拿到 App ID 和 App Secret。</p>
 <p><strong>能力</strong>：事件流推送 + 消息收发。</p>
-<h3>5.4 GitHub（四级镜像）</h3>
+<h3>5.4 GitHub（gh CLI 通知 + 轮询）</h3>
 <blockquote><p>状态：<strong>已实测</strong> —— 线上 3080 实例 <code>/orchestrator/api/sources</code> 返回 <code>state: ready</code>，<code>0 notifications; next poll ≥ 60s</code>。</p></blockquote>
-<p><strong>这是本项目的关键设计</strong>，因为 GitHub 在部分地区访问不稳定。</p>
-<pre><code>第 1 级：api.github.com          直连
-    ↓ 失败
-第 2 级：加速镜像                 第三方代理
-    ↓ 失败
-第 3 级：本地 git 缓存            已 clone 的内容
-    ↓ 失败
-第 4 级：打包下载                 下载 zip 解压</code></pre>
-<p><strong>每一级失败自动降级，不需要人工干预。</strong></p>
-<p><strong>配置项</strong>：</p>
-<pre><code>☑ 主站
-☑ 镜像1（加速代理）
-☑ 镜像2（本地缓存）
-☑ 镜像3（打包下载）</code></pre>
+<p><strong>实际实现</strong>：用 <code>gh</code> CLI 的两条通道，<strong>没有内置多级镜像或自动降级</strong> —— 本仓库里没有 mirror / 代理 / 打包下载这些代码。</p>
+<table><thead><tr><th>通道</th><th>用途</th><th>周期</th></tr></thead><tbody>
+<tr><td><code>gh api notifications</code></td><td>拿未读通知（被 @、被指派、CI 失败）</td><td>默认 60 秒一轮，带 ETag 条件请求</td></tr>
+<tr><td><code>gh api repos/…/issues</code> 等轮询</td><td>补通知漏掉的新 Issue / PR / 评论</td><td>与上面同频</td></tr>
+</tbody></table>
+<p><strong>断线时</strong>：<code>gh</code> 报错会被记进健康状态并重试；连续失败才显示 <code>error</code>。网络到不了 <code>api.github.com</code> 时，靠的是<strong>把 <code>gh</code> 本身配好代理</strong>（见第 6 篇），插件不替它决定走哪条路。</p>
+<p><strong>要准备什么</strong>：</p>
+<pre><code>一个已 `gh auth login` 的 GitHub CLI
+一个有推送权限的目标仓库</code></pre>
+<p><strong>为什么不用多级镜像</strong>：镜像会带来「同一个请求走了不同路径、返回不一致」的问题，而 GitHub 的通知游标必须严格单调。<code>gh</code> CLI 自己的重试与代理配置已经覆盖了大部分网络问题，再叠一层降级逻辑只会让排查变难。</p>
 <h3>5.5 Gmail</h3>
 <blockquote><p>状态：代码完成，未验证 —— 与 QQ 邮箱共用同一份 IMAP + SMTP 实现，本机从未用真实应用密码连过，<code>state: paused</code>。</p></blockquote>
 <p><strong>技术要点</strong>：</p>
@@ -197,48 +193,34 @@ AgentId
 <p><strong>注意</strong>：Gmail 在某些地区直连会超时，必须走代理。</p>
 <h3>5.6 QQ</h3>
 <blockquote><p>状态：<strong>已实测</strong> —— 线上 3080 实例 <code>/orchestrator/api/sources</code> 返回 <code>state: ready</code>，<code>stats.received = 14</code>（真实群消息）。</p></blockquote>
-<p><strong>已有桥接</strong>，走 WebSocket。</p>
-<p><strong>加固点</strong>：</p>
+<p><strong>走 OneBot v11 的 HTTP 端点</strong>（SnowLuma / NapCat 这类实现），收信用 POST 轮询、回信也走同一个端点；不是 WebSocket 长连接，所以没有心跳保活这一层。</p>
+<p><strong>实际的加固手段</strong>：</p>
 <ul>
-<li>心跳保活（30 秒一次 ping）</li>
-<li>断线自动重连</li>
-<li>重连后补拉离线消息</li>
+<li>按 <code>message_id</code> 去重（每实例最近 2000 条），轮询反复看到同一条不会重复处理</li>
+<li>连续失败达到 <code>failuresBeforeError</code>（默认 3）才在面板报错，单次抖动不吵人</li>
+<li>群消息默认只有 @ 智能体的才算发给它；<code>observeAll</code> 打开后由策略的接收表决定</li>
+<li>每个实例一条独立轮询循环，一个端点挂了不拖慢另一个</li>
 </ul>
-<h3>5.7 微信（重点加固）</h3>
-<blockquote><p>状态：代码完成，未验证 —— 复用 OneBot 协议实现，本机没有微信端桥，<code>state: setup</code>，从未连通过。本节描述的是加固设计，不是实测结果。</p></blockquote>
-<p><strong>这是设计上最脆弱的一环，需要五层加固。</strong></p>
-<h4>为什么脆弱</h4>
-<table><thead><tr><th>问题</th><th>说明</th></tr></thead><tbody>
-<tr><td>无官方 API</td><td>只能通过本地客户端</td></tr>
-<tr><td>多进程架构</td><td>四个子进程，任一挂掉全废</td></tr>
-<tr><td>端口争抢</td><td>两个组件争同一个端口</td></tr>
-<tr><td>客户端改版</td><td>腾讯一更新就得跟</td></tr>
+<p><strong>注意</strong>：OneBot 没有推送游标，只能定期读最近消息，所以 <code>pollSeconds</code>（默认 5 秒）就是延迟上限。</p>
+<h3>5.7 微信（依赖一个微信端的 OneBot 桥）</h3>
+<blockquote><p>状态：代码完成，未验证 —— 复用 OneBot 协议实现，本机没有微信端桥，<code>state: setup</code>，从未连通过。</p></blockquote>
+<p><strong>实际实现</strong>：和 QQ、企微同一份代码（<code>oneBotKind()</code> 工厂，<code>kind: 'wechat'</code>）。本插件<strong>只做 HTTP 轮询与回信</strong>，不碰微信客户端本身 —— 桥接必须先由微信端的 OneBot 实现启动起来。</p>
+<p><strong>为什么说它最依赖外部</strong>：</p>
+<table><thead><tr><th>项</th><th>说明</th></tr></thead><tbody>
+<tr><td>协议</td><td>OneBot v11 HTTP，端点由你的微信桥提供</td></tr>
+<tr><td>前置条件</td><td>微信端必须有一个能跑的 OneBot 桥，本插件不负责拉起它</td></tr>
+<tr><td>稳定性上限</td><td>桥自己掉线，本插件只能报告状态，不能替你重启它</td></tr>
 </tbody></table>
-<h4>五层加固</h4>
-<table><thead><tr><th>层</th><th>手段</th><th>解决</th></tr></thead><tbody>
-<tr><td><strong>L1 进程守护</strong></td><td>15 秒探活，崩溃重启</td><td>进程死掉</td></tr>
-<tr><td><strong>L2 端口仲裁</strong></td><td>启动前清理僵尸进程</td><td>端口争抢</td></tr>
-<tr><td><strong>L3 双通道</strong></td><td>主通道挂 → <strong>窗口控件读取</strong></td><td>单点依赖</td></tr>
-<tr><td><strong>L4 消息去重</strong></td><td>按消息 ID 去重</td><td>重复处理</td></tr>
-<tr><td><strong>L5 熔断</strong></td><td>连续失败降级告警</td><td>拖垮全局</td></tr>
+<p><strong>本插件实际提供的兜底</strong>（都在 <code>src/sources/qq.ts</code>）：</p>
+<table><thead><tr><th>机制</th><th>行为</th></tr></thead><tbody>
+<tr><td>轮询失败重试</td><td>单次失败不报错，下一次轮询自然重试</td></tr>
+<tr><td>连续失败计数</td><td>连续 <code>failuresBeforeError</code> 次（默认 3）才把健康状态标成 <code>error</code></td></tr>
+<tr><td>消息去重</td><td>按 <code>message_id</code> 去重，每实例记住最近 2000 条</td></tr>
+<tr><td>健康状态</td><td>面板显示 <code>ready</code> / <code>error</code> / <code>setup</code>，附「几个新消息、下次轮询 ≥ N 秒」</td></tr>
 </tbody></table>
-<h4>L3 是关键：窗口控件读取</h4>
-<p><strong>原理</strong>：Windows UIAutomation 能直接读取微信窗口里的控件树（消息列表、输入框、发送按钮）。</p>
-<p><strong>优点</strong>：</p>
-<ul>
-<li>不依赖任何第三方注入</li>
-<li>不修改微信客户端</li>
-<li>不走私有协议</li>
-</ul>
-<p><strong>缺点</strong>：</p>
-<ul>
-<li>微信改版后控件结构可能变，需要适配</li>
-<li>读取速度比协议慢</li>
-</ul>
-<p><strong>为什么这样能到 4 星</strong>：有两条独立路径，一条挂了还有另一条。</p>
-<h4>为什么到不了 5 星</h4>
-<p><strong>它本质上依赖腾讯客户端的行为。</strong> 腾讯可以随时改版，我们只能跟。</p>
-<p><strong>4 星是诚实的上限</strong>，说 5 星就是骗人。</p>
+<p><strong>没有做的</strong>：进程守护、端口仲裁、熔断降级、UIAutomation 窗口读取——这些都不在本仓库里。如果你的微信桥会掉线，那是桥的问题，需要由桥自己解决。</p>
+<h4>为什么表里是 <code>未评级</code> 而不是若干星</h4>
+<p>本节链路在本机从未连通，一次都没有。给未连通的东西打星，就是在替读者做一个我没有证据的判断。</p>
 <hr>
 <h2>6. 健康状态</h2>
 <p>每个来源都报告健康状态：</p>
@@ -279,13 +261,13 @@ email    : ready</code></pre>
 <h2>8. 来源对比总结</h2>
 <table><thead><tr><th>维度</th><th>企微</th><th>QQ邮箱</th><th>飞书</th><th>GitHub</th><th>Gmail</th><th>QQ</th><th>微信</th></tr></thead><tbody>
 <tr><td><strong>实现状态</strong></td><td>代码完成，未验证</td><td>代码完成，未验证</td><td>代码完成，未验证</td><td><strong>已实测</strong></td><td>代码完成，未验证</td><td><strong>已实测</strong></td><td>代码完成，未验证</td></tr>
-<tr><td>稳定性</td><td>★★★★★</td><td>★★★★★</td><td>★★★★★</td><td>★★★★★</td><td>★★★★☆</td><td>★★★★☆</td><td>★★★★☆</td></tr>
+<tr><td>稳定性</td><td>未评级</td><td>未评级</td><td>未评级</td><td>★★★★★</td><td>未评级</td><td>★★★★☆</td><td>未评级</td></tr>
 <tr><td>接入难度</td><td>低</td><td>低</td><td>中</td><td>低</td><td>中</td><td>低</td><td>高</td></tr>
 <tr><td>需要配合</td><td>企业资质</td><td>授权码</td><td>建应用</td><td>无</td><td>两步验证</td><td>无</td><td>授权</td></tr>
 <tr><td>异步友好</td><td>中</td><td><strong>高</strong></td><td>中</td><td>中</td><td>高</td><td>低</td><td>低</td></tr>
 <tr><td>推荐度</td><td>高</td><td><strong>最高</strong></td><td>高</td><td>必备</td><td>看需求</td><td>高</td><td>备选</td></tr>
 </tbody></table>
-<p><strong>注意</strong>：上表的「稳定性」是设计目标，不是实测评级。目前实测跑通的只有 GitHub 和 QQ；标为「代码完成，未验证」的四个源，接入难度和推荐度都是按协议特性给出的判断，尚未经过本机验证。</p>
+<p><strong>「稳定性」一行只给实测过的源打分</strong>：GitHub 与 QQ 有本机观测证据，所以有星级；其余五个源写 <code>未评级</code>，因为它们在写这份文档时还没在本机连通过一次。接入难度、需要配合、异步友好和推荐度是按协议特性做出的判断，不是实测结论。</p>
 <p><strong>如果只接一个，选 QQ 邮箱</strong>：场景最匹配（异步、带发件人、可归线程）、依赖最少、协议标准。需要提醒的是，邮箱这条链路在本机还没用真实授权码连通，第一次接入需要你自己填授权码并做一次连接测试。</p>
 <hr>
 <p><a href="04-settings.html">← 上一篇：设置界面</a> | <a href="../../index.html">返回 README</a> | <a href="06-proxy.html">下一篇：代理方案 →</a></p>
