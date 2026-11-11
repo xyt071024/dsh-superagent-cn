@@ -76,7 +76,7 @@ Channel - the platform reply channel
 
 ## 3. The Three-Layer Permission Model
 
-This is the most important design in the whole system. **No message content can change permissions.**
+This is the most important design in the whole system. **Who may originate work is decided by plain code and cannot be changed by message content; whether the work is taken is a model judgement and can be influenced by it.** Do not read the two as one.
 
 ### 3.1 Layer One: Gate — Pure Code
 
