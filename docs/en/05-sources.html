@@ -37,15 +37,16 @@ Translate back into the platform format</code></pre>
 <p><strong>Adding a new Source = writing one translation layer</strong>; the core does not change.</p>
 <hr>
 <h2>2. The Seven Sources</h2>
-<table><thead><tr><th>#</th><th>Platform</th><th>Protocol</th><th>Stability target</th><th>What it needs</th></tr></thead><tbody>
-<tr><td>1</td><td>WeCom</td><td>Official API + callbacks</td><td>★★★★★</td><td>Corp ID + app Secret</td></tr>
-<tr><td>2</td><td>QQ Mail</td><td>IMAP IDLE + SMTP</td><td>★★★★★</td><td>Authorization code</td></tr>
-<tr><td>3</td><td>Feishu</td><td>CLI + event stream</td><td>★★★★★</td><td>Self-built app credentials</td></tr>
-<tr><td>4</td><td>GitHub</td><td>CLI + four-level mirror</td><td>★★★★★</td><td>Already working</td></tr>
-<tr><td>5</td><td>Gmail</td><td>IMAP + app password</td><td>★★★★☆</td><td>Two-step verification</td></tr>
-<tr><td>6</td><td>QQ</td><td>WebSocket</td><td>★★★★☆</td><td>Already working</td></tr>
-<tr><td>7</td><td>WeChat</td><td>Local client</td><td>★★★★☆</td><td>Authorization</td></tr>
+<table><thead><tr><th>#</th><th>Platform</th><th>Protocol</th><th>Stability target</th><th>Implementation status</th><th>What it needs</th></tr></thead><tbody>
+<tr><td>1</td><td>WeCom</td><td>Official API + callbacks</td><td>★★★★★</td><td>Implemented, not yet verified</td><td>Corp ID + app Secret</td></tr>
+<tr><td>2</td><td>QQ Mail</td><td>IMAP IDLE + SMTP</td><td>★★★★★</td><td>Implemented, not yet verified</td><td>Authorization code</td></tr>
+<tr><td>3</td><td>Feishu</td><td>CLI + event stream</td><td>★★★★★</td><td>Implemented, not yet verified</td><td>Self-built app credentials</td></tr>
+<tr><td>4</td><td>GitHub</td><td>CLI + four-level mirror</td><td>★★★★★</td><td><strong>Measured working</strong></td><td>Already working</td></tr>
+<tr><td>5</td><td>Gmail</td><td>IMAP + app password</td><td>★★★★☆</td><td>Implemented, not yet verified</td><td>Two-step verification</td></tr>
+<tr><td>6</td><td>QQ</td><td>WebSocket</td><td>★★★★☆</td><td><strong>Measured working</strong></td><td>Already working</td></tr>
+<tr><td>7</td><td>WeChat</td><td>Local client</td><td>★★★★☆</td><td>Implemented, not yet verified</td><td>Authorization</td></tr>
 </tbody></table>
+<p><strong>"Stability target" is a design target, not a measured result.</strong> Only GitHub and QQ are currently wired up and measured; the other four Sources have their code written but have never connected on this machine (WeChat and WeCom have no link at all, Feishu has no app credentials, email has no authorization code). The three status values are fixed as <code>Measured working</code> / <code>Implemented, not yet verified</code> / <code>Planned</code>.</p>
 <hr>
 <h2>3. What Each Source Must Implement</h2>
 <h3>3.1 The Three Essentials</h3>
@@ -84,7 +85,7 @@ Translated into an email:
 Send over SMTP</code></pre>
 <hr>
 <h2>4. Stability: Five Layers of Hardening</h2>
-<p>Goal: <strong>every Source at 4 stars or better.</strong></p>
+<p>Goal: <strong>every Source at 4 stars or better.</strong> This is a design goal, not the current state — only GitHub and QQ are measured working today, and the hardening layers of the other four Sources have not been verified on a real link.</p>
 <h3>4.1 L1 — Process Watchdog</h3>
 <pre><code>An independent watchdog
    ↓ every 15 seconds
@@ -131,8 +132,9 @@ Recovers after human intervention or a successful timed liveness probe</code></p
 <p><strong>Why it is needed</strong>: a broken Source that keeps retrying occupies every connection and drags the other Sources down.</p>
 <hr>
 <h2>5. Each Source in Detail</h2>
-<h3>5.1 WeCom (the most stable)</h3>
-<p><strong>Why it is the most stable</strong>: an enterprise-grade official API, stable protocol, complete documentation.</p>
+<h3>5.1 WeCom (the most stable by design)</h3>
+<blockquote><p>Status: Implemented, not yet verified — no link exists on this machine, it has never connected, and <code>/orchestrator/api/sources</code> returns <code>state: setup</code>.</p></blockquote>
+<p><strong>Why it is considered stable</strong>: an enterprise-grade official API, a stable protocol, complete documentation. That is a judgment about the protocol itself, not an acceptance result for the link on this machine.</p>
 <p><strong>Two ways to connect</strong>:</p>
 <table><thead><tr><th>Method</th><th>Capability</th><th>Complexity</th></tr></thead><tbody>
 <tr><td>Group bot webhook</td><td>Send only, cannot receive</td><td>Very low</td></tr>
@@ -145,6 +147,7 @@ App Secret
 AgentId
 Callback URL (optional; polling is used when it is not set)</code></pre>
 <h3>5.2 QQ Mail (the best scenario fit)</h3>
+<blockquote><p>Status: Implemented, not yet verified — a real authorization code has never been used on this machine, and <code>/orchestrator/api/sources</code> returns <code>state: paused</code>, <code>code: mailUnconfigured</code>. Gmail shares the same IMAP + SMTP implementation, so both have the same status.</p></blockquote>
 <p><strong>Why it fits</strong>: email is naturally asynchronous, carries a sender, and has a subject that can group a Thread.</p>
 <p><strong>Technical points</strong>:</p>
 <table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody>
@@ -163,10 +166,12 @@ Reconnect fails → backoff retries (5s / 15s / 60s)
    ↓
 Reconnect succeeds → catch up on messages missed during the outage via the UID cursor</code></pre>
 <h3>5.3 Feishu</h3>
+<blockquote><p>Status: Implemented, not yet verified — this comes from the upstream implementation; no app credentials are configured on this machine (lark-cli is not bound), and the source reports <code>state: setup</code>.</p></blockquote>
 <p><strong>The CLI already exists</strong>; app credentials are missing.</p>
 <p><strong>Configuration</strong>: a self-built app is required; obtain the App ID and App Secret.</p>
 <p><strong>Capability</strong>: event stream push + message send and receive.</p>
 <h3>5.4 GitHub (four-level mirror)</h3>
+<blockquote><p>Status: <strong>Measured working</strong> — the live instance on port 3080 returns <code>state: ready</code> from <code>/orchestrator/api/sources</code>, with <code>0 notifications; next poll ≥ 60s</code>.</p></blockquote>
 <p><strong>This is a key design of the project</strong>, because GitHub access is unstable in some regions.</p>
 <pre><code>Level 1: api.github.com         direct
     ↓ fails
@@ -182,6 +187,7 @@ Level 4: packaged download       download the zip and extract it</code></pre>
 ☑ Mirror 2 (local cache)
 ☑ Mirror 3 (packaged download)</code></pre>
 <h3>5.5 Gmail</h3>
+<blockquote><p>Status: Implemented, not yet verified — it shares the same IMAP + SMTP implementation as QQ Mail; a real app password has never been used on this machine, and the source reports <code>state: paused</code>.</p></blockquote>
 <p><strong>Technical points</strong>:</p>
 <table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody>
 <tr><td>Receive</td><td><code>imap.gmail.com:993</code> (SSL)</td></tr>
@@ -190,6 +196,7 @@ Level 4: packaged download       download the zip and extract it</code></pre>
 </tbody></table>
 <p><strong>Note</strong>: a direct connection to Gmail times out in some regions; a proxy is mandatory.</p>
 <h3>5.6 QQ</h3>
+<blockquote><p>Status: <strong>Measured working</strong> — the live instance on port 3080 returns <code>state: ready</code> from <code>/orchestrator/api/sources</code>, with <code>stats.received = 14</code> (real group messages).</p></blockquote>
 <p><strong>A bridge already exists</strong>, over WebSocket.</p>
 <p><strong>Hardening points</strong>:</p>
 <ul>
@@ -198,7 +205,8 @@ Level 4: packaged download       download the zip and extract it</code></pre>
 <li>Catch up on offline messages after reconnecting</li>
 </ul>
 <h3>5.7 WeChat (heavily hardened)</h3>
-<p><strong>This is the most fragile link and needs all five layers.</strong></p>
+<blockquote><p>Status: Implemented, not yet verified — it reuses the OneBot protocol implementation, there is no WeChat bridge on this machine, the source reports <code>state: setup</code>, and it has never connected. This section describes the hardening design, not a measured result.</p></blockquote>
+<p><strong>This is the most fragile link by design and needs all five layers.</strong></p>
 <h4>Why It Is Fragile</h4>
 <table><thead><tr><th>Problem</th><th>Explanation</th></tr></thead><tbody>
 <tr><td>No official API</td><td>Only the local client is available</td></tr>
@@ -237,15 +245,26 @@ Level 4: packaged download       download the zip and extract it</code></pre>
 <table><thead><tr><th>Status</th><th>Meaning</th><th>Panel color</th></tr></thead><tbody>
 <tr><td><code>ready</code></td><td>Running normally</td><td>Green</td></tr>
 <tr><td><code>starting</code></td><td>Starting up</td><td>Blue</td></tr>
+<tr><td><code>setup</code></td><td>Not fully configured yet (missing credentials or link)</td><td>Gray</td></tr>
 <tr><td><code>paused</code></td><td>Paused (configuration incomplete)</td><td>Gray</td></tr>
 <tr><td><code>error</code></td><td>Errored</td><td>Orange</td></tr>
 <tr><td><code>degraded</code></td><td>Degraded (circuit open)</td><td>Red</td></tr>
 </tbody></table>
-<p><strong>Status is broken down by component</strong>:</p>
+<p><strong>Status is broken down by component</strong> (the block below is only an illustration, not what this machine reports; see the observation table at the end of this section for that):</p>
 <pre><code>runtime  : ready     ← the host layer
 github   : error     ← the business layer; this is the one that matters
 email    : ready</code></pre>
 <p><strong>Note</strong>: <code>runtime: ready</code> does not mean the Source is fine. <strong>You must look at the business layer.</strong></p>
+<p><strong>What is actually observed on this machine</strong> (from the live instance on port 3080, <code>/orchestrator/api/sources</code>):</p>
+<table><thead><tr><th>Source</th><th>Observed state</th><th>Meaning</th></tr></thead><tbody>
+<tr><td>GitHub</td><td><code>ready</code></td><td><code>0 notifications; next poll ≥ 60s</code></td></tr>
+<tr><td>QQ</td><td><code>ready</code></td><td><code>stats.received = 14</code>, real group messages</td></tr>
+<tr><td>Email</td><td><code>paused</code></td><td><code>code: mailUnconfigured</code>, no real authorization code entered</td></tr>
+<tr><td>WeChat</td><td><code>setup</code></td><td>no WeChat bridge on this machine</td></tr>
+<tr><td>WeCom</td><td><code>setup</code></td><td>no link at all</td></tr>
+<tr><td>Feishu</td><td><code>setup</code></td><td>app credentials not configured (lark-cli not bound)</td></tr>
+</tbody></table>
+<p><code>ready</code> means the Source really is running under the current configuration; <code>paused</code> / <code>setup</code> means the code is there but the configuration is not finished — <strong>not</strong> "usable".</p>
 <hr>
 <h2>7. Adding a New Source</h2>
 <p>If you want to connect a platform this project does not support, the steps are:</p>
@@ -259,13 +278,15 @@ email    : ready</code></pre>
 <hr>
 <h2>8. Source Comparison Summary</h2>
 <table><thead><tr><th>Dimension</th><th>WeCom</th><th>QQ Mail</th><th>Feishu</th><th>GitHub</th><th>Gmail</th><th>QQ</th><th>WeChat</th></tr></thead><tbody>
+<tr><td><strong>Implementation status</strong></td><td>Implemented, not yet verified</td><td>Implemented, not yet verified</td><td>Implemented, not yet verified</td><td><strong>Measured working</strong></td><td>Implemented, not yet verified</td><td><strong>Measured working</strong></td><td>Implemented, not yet verified</td></tr>
 <tr><td>Stability</td><td>★★★★★</td><td>★★★★★</td><td>★★★★★</td><td>★★★★★</td><td>★★★★☆</td><td>★★★★☆</td><td>★★★★☆</td></tr>
 <tr><td>Setup difficulty</td><td>Low</td><td>Low</td><td>Medium</td><td>Low</td><td>Medium</td><td>Low</td><td>High</td></tr>
 <tr><td>Requires</td><td>Corp account</td><td>Auth code</td><td>An app</td><td>Nothing</td><td>Two-step verification</td><td>Nothing</td><td>Authorization</td></tr>
 <tr><td>Async friendliness</td><td>Medium</td><td><strong>High</strong></td><td>Medium</td><td>Medium</td><td>High</td><td>Low</td><td>Low</td></tr>
 <tr><td>Recommendation</td><td>High</td><td><strong>Highest</strong></td><td>High</td><td>Essential</td><td>Depends</td><td>High</td><td>Fallback</td></tr>
 </tbody></table>
-<p><strong>If you connect only one, choose QQ Mail</strong>: the best scenario fit (asynchronous, carries a sender, groups into Threads), the fewest dependencies, a standard protocol.</p>
+<p><strong>Note</strong>: the "Stability" row above is a design target, not a measured rating. Only GitHub and QQ are measured working so far; for the four Sources marked "Implemented, not yet verified", the setup difficulty and recommendation are judgments based on protocol characteristics and have not been verified on this machine.</p>
+<p><strong>If you connect only one, choose QQ Mail</strong>: the best scenario fit (asynchronous, carries a sender, groups into Threads), the fewest dependencies, a standard protocol. Note that this link has not yet been connected on this machine with a real authorization code — the first setup needs you to enter the code and run one connection test.</p>
 <hr>
 <p><a href="04-settings.html">← Previous: Settings UI</a> | <a href="../../index.html">Back to README</a> | <a href="06-proxy.html">Next: Proxy Scheme →</a></p>
 <nav class="doc-nav">
