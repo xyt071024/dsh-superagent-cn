@@ -36,8 +36,13 @@ interface Skill { name: string; description: string; content: string }
 /**
  * Maximum combined character count of system prompt and tool definitions per role (~5% above baseline).
  * Lower this limit when shrinking model-facing text; raise it only intentionally and explain why in the commit message.
+ *
+ * The orchestrator budget moved 59 000 → 59 500 when the worker preset gained an ordinary agent's tools. The main
+ * Session's own text did not grow: what grew is the JSON schema of `plugin_manager`, `ask_user_question`, `present` and
+ * `schedule_*`, which the orchestrator must still name because it validates tool arguments against them. Dropping those
+ * would mean a worker that cannot install the capability it needs, which is the point of the change.
  */
-const BUDGET: Record<Role, number> = { orchestrator: 59_000, worker: 40_500 }
+const BUDGET: Record<Role, number> = { orchestrator: 59_500, worker: 40_500 }
 const PROMPTS = 'prompts/, skills/', TOOLS = 'src/app/tools/', SESSIONS = 'src/app/sessions.ts'
 const NOTICES = 'src/app/notices.ts', LINKS = 'src/app/links.ts', ASSESSMENT = 'src/app/assessment.ts'
 const EXECUTOR = 'src/executor/dsh.ts', ERRORS = 'src/core/errors.ts'
