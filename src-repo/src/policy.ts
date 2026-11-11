@@ -108,6 +108,25 @@ export const RoutingConfigSchema = z.object({
   difficultyThreshold: z.number().int().min(LIMITS.difficultyThreshold.min).max(LIMITS.difficultyThreshold.max).default(60),
 }).strict()
 export type RoutingConfig = z.infer<typeof RoutingConfigSchema>
+/**
+ * 上下文与预算：什么时候把一轮会话归档交接、长任务要不要打断你、一天最多花多少 token。
+ *
+ * 归档按**窗口占比**触发（不是绝对 token 数），因为同一个百分比在不同模型上意味着「还剩多少余量」，
+ * 而绝对数在换模型后就说不清了。`percent` 是用户可调的：他觉得 65% 该归档就是 65%。
+ */
+export const BudgetConfigSchema = z.object({
+  /** 按窗口占比自动归档并交接给新的上下文。 */
+  archiveEnabled: z.boolean().default(true),
+  /** 到了窗口的百分之多少就归档；下限 20，避免刚开个头就归档。 */
+  archivePercent: z.number().int().min(LIMITS.archivePercent.min).max(LIMITS.archivePercent.max).default(65),
+  /** 长任务要不要告诉用户；关掉就只在结束时说一次。 */
+  notifyLongTask: z.boolean().default(true),
+  /** 一个工单跑超过多少分钟算长任务。 */
+  longTaskMinutes: z.number().int().min(LIMITS.longTaskMinutes.min).max(LIMITS.longTaskMinutes.max).default(10),
+  /** 每天的 token 上限；0 表示不限。超了不再派新活，但已经在跑的跑完。 */
+  dailyTokens: z.number().int().min(0).default(0),
+}).strict()
+export type BudgetConfig = z.infer<typeof BudgetConfigSchema>
 export const EvalConfigSchema = z.object({
   mode: z.enum(['off', 'observe', 'auto']).default('observe'),
   timeoutSeconds: z.number().int().min(LIMITS.evalTimeoutSeconds.min).max(LIMITS.evalTimeoutSeconds.max).default(120),
@@ -131,9 +150,10 @@ export const SettingsSchema = z.object({
   eval: EvalConfigSchema.default(() => EvalConfigSchema.parse({})),
   executor: ExecutorConfigSchema.default(() => ExecutorConfigSchema.parse({})),
   routing: RoutingConfigSchema.default(() => RoutingConfigSchema.parse({})),
+  budget: BudgetConfigSchema.default(() => BudgetConfigSchema.parse({})),
 }).strict()
 export type Settings = z.infer<typeof SettingsSchema>
-export type SettingsBlock = 'policy' | 'eval' | 'executor' | 'routing' | `source:${string}`
+export type SettingsBlock = 'policy' | 'eval' | 'executor' | 'routing' | 'budget' | `source:${string}`
 export type SettingsSave = SettingsBlock | 'pause'
 export type SettingsOrigin = 'panel' | 'tool' | 'sync'
 
