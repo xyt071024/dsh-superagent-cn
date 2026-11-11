@@ -26,7 +26,7 @@
 <main class="doc">
 <h1>Sources and Stability</h1>
 <h2>1. Design Principle</h2>
-<p><strong>Each Source does only three things</strong>: translate, reply, judge permissions. Everything else reuses the core logic.</p>
+<p><strong>Each Source does only three things</strong>: translate, reply, declare its permission scope. Everything else reuses the core logic.</p>
 <pre><code>Platform event
    ↓ translate
 Unified Trigger
@@ -35,18 +35,21 @@ Unified Trigger
    ↓ reply
 Translate back into the platform format</code></pre>
 <p><strong>Adding a new Source = writing one translation layer</strong>; the core does not change.</p>
+<h3>Two gates of permission, not one</h3>
+<p><strong>Who may assign work is enforced by the gateway</strong> (pure code, it never reads message content): whether this <code>actor.id</code> appears in the <code>policy.sources[source].allowed</code> list is a string comparison, so a message saying "ignore previous instructions" cannot change that verdict.</p>
+<p><strong>Whether the request is taken on is decided by the model's assessment</strong>: the list only decides whether this person is <em>entitled</em> to make a request. Whether to accept it, and how large a scope to cut, is judged by the Eval model after reading the message — so that layer <strong>can be influenced by message content</strong>. The list grants standing, not a verdict.</p>
 <hr>
 <h2>2. The Seven Sources</h2>
-<table><thead><tr><th>#</th><th>Platform</th><th>Protocol</th><th>Stability target</th><th>Implementation status</th><th>What it needs</th></tr></thead><tbody>
-<tr><td>1</td><td>WeCom</td><td>Official API + callbacks</td><td>★★★★★</td><td>Implemented, not yet verified</td><td>Corp ID + app Secret</td></tr>
-<tr><td>2</td><td>QQ Mail</td><td>IMAP IDLE + SMTP</td><td>★★★★★</td><td>Implemented, not yet verified</td><td>Authorization code</td></tr>
-<tr><td>3</td><td>Feishu</td><td>CLI + event stream</td><td>★★★★★</td><td>Implemented, not yet verified</td><td>Self-built app credentials</td></tr>
-<tr><td>4</td><td>GitHub</td><td>CLI + four-level mirror</td><td>★★★★★</td><td><strong>Measured working</strong></td><td>Already working</td></tr>
-<tr><td>5</td><td>Gmail</td><td>IMAP + app password</td><td>★★★★☆</td><td>Implemented, not yet verified</td><td>Two-step verification</td></tr>
-<tr><td>6</td><td>QQ</td><td>WebSocket</td><td>★★★★☆</td><td><strong>Measured working</strong></td><td>Already working</td></tr>
-<tr><td>7</td><td>WeChat</td><td>Local client</td><td>★★★★☆</td><td>Implemented, not yet verified</td><td>Authorization</td></tr>
+<table><thead><tr><th>#</th><th>Platform</th><th>Protocol</th><th>Stability</th><th>Implementation status</th><th>What it needs</th></tr></thead><tbody>
+<tr><td>1</td><td>WeCom</td><td>OneBot v11 HTTP (via a WeCom bridge)</td><td>Not rated</td><td>Implemented, not yet verified</td><td>A OneBot endpoint on the WeCom side</td></tr>
+<tr><td>2</td><td>QQ Mail</td><td>IMAP polling + SMTP</td><td>Not rated</td><td>Implemented, not yet verified</td><td>Authorization code</td></tr>
+<tr><td>3</td><td>Feishu</td><td>CLI event stream + history polling</td><td>Not rated</td><td>Implemented, not yet verified</td><td>Self-built app credentials</td></tr>
+<tr><td>4</td><td>GitHub</td><td>gh CLI notifications + polling</td><td>★★★★★</td><td><strong>Measured working</strong></td><td>Already working</td></tr>
+<tr><td>5</td><td>Gmail</td><td>IMAP polling + SMTP</td><td>Not rated</td><td>Implemented, not yet verified</td><td>Two-step verification</td></tr>
+<tr><td>6</td><td>QQ</td><td>OneBot v11 HTTP</td><td>★★★★☆</td><td><strong>Measured working</strong></td><td>Already working</td></tr>
+<tr><td>7</td><td>WeChat</td><td>OneBot v11 HTTP (via a WeChat bridge)</td><td>Not rated</td><td>Implemented, not yet verified</td><td>A OneBot endpoint on the WeChat side</td></tr>
 </tbody></table>
-<p><strong>"Stability target" is a design target, not a measured result.</strong> Only GitHub and QQ are currently wired up and measured; the other four Sources have their code written but have never connected on this machine (WeChat and WeCom have no link at all, Feishu has no app credentials, email has no authorization code). The three status values are fixed as <code>Measured working</code> / <code>Implemented, not yet verified</code> / <code>Planned</code>.</p>
+<p><strong>Only a <code>Measured working</code> Source carries a rating.</strong> The GitHub and QQ stars come from observation on this machine; the other five have their code written but have never connected here (WeChat and WeCom have no link at all, the mailboxes have no authorization code), so they read <code>Not rated</code> — not a bad score, not a reserved good one, simply no evidence yet. The three status values are fixed as <code>Measured working</code> / <code>Implemented, not yet verified</code> / <code>Planned</code>.</p>
 <hr>
 <h2>3. What Each Source Must Implement</h2>
 <h3>3.1 The Three Essentials</h3>
@@ -84,52 +87,52 @@ Translated into an email:
    ↓
 Send over SMTP</code></pre>
 <hr>
-<h2>4. Stability: Five Layers of Hardening</h2>
-<p>Goal: <strong>every Source at 4 stars or better.</strong> This is a design goal, not the current state — only GitHub and QQ are measured working today, and the hardening layers of the other four Sources have not been verified on a real link.</p>
-<h3>4.1 L1 — Process Watchdog</h3>
-<pre><code>An independent watchdog
-   ↓ every 15 seconds
-Liveness probe: is the process alive? is the port reachable?
+<h2>4. Stability: what is actually built in</h2>
+<p><strong>To be clear up front</strong>: this section lists only the mechanisms that exist in the code. Only GitHub and QQ are measured working today; the rest are <code>Not rated</code>.</p>
+<h3>4.1 A failing poll does not shout</h3>
+<p>Every Source has <code>failuresBeforeError</code> (3 by default):</p>
+<pre><code>One round fails
    ↓
-Abnormal → automatic restart (exponential backoff: 5s → 10s → 20s → 40s, cap 5 minutes)
+count +1, wait for the next round (a single network blip should not raise an alarm)
    ↓
-5 consecutive failures → stop restarting, raise an alarm</code></pre>
-<p><strong>Why backoff</strong>: without it, one broken dependency gets restarted endlessly and drags the whole system down.</p>
-<h3>4.2 L2 — Port Arbitration</h3>
-<pre><code>Check the target port before starting
+failuresBeforeError reached in a row
    ↓
-In use?
-   ├─ our own zombie process → force cleanup
-   ├─ another program → switch ports or use a spare port
-   └─ unsure → report the conflict and wait for a human decision</code></pre>
-<h3>4.3 L3 — Dual Channel</h3>
-<p><strong>Key design</strong>: every Source has at least two independent paths.</p>
-<table><thead><tr><th>Source</th><th>Primary channel</th><th>Backup channel</th></tr></thead><tbody>
-<tr><td>GitHub</td><td>API</td><td>Local git cache</td></tr>
-<tr><td>WeChat</td><td>Local client protocol</td><td>Window control reading</td></tr>
-<tr><td>Email</td><td>IMAP</td><td>POP3</td></tr>
-<tr><td>WeCom</td><td>Callbacks</td><td>Active polling</td></tr>
+the panel shows error with the last error text
+   ↓
+the next successful round recovers and resets the count</code></pre>
+<p><strong>Why not alert on the first failure</strong>: one timeout is normal on a home network, and a panel that cries wolf stops being trusted.</p>
+<h3>4.2 Deduplication by platform message ID</h3>
+<p>The same message is seen again by later polls; only one not seen before becomes a Trigger.</p>
+<table><thead><tr><th>Source</th><th>Key</th><th>Remembers</th></tr></thead><tbody>
+<tr><td>GitHub</td><td>Issue/PR comment ID + ETag conditional requests</td><td>cursor + ETag</td></tr>
+<tr><td>QQ / WeChat / WeCom</td><td>message_id</td><td>last 2000 per instance</td></tr>
+<tr><td>Mailboxes</td><td>Message-ID</td><td>last 2000 per address</td></tr>
+<tr><td>Feishu</td><td>seen message IDs per topic</td><td>per topic</td></tr>
 </tbody></table>
-<p><strong>If the primary channel dies, it switches to the backup automatically.</strong></p>
-<h3>4.4 L4 — Message Deduplication</h3>
-<p>The same message may arrive over several paths. Deduplicate by <strong>platform message ID</strong>:</p>
-<pre><code>Message received
-   ↓
-Look up the ID cache
-   ├─ already processed → drop
-   └─ new message → process, remember the ID (kept 7 days)</code></pre>
-<h3>4.5 L5 — Circuit Breaker</h3>
-<pre><code>A Source keeps failing
-   ↓ threshold reached (5 by default)
-Marked "degraded"
-   ↓
-Behavior changes:
-   · no further active polling attempts
-   · record only, do not process
-   · the panel shows an orange warning
-   ↓
-Recovers after human intervention or a successful timed liveness probe</code></pre>
-<p><strong>Why it is needed</strong>: a broken Source that keeps retrying occupies every connection and drags the other Sources down.</p>
+<p><strong>Each instance keeps its own</strong>, so one kind carrying two accounts (qq-work and qq) does not interfere with itself.</p>
+<h3>4.3 Durable cursors</h3>
+<p>Where reading stopped is stored in the local database, so a restart does not replay:</p>
+<ul>
+<li>the cursor is recorded before a message becomes a Trigger</li>
+<li>after a restart it continues from the cursor instead of reprocessing old messages</li>
+<li>POLL_HORIZON_MS bounds the look-back so a first connection does not pull in the whole history</li>
+</ul>
+<h3>4.4 Polling intervals are configurable</h3>
+<table><thead><tr><th>Source</th><th>Default</th><th>Range</th><th>Note</th></tr></thead><tbody>
+<tr><td>GitHub</td><td>60 s</td><td>60-3600</td><td>ETag means no change costs no quota</td></tr>
+<tr><td>QQ / WeChat / WeCom</td><td>5 s</td><td>2-3600</td><td>OneBot has no push cursor, so recent messages are read on an interval</td></tr>
+<tr><td>Mailboxes</td><td>120 s</td><td>30-3600</td><td>Mail is not an instant medium</td></tr>
+</tbody></table>
+<h3>4.5 What is not built</h3>
+<p>None of the following is in this repository, so do not count on it:</p>
+<ul>
+<li><strong>Process watchdog / auto-restart</strong>: the Source polls while the host (DSH) runs and stops with it; there is no independent supervisor</li>
+<li><strong>Port arbitration</strong>: two instances on one port means the second one fails to start and says so; it does not pick another port</li>
+<li><strong>Circuit breaking</strong>: repeated failures only change the health state, they do not stop retries</li>
+<li><strong>UIAutomation window reading</strong>: there is no path that reads the client UI instead of speaking the protocol</li>
+<li><strong>Multi-level mirrors / automatic failover</strong>: GitHub goes through the gh CLI's own retries and proxy configuration</li>
+</ul>
+<p><strong>Why this section exists</strong>: a document listing layers that "should" be there reads as if they arrive with the install. Saying what is missing is more useful than listing what is planned.</p>
 <hr>
 <h2>5. Each Source in Detail</h2>
 <h3>5.1 WeCom (the most stable by design)</h3>
@@ -154,17 +157,19 @@ Callback URL (optional; polling is used when it is not set)</code></pre>
 <tr><td>Receive</td><td><code>imap.qq.com:993</code> (SSL)</td></tr>
 <tr><td>Send</td><td><code>smtp.qq.com:465</code> (SSL)</td></tr>
 <tr><td>Auth</td><td><strong>Authorization code</strong> (not the login password)</td></tr>
-<tr><td>Push</td><td>IMAP IDLE (the server pushes)</td></tr>
+<tr><td>Read mode</td><td>Polling on an interval (120s by default, configurable 30–3600)</td></tr>
 </tbody></table>
-<p><strong>IMAP IDLE is the key</strong>: no polling; the server notifies on new mail, so the overhead is genuinely zero.</p>
-<p><strong>Disconnection handling</strong>:</p>
-<pre><code>The IDLE connection drops
+<p><strong>The current implementation polls; it does not use IDLE.</strong> This version ships a minimal IMAP client that is enough for the job (sign in, SELECT, FETCH the newest N messages) and does not implement IDLE push, so mail is read when <code>pollSeconds</code> elapses. Genuine server push with no polling requires adding the IDLE command and its reconnect handling to <code>imap.ts</code>; that is future work.</p>
+<p><strong>Deduplication is by Message-ID</strong>: the same mail is seen again on every poll, so only a <code>Message-ID</code> not seen before becomes a Trigger. Each mailbox keeps its own record (the newest 2000 ids), so two mailboxes sharing one implementation never interfere.</p>
+<p><strong>Failure handling</strong>:</p>
+<pre><code>A poll fails
    ↓
-Reconnect immediately (1 second)
+count +1, wait for the next interval
    ↓
-Reconnect fails → backoff retries (5s / 15s / 60s)
+consecutive failures reach failuresBeforeError (3 by default)
    ↓
-Reconnect succeeds → catch up on messages missed during the outage via the UID cursor</code></pre>
+the panel reports error and names the last error</code></pre>
+<p><strong>One successful poll resets the count</strong>, so a single network interruption stays quiet.</p>
 <h3>5.3 Feishu</h3>
 <blockquote><p>Status: Implemented, not yet verified — this comes from the upstream implementation; no app credentials are configured on this machine (lark-cli is not bound), and the source reports <code>state: setup</code>.</p></blockquote>
 <p><strong>The CLI already exists</strong>; app credentials are missing.</p>
@@ -197,49 +202,34 @@ Level 4: packaged download       download the zip and extract it</code></pre>
 <p><strong>Note</strong>: a direct connection to Gmail times out in some regions; a proxy is mandatory.</p>
 <h3>5.6 QQ</h3>
 <blockquote><p>Status: <strong>Measured working</strong> — the live instance on port 3080 returns <code>state: ready</code> from <code>/orchestrator/api/sources</code>, with <code>stats.received = 14</code> (real group messages).</p></blockquote>
-<p><strong>A bridge already exists</strong>, over WebSocket.</p>
-<p><strong>Hardening points</strong>:</p>
+<p><strong>It goes through a OneBot v11 HTTP endpoint</strong> (an implementation such as SnowLuma or NapCat): reading posts a poll and replying uses the same endpoint. It is not a WebSocket long connection, so there is no keepalive-heartbeat layer.</p>
+<p><strong>What actually hardens it</strong>:</p>
 <ul>
-<li>Keepalive heartbeat (one ping every 30 seconds)</li>
-<li>Automatic reconnect on disconnect</li>
-<li>Catch up on offline messages after reconnecting</li>
+<li>Deduplication by <code>message_id</code> (the newest 2000 per instance), so a message seen again on the next poll is not processed twice</li>
+<li>The panel reports an error only after <code>failuresBeforeError</code> consecutive failures (3 by default), so a single blip stays quiet</li>
+<li>In a group only a message that @s the agent counts by default; with <code>observeAll</code> on, the Policy's admission table decides</li>
+<li>Each instance runs its own polling loop, so a dead endpoint never slows a live one</li>
 </ul>
-<h3>5.7 WeChat (heavily hardened)</h3>
-<blockquote><p>Status: Implemented, not yet verified — it reuses the OneBot protocol implementation, there is no WeChat bridge on this machine, the source reports <code>state: setup</code>, and it has never connected. This section describes the hardening design, not a measured result.</p></blockquote>
-<p><strong>This is the most fragile link by design and needs all five layers.</strong></p>
-<h4>Why It Is Fragile</h4>
-<table><thead><tr><th>Problem</th><th>Explanation</th></tr></thead><tbody>
-<tr><td>No official API</td><td>Only the local client is available</td></tr>
-<tr><td>Multi-process architecture</td><td>Four child processes; any one dying kills the whole thing</td></tr>
-<tr><td>Port contention</td><td>Two components fight over the same port</td></tr>
-<tr><td>Client redesigns</td><td>Every Tencent update has to be followed</td></tr>
+<p><strong>Note</strong>: OneBot offers no push cursor, so recent messages are read on an interval and <code>pollSeconds</code> (5s by default) is the latency ceiling.</p>
+<h3>5.7 WeChat (depends on a OneBot bridge on the WeChat side)</h3>
+<blockquote><p>Status: implemented, not yet verified — it reuses the OneBot protocol implementation, this machine has no WeChat bridge, <code>state: setup</code>, and it has never connected.</p></blockquote>
+<p><strong>What it actually is</strong>: the same code as QQ and WeCom (the <code>oneBotKind()</code> factory, <code>kind: 'wechat'</code>). This plugin <strong>only polls over HTTP and sends replies</strong>; it does not touch the WeChat client. The bridge has to be started by a OneBot implementation on the WeChat side first.</p>
+<p><strong>Why it depends on something external the most</strong>:</p>
+<table><thead><tr><th>Item</th><th>Note</th></tr></thead><tbody>
+<tr><td>Protocol</td><td>OneBot v11 HTTP, endpoint provided by your WeChat bridge</td></tr>
+<tr><td>Prerequisite</td><td>A working OneBot bridge on the WeChat side; this plugin does not start one</td></tr>
+<tr><td>Ceiling</td><td>If the bridge drops, this plugin can only report the state, not restart it for you</td></tr>
 </tbody></table>
-<h4>Five Layers of Hardening</h4>
-<table><thead><tr><th>Layer</th><th>Means</th><th>Solves</th></tr></thead><tbody>
-<tr><td><strong>L1 watchdog</strong></td><td>15-second liveness probe, restart on crash</td><td>The process dying</td></tr>
-<tr><td><strong>L2 port arbitration</strong></td><td>Clean up zombie processes before starting</td><td>Port contention</td></tr>
-<tr><td><strong>L3 dual channel</strong></td><td>Primary dies → <strong>window control reading</strong></td><td>Single-point dependency</td></tr>
-<tr><td><strong>L4 deduplication</strong></td><td>Deduplicate by message ID</td><td>Duplicate processing</td></tr>
-<tr><td><strong>L5 circuit breaker</strong></td><td>Degrade and alarm after repeated failures</td><td>Dragging down everything</td></tr>
+<p><strong>What this plugin does provide</strong> (all in <code>src/sources/qq.ts</code>):</p>
+<table><thead><tr><th>Mechanism</th><th>Behaviour</th></tr></thead><tbody>
+<tr><td>Retry on a failed poll</td><td>a single failure raises nothing; the next poll simply tries again</td></tr>
+<tr><td>Consecutive-failure count</td><td>only after <code>failuresBeforeError</code> in a row (3 by default) does health become <code>error</code></td></tr>
+<tr><td>Deduplication</td><td>by <code>message_id</code>, last 2000 remembered per instance</td></tr>
+<tr><td>Health state</td><td>the panel shows <code>ready</code> / <code>error</code> / <code>setup</code> with "N new messages, next poll in ≥ N s"</td></tr>
 </tbody></table>
-<h4>L3 Is the Key: Window Control Reading</h4>
-<p><strong>Principle</strong>: Windows UIAutomation can read the control tree inside the WeChat window directly (message list, input box, send button).</p>
-<p><strong>Advantages</strong>:</p>
-<ul>
-<li>No third-party injection required</li>
-<li>The WeChat client is not modified</li>
-<li>No private protocol is used</li>
-</ul>
-<p><strong>Disadvantages</strong>:</p>
-<ul>
-<li>The control structure may change after a WeChat redesign and needs adapting</li>
-<li>Reading is slower than a protocol</li>
-</ul>
-<p><strong>Why this reaches 4 stars</strong>: there are two independent paths; if one dies, the other remains.</p>
-<h4>Why It Cannot Reach 5 Stars</h4>
-<p><strong>It fundamentally depends on the behavior of Tencent's client.</strong> Tencent can redesign at any time; we can only follow.</p>
-<p><strong>4 stars is the honest ceiling</strong>; claiming 5 would be a lie.</p>
-<hr>
+<p><strong>What is not built</strong>: process supervision, port arbitration, circuit breaking, UIAutomation window reading — none of these is in this repository. If your WeChat bridge drops, that is the bridge's problem to solve.</p>
+<h4>Why the table says <code>Not rated</code> rather than some number of stars</h4>
+<p>This path has never connected on this machine, not once. Putting stars on something unmeasured means making a judgement on the reader's behalf that I have no evidence for.</p>
 <h2>6. Health Status</h2>
 <p>Every Source reports a health status:</p>
 <table><thead><tr><th>Status</th><th>Meaning</th><th>Panel color</th></tr></thead><tbody>
@@ -279,13 +269,13 @@ email    : ready</code></pre>
 <h2>8. Source Comparison Summary</h2>
 <table><thead><tr><th>Dimension</th><th>WeCom</th><th>QQ Mail</th><th>Feishu</th><th>GitHub</th><th>Gmail</th><th>QQ</th><th>WeChat</th></tr></thead><tbody>
 <tr><td><strong>Implementation status</strong></td><td>Implemented, not yet verified</td><td>Implemented, not yet verified</td><td>Implemented, not yet verified</td><td><strong>Measured working</strong></td><td>Implemented, not yet verified</td><td><strong>Measured working</strong></td><td>Implemented, not yet verified</td></tr>
-<tr><td>Stability</td><td>★★★★★</td><td>★★★★★</td><td>★★★★★</td><td>★★★★★</td><td>★★★★☆</td><td>★★★★☆</td><td>★★★★☆</td></tr>
+<tr><td>Stability</td><td>Not rated</td><td>Not rated</td><td>Not rated</td><td>★★★★★</td><td>Not rated</td><td>★★★★☆</td><td>Not rated</td></tr>
 <tr><td>Setup difficulty</td><td>Low</td><td>Low</td><td>Medium</td><td>Low</td><td>Medium</td><td>Low</td><td>High</td></tr>
 <tr><td>Requires</td><td>Corp account</td><td>Auth code</td><td>An app</td><td>Nothing</td><td>Two-step verification</td><td>Nothing</td><td>Authorization</td></tr>
 <tr><td>Async friendliness</td><td>Medium</td><td><strong>High</strong></td><td>Medium</td><td>Medium</td><td>High</td><td>Low</td><td>Low</td></tr>
 <tr><td>Recommendation</td><td>High</td><td><strong>Highest</strong></td><td>High</td><td>Essential</td><td>Depends</td><td>High</td><td>Fallback</td></tr>
 </tbody></table>
-<p><strong>Note</strong>: the "Stability" row above is a design target, not a measured rating. Only GitHub and QQ are measured working so far; for the four Sources marked "Implemented, not yet verified", the setup difficulty and recommendation are judgments based on protocol characteristics and have not been verified on this machine.</p>
+<p><strong>The "Stability" row rates measured Sources only</strong>: GitHub and QQ have observations from this machine and therefore carry stars; the other five read <code>Not rated</code> because they had not connected here even once when this was written. Setup difficulty, Requirements, Async friendliness and Recommendation are judgments based on protocol characteristics, not measured results.</p>
 <p><strong>If you connect only one, choose QQ Mail</strong>: the best scenario fit (asynchronous, carries a sender, groups into Threads), the fewest dependencies, a standard protocol. Note that this link has not yet been connected on this machine with a real authorization code — the first setup needs you to enter the code and run one connection test.</p>
 <hr>
 <p><a href="04-settings.html">← Previous: Settings UI</a> | <a href="../../index.html">Back to README</a> | <a href="06-proxy.html">Next: Proxy Scheme →</a></p>
