@@ -34,11 +34,14 @@
 3. npm install 装那一个依赖
 ```
 
-约 15 秒。之后终端会打印一个带 token 的地址，形如：
+约 15 秒。之后终端会打印一个带 token 的地址，形如（**端口每次安装随机**，落在 3082–3182，读你自己那行输出）：
 
 ```
-dsh web: http://127.0.0.1:3082/?token=xxxxxxxx
+dsh web: http://127.0.0.1:3118/?token=xxxxxxxx
 ```
+
+> 端口不设公共默认值：所有人都用同一个端口，等于给扫描器一个写好的号码，两台机器也没法并存。
+> 想固定就用 `--port=<端口>`（Windows：`-SaPort <端口>`）。
 
 点开它。
 
@@ -123,7 +126,7 @@ superagent 会往**进程级** `PATH` 里插入一个目录，里面放着 `gh` 
 
 | 现象 | 原因 | 怎么办 |
 |---|---|---|
-| `EADDRINUSE: 3082` | 端口被占 | 改 `cordis.patch.yml` 里的 `port`，或先停掉占用的进程 |
+| `EADDRINUSE: 3082` | 端口被占 | 重新跑安装器让它挑一个空闲端口，或改 `cordis.patch.yml` 里的 `port` |
 | `invalid config: stateDir` | 白板版漏了替换占位符 | 手动把 `cordis.patch.yml` 里的 `__STATE_DIR__` 换成真实绝对路径 |
 | `Lock file is already being held` | 上一个实例没退干净 | 杀掉占用端口的 node 进程再启动 |
 | `Cannot find module 'graceful-fs'` | 用的是早期发布的、没带依赖的包 | 重新下载本期包 |
