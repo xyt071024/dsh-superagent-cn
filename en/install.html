@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Install · Super Agent</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="brand">
+      <span class="logo">◆</span>
+      <span class="brand-name">Super Agent</span>
+      <span class="brand-sub">for DeepSeek Harness</span>
+    </div>
+    <nav class="lang-switch" aria-label="Language"><details class="lang-menu"><summary>English</summary><div class="lang-list"><a href="../install.html" data-lang="zh">中文</a><a href="../ja/install.html" data-lang="ja">日本語</a></div></details></nav>
+  </div>
+</header>
+
+<main class="doc">
+<h1>安装</h1>
+<p>两种形态，任选一种。<strong>都需要先装 Node.js 22.19 或更新版本</strong>（https://nodejs.org）。</p>
+<hr>
+<h2>方式一：白板版（解压即用，推荐）</h2>
+<p>不用先装 DSH。这份包自带 profile 配置，第一次启动会把它装到正确位置并拉取唯一一个依赖。</p>
+<h3>1. 下载</h3>
+<table><thead><tr><th>版本</th><th>下载</th></tr></thead><tbody>
+<tr><td>稳定版</td><td><a href="https://xyt071024.github.io/dsh-superagent-cn/releases/dl/superagent-native-stable.zip">superagent-native-stable.zip</a>（1.7 MB）</td></tr>
+<tr><td>破甲版</td><td><a href="https://xyt071024.github.io/dsh-superagent-cn/releases/dl/superagent-native-purge.zip">superagent-native-purge.zip</a>（1.7 MB）</td></tr>
+</tbody></table>
+<p>两版的区别只在破甲版额外依赖 <code>dsh-purge-community</code> 并需要多跑一次 <code>dsh purge apply</code>。其余完全相同。</p>
+<h3>2. 解压并启动</h3>
+<p>解压到任意目录（<strong>解压目录放哪都行</strong>，启动后不再依赖它）。</p>
+<table><thead><tr><th>系统</th><th>启动</th></tr></thead><tbody>
+<tr><td>Windows</td><td>双击 <code>start.cmd</code></td></tr>
+<tr><td>macOS / Linux</td><td><code>chmod +x start.sh &amp;&amp; ./start.sh</code></td></tr>
+</tbody></table>
+<p>第一次启动会做三件事，都是自动的：</p>
+<pre><code>1. 把 profile 装到 ~/.dsh/profiles/superagent
+2. 把 stateDir 占位符替换成你的真实主目录
+3. npm install 装那一个依赖</code></pre>
+<p>约 15 秒。之后终端会打印一个带 token 的地址，形如：</p>
+<pre><code>dsh web: http://127.0.0.1:3082/?token=xxxxxxxx</code></pre>
+<p>点开它。</p>
+<blockquote><p>如果之前已经装过 superagent，启动器会<strong>拒绝覆盖</strong>并提示你先移走旧的 <code>~/.dsh/profiles/superagent</code>。这是故意的：那个目录里有你的工单和设置。</p></blockquote>
+<h3>3. 配一个来源</h3>
+<p>打开面板 → 左侧 <strong>Superagent</strong> → <strong>设置</strong> → <strong>来源</strong>，挑一个配：</p>
+<table><thead><tr><th>来源</th><th>要准备什么</th><th>状态会变成</th></tr></thead><tbody>
+<tr><td><strong>QQ</strong></td><td>一个 OneBot v11 端点地址 + 访问令牌（如 SnowLuma、NapCat）</td><td>运行中</td></tr>
+<tr><td><strong>邮箱</strong></td><td>QQ 邮箱/Gmail 地址 + <strong>授权码</strong>（不是登录密码）</td><td>运行中</td></tr>
+<tr><td><strong>GitHub</strong></td><td>一个能推送到目标仓库的 <code>gh</code> 登录</td><td>运行中</td></tr>
+</tbody></table>
+<p>配好一个就能用。没配的会显示「待处理」并写清缺什么。</p>
+<hr>
+<h2>方式二：插件版（已有 DSH）</h2>
+<h3>一条命令</h3>
+<pre><code class="language-bash">dsh plugin add https://xyt071024.github.io/dsh-superagent-cn/releases/dl/dsh-superagent-stable.tgz</code></pre>
+<p>破甲版把 <code>-stable</code> 换成 <code>-purge</code>。</p>
+<p>包内已带全部运行时依赖（proper-lockfile、zod、graceful-fs、retry、signal-exit），<strong>不需要联网装依赖</strong>。</p>
+<h3>然后建 profile</h3>
+<pre><code class="language-bash">dsh superagent --from-default-profile web --dump-config &gt; /dev/null</code></pre>
+<p>在 <code>~/.dsh/profiles/superagent/cordis.patch.yml</code> 里加：</p>
+<pre><code class="language-yaml">- id: dsh-superagent
+  config:
+    stateDir: C:/Users/你的用户名/.dsh/state/superagent
+    isolateEnvironment: true      # 必须为 true，见下方说明
+- id: dsh-superagent-qq
+  disabled: false
+- id: dsh-superagent-mail
+  disabled: false</code></pre>
+<p>启动：</p>
+<pre><code class="language-bash">dsh --profile superagent</code></pre>
+<hr>
+<h2><code>isolateEnvironment: true</code> 为什么是必须的</h2>
+<p>superagent 会往<strong>进程级</strong> <code>PATH</code> 里插入一个目录，里面放着 <code>gh</code> 和 <code>lark-cli</code> 的包装脚本，让执行器的命令走智能体自己的账号。</p>
+<p>如果你的 profile 里还有别的插件（多数人的都有），它们调 <code>gh</code> 时会<strong>静默拿到智能体的账号</strong>，而不是你自己的。</p>
+<p>打开 <code>isolateEnvironment</code> 后，这些变量只传给 superagent 自己起的子进程，不污染同进程的其他插件。</p>
+<p><strong>独立 profile 里可以不开；融合进你的日常 profile 时必须开。</strong></p>
+<hr>
+<h2>版本要求</h2>
+<table><thead><tr><th>项</th><th>要求</th></tr></thead><tbody>
+<tr><td>Node.js</td><td>22.19+ 或 24+</td></tr>
+<tr><td>DSH</td><td>0.2.1 或 0.2.2 系列（peer 依赖为可选项，版本不完全匹配也能启动）</td></tr>
+<tr><td>磁盘</td><td>约 10 MB（插件）+ 工单目录</td></tr>
+</tbody></table>
+<hr>
+<h2>装不上时</h2>
+<table><thead><tr><th>现象</th><th>原因</th><th>怎么办</th></tr></thead><tbody>
+<tr><td><code>EADDRINUSE: 3082</code></td><td>端口被占</td><td>改 <code>cordis.patch.yml</code> 里的 <code>port</code>，或先停掉占用的进程</td></tr>
+<tr><td><code>invalid config: stateDir</code></td><td>白板版漏了替换占位符</td><td>手动把 <code>cordis.patch.yml</code> 里的 <code>__STATE_DIR__</code> 换成真实绝对路径</td></tr>
+<tr><td><code>Lock file is already being held</code></td><td>上一个实例没退干净</td><td>杀掉占用端口的 node 进程再启动</td></tr>
+<tr><td><code>Cannot find module 'graceful-fs'</code></td><td>用的是早期发布的、没带依赖的包</td><td>重新下载本期包</td></tr>
+<tr><td><code>onExit is not a function</code></td><td>同上，<code>signal-exit</code> 版本不对</td><td>重新下载本期包</td></tr>
+<tr><td>来源一直「待处理」</td><td>缺凭据</td><td>看状态下写的那句话，它说的是缺哪一项</td></tr>
+</tbody></table>
+<hr>
+<h2>卸载</h2>
+<table><thead><tr><th>形态</th><th>怎么卸</th></tr></thead><tbody>
+<tr><td>白板版</td><td>删掉 <code>~/.dsh/profiles/superagent</code> 和 <code>~/.dsh/state/superagent</code></td></tr>
+<tr><td>插件版</td><td><code>dsh plugin remove dsh-superagent</code>，再删上面两个目录</td></tr>
+<tr><td>破甲版</td><td>先 <code>dsh purge revert</code>，再按上面两步删</td></tr>
+</tbody></table>
+<p>不会留别的东西——除了你自己配的来源凭据，那些在 <code>~/.dsh/state/superagent/orchestrator.sqlite</code> 里。</p>
+<nav class="doc-nav">
+<a class="prev" href="index.html">← 返回首页</a>
+<a class="next" href="docs/zh/01-overview.html">完整文档 →</a>
+</nav>
+</main>
+
+<footer>
+  <p><a href="index.html" style="color:inherit">首页</a> · MIT License</p>
+</footer>
+
+</body>
+</html>
