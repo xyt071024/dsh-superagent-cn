@@ -1,3 +1,36 @@
+# 依赖
 node_modules/
+.pnpm-store/
+
+# 构建产物
+lib/
+dist/
+.artifacts/
+*.tsbuildinfo
+
+# 环境与本地配置（绝不入库：里面可能有你自己的令牌）
+.env
+.env.*
+*.local
+cordis.patch.local.yml
+examples/profile.cordis.local.yml
+
+# 日志与临时文件
 *.log
+logs/
+tmp/
+*.tmp
+*.bak
+*.bak-*
 .DS_Store
+Thumbs.db
+
+# 测试与覆盖率
+coverage/
+.nyc_output/
+*.snap
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
