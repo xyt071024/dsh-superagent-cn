@@ -24,223 +24,89 @@
 </header>
 
 <main class="doc">
-<h1>安装与接入</h1>
-<p><a href="../install.html">← 返回首页</a> | <a href="../docs/zh/01-overview.html">完整文档</a></p>
+<h1>安装</h1>
+<p>两种形态，任选一种。<strong>都需要先装 Node.js 22.19 或更新版本</strong>（https://nodejs.org）。</p>
 <hr>
-<p>三种安装方式，选一个。<strong>装完就能用，不需要额外配置。</strong></p>
-<hr>
-<h2>方式一：白板版（最简单，推荐新手）</h2>
-<p><strong>下载 → 解压 → 双击 → 完成。</strong></p>
+<h2>方式一：白板版（解压即用，推荐）</h2>
+<p>不用先装 DSH。这份包自带 profile 配置，第一次启动会把它装到正确位置并拉取唯一一个依赖。</p>
 <h3>1. 下载</h3>
-<p>去 <a href="https://github.com/xyt071024/dsh-superagent-cn/releases">Releases</a> 下对应平台的包：</p>
-<table><thead><tr><th>你的系统</th><th>下载文件</th></tr></thead><tbody>
-<tr><td>Windows 10/11 (64位)</td><td><code>dsh-superagent-v&lt;版本&gt;-win-x64.zip</code></td></tr>
-<tr><td>macOS (M1/M2/M3)</td><td><code>dsh-superagent-v&lt;版本&gt;-mac-arm64.zip</code></td></tr>
-<tr><td>macOS (Intel)</td><td><code>dsh-superagent-v&lt;版本&gt;-mac-x64.zip</code></td></tr>
-<tr><td>Linux (64位)</td><td><code>dsh-superagent-v&lt;版本&gt;-linux-x64.zip</code></td></tr>
+<table><thead><tr><th>版本</th><th>下载</th></tr></thead><tbody>
+<tr><td>稳定版</td><td><a href="https://xyt071024.github.io/dsh-superagent-cn/releases/dl/superagent-native-stable.zip">superagent-native-stable.zip</a>（1.7 MB）</td></tr>
+<tr><td>破甲版</td><td><a href="https://xyt071024.github.io/dsh-superagent-cn/releases/dl/superagent-native-purge.zip">superagent-native-purge.zip</a>（1.7 MB）</td></tr>
 </tbody></table>
-<p><strong>文件约 120MB</strong>（已压缩，内含 Node 运行时和全部依赖，解压后约 320MB）。</p>
-<h3>2. 解压</h3>
-<p>解压到你喜欢的位置，比如 <code>D:\SuperAgent</code> 或 <code>~/SuperAgent</code>。</p>
-<p><strong>不要放在中文路径或需要管理员权限的目录</strong>（如 <code>C:\Program Files</code>）。</p>
-<h3>3. 启动</h3>
-<table><thead><tr><th>系统</th><th>操作</th></tr></thead><tbody>
-<tr><td>Windows</td><td>双击 <code>启动.cmd</code></td></tr>
-<tr><td>macOS</td><td>双击 <code>启动.command</code>（首次需右键 → 打开）</td></tr>
-<tr><td>Linux</td><td>终端执行 <code>./启动.sh</code></td></tr>
+<p>两版的区别只在破甲版额外依赖 <code>dsh-purge-community</code> 并需要多跑一次 <code>dsh purge apply</code>。其余完全相同。</p>
+<h3>2. 解压并启动</h3>
+<p>解压到任意目录（<strong>解压目录放哪都行</strong>，启动后不再依赖它）。</p>
+<table><thead><tr><th>系统</th><th>启动</th></tr></thead><tbody>
+<tr><td>Windows</td><td>双击 <code>start.cmd</code></td></tr>
+<tr><td>macOS / Linux</td><td><code>chmod +x start.sh &amp;&amp; ./start.sh</code></td></tr>
 </tbody></table>
-<h3>4. 首次启动会自动做什么</h3>
-<pre><code>1. 检查环境            ← 几秒
-2. 生成配置文件         ← 自动
-3. 启动服务            ← 自动
-4. 打开浏览器面板       ← 自动
-5. 显示二维码/引导页    ← 你只需要扫码</code></pre>
-<p><strong>整个过程不需要你填任何东西</strong>，只要扫码登录。</p>
-<h3>5. 扫码登录</h3>
-<p>面板会依次提示：</p>
-<pre><code>① QQ 邮箱     → 输入授权码（有引导，告诉你哪里拿）
-② QQ          → 扫码
-③ 微信        → 扫码
-④ 飞书        → 扫码
-⑤ 企业微信    → 扫码
-⑥ GitHub      → 浏览器授权</code></pre>
-<p><strong>配几个都行</strong>，不用的跳过。<strong>至少配一个</strong>。</p>
+<p>第一次启动会做三件事，都是自动的：</p>
+<pre><code>1. 把 profile 装到 ~/.dsh/profiles/superagent
+2. 把 stateDir 占位符替换成你的真实主目录
+3. npm install 装那一个依赖</code></pre>
+<p>约 15 秒。之后终端会打印一个带 token 的地址，形如：</p>
+<pre><code>dsh web: http://127.0.0.1:3082/?token=xxxxxxxx</code></pre>
+<p>点开它。</p>
+<blockquote><p>如果之前已经装过 superagent，启动器会<strong>拒绝覆盖</strong>并提示你先移走旧的 <code>~/.dsh/profiles/superagent</code>。这是故意的：那个目录里有你的工单和设置。</p></blockquote>
+<h3>3. 配一个来源</h3>
+<p>打开面板 → 左侧 <strong>Superagent</strong> → <strong>设置</strong> → <strong>来源</strong>，挑一个配：</p>
+<table><thead><tr><th>来源</th><th>要准备什么</th><th>状态会变成</th></tr></thead><tbody>
+<tr><td><strong>QQ</strong></td><td>一个 OneBot v11 端点地址 + 访问令牌（如 SnowLuma、NapCat）</td><td>运行中</td></tr>
+<tr><td><strong>邮箱</strong></td><td>QQ 邮箱/Gmail 地址 + <strong>授权码</strong>（不是登录密码）</td><td>运行中</td></tr>
+<tr><td><strong>GitHub</strong></td><td>一个能推送到目标仓库的 <code>gh</code> 登录</td><td>运行中</td></tr>
+</tbody></table>
+<p>配好一个就能用。没配的会显示「待处理」并写清缺什么。</p>
 <hr>
-<h2>方式二：插件版（已装 DSH 的用这个）</h2>
+<h2>方式二：插件版（已有 DSH）</h2>
 <h3>一条命令</h3>
-<p><strong>Windows（PowerShell）</strong>：</p>
-<pre><code class="language-powershell">irm https://xyt071024.github.io/dsh-superagent-cn/install.ps1 | iex</code></pre>
-<p><strong>macOS / Linux</strong>：</p>
-<pre><code class="language-bash">curl -fsSL https://xyt071024.github.io/dsh-superagent-cn/install.sh | bash</code></pre>
-<p><strong>这条命令会自动做完</strong>：</p>
-<pre><code>1. 检查 DSH 版本是否兼容
-2. 创建独立 profile（不碰你现有的）
-3. 下载并安装插件
-4. 写入配置文件
-5. 启动服务并打开面板</code></pre>
-<p><strong>装完就能用，不需要手动改任何配置文件。</strong></p>
-<h3>手动安装（如果你不想跑脚本）</h3>
-<pre><code class="language-bash"># 1. 建独立 profile
-dsh superagent --from-default-profile web --dump-config &gt; /dev/null
-
-# 2. 装插件
-dsh plugin --profile superagent add dsh-superagent
-
-# 3. 启动
-dsh --profile superagent</code></pre>
-<p>配置文件在 <code>~/.dsh/profiles/superagent/cordis.patch.yml</code>，装插件时会自动生成好的版本。</p>
+<pre><code class="language-bash">dsh plugin add https://xyt071024.github.io/dsh-superagent-cn/releases/dl/dsh-superagent-stable.tgz</code></pre>
+<p>破甲版把 <code>-stable</code> 换成 <code>-purge</code>。</p>
+<p>包内已带全部运行时依赖（proper-lockfile、zod、graceful-fs、retry、signal-exit），<strong>不需要联网装依赖</strong>。</p>
+<h3>然后建 profile</h3>
+<pre><code class="language-bash">dsh superagent --from-default-profile web --dump-config &gt; /dev/null</code></pre>
+<p>在 <code>~/.dsh/profiles/superagent/cordis.patch.yml</code> 里加：</p>
+<pre><code class="language-yaml">- id: dsh-superagent
+  config:
+    stateDir: C:/Users/你的用户名/.dsh/state/superagent
+    isolateEnvironment: true      # 必须为 true，见下方说明
+- id: dsh-superagent-qq
+  disabled: false
+- id: dsh-superagent-mail
+  disabled: false</code></pre>
+<p>启动：</p>
+<pre><code class="language-bash">dsh --profile superagent</code></pre>
 <hr>
-<h2>方式三：源码运行（开发者）</h2>
-<pre><code class="language-bash">git clone https://github.com/xyt071024/dsh-superagent-cn.git
-cd dsh-superagent-cn
-pnpm install
-pnpm build
-dsh --profile superagent</code></pre>
+<h2><code>isolateEnvironment: true</code> 为什么是必须的</h2>
+<p>superagent 会往<strong>进程级</strong> <code>PATH</code> 里插入一个目录，里面放着 <code>gh</code> 和 <code>lark-cli</code> 的包装脚本，让执行器的命令走智能体自己的账号。</p>
+<p>如果你的 profile 里还有别的插件（多数人的都有），它们调 <code>gh</code> 时会<strong>静默拿到智能体的账号</strong>，而不是你自己的。</p>
+<p>打开 <code>isolateEnvironment</code> 后，这些变量只传给 superagent 自己起的子进程，不污染同进程的其他插件。</p>
+<p><strong>独立 profile 里可以不开；融合进你的日常 profile 时必须开。</strong></p>
 <hr>
-<h1>连接源：装完怎么接</h1>
-<p><strong>全部在面板里点，不用改配置文件。</strong></p>
-<p>进 <strong>设置 → 连接源</strong>，按需开启。下面每个都写清楚要准备什么。</p>
-<hr>
-<h2>GitHub</h2>
-<p><strong>要准备</strong>：GitHub 账号（已有就行）</p>
-<p><strong>怎么做</strong>：</p>
-<pre><code>1. 设置 → 连接源 → GitHub → 开启
-2. 点「授权登录」→ 浏览器弹窗 → 点同意
-3. 填你要监听的仓库：owner/repo
-4. 保存</code></pre>
-<p><strong>就这三步。</strong> 授权是一次性的，之后不用再登。</p>
-<hr>
-<h2>QQ 邮箱（推荐第一个配）</h2>
-<p><strong>要准备</strong>：一个 QQ 邮箱</p>
-<p><strong>怎么做</strong>：</p>
-<pre><code>1. 设置 → 连接源 → QQ邮箱 → 开启
-2. 点「获取授权码」，会弹出图文引导：
-   · 打开 mail.qq.com
-   · 设置 → 账户
-   · 开启 IMAP/SMTP 服务
-   · 按提示发短信
-   · 复制那串 16 位授权码
-3. 粘贴授权码 → 保存</code></pre>
-<p><strong>引导是图文并茂的</strong>，跟着点就行。</p>
-<hr>
-<h2>QQ</h2>
-<p><strong>要准备</strong>：手机 QQ（用来扫码）</p>
-<p><strong>怎么做</strong>：</p>
-<pre><code>1. 设置 → 连接源 → QQ → 开启
-2. 点「一键配置」
-3. 面板自动完成：
-   · 检测本地是否已有 QQ 网关
-   · 没有就引导你下载（附官方链接）
-   · 启动网关
-   · 显示二维码
-4. 手机 QQ 扫码
-5. 面板显示「已连接」→ 完成</code></pre>
-<p><strong>全程只需要扫一次码。</strong></p>
-<blockquote><p><strong>关于 QQ 网关的说明</strong></p>
-<p>QQ 这端需要一个本地协议网关（<strong>SnowLuma</strong>）。按它的许可条款，我们不能把它的程序打包进我们的安装包，只能在你首次启动时从它的官方渠道获取。</p>
-<p><strong>你不需要手动去下载</strong>，面板会自动引导，你只需要点「下一步」和扫码。</p></blockquote>
-<hr>
-<h2>微信</h2>
-<p><strong>要准备</strong>：电脑上装了微信</p>
-<p><strong>怎么做</strong>：</p>
-<pre><code>1. 设置 → 连接源 → 微信 → 开启
-2. 点「连接微信」
-3. 面板自动检测微信客户端
-4. 弹出微信登录窗口 → 手机扫码
-5. 完成后显示「已连接」</code></pre>
-<p><strong>注意</strong>：微信没有官方接口，走本地客户端。腾讯更新客户端后可能需要重新适配，届时面板会提示。</p>
-<hr>
-<h2>飞书</h2>
-<p><strong>要准备</strong>：飞书账号（能创建应用）</p>
-<p><strong>怎么做</strong>：</p>
-<pre><code>1. 设置 → 连接源 → 飞书 → 开启
-2. 点「一键创建应用」
-3. 会打开飞书开放平台，按引导创建（约 2 分钟）
-4. 把 App ID 和 App Secret 粘回面板
-5. 保存</code></pre>
-<p><strong>引导会告诉你每一步点哪里。</strong></p>
-<hr>
-<h2>企业微信</h2>
-<p><strong>要准备</strong>：企业微信管理员权限</p>
-<p><strong>怎么做</strong>：</p>
-<pre><code>1. 设置 → 连接源 → 企业微信 → 开启
-2. 面板会显示要填三项：企业ID / 应用Secret / AgentId
-3. 点「不知道怎么拿？」会展开图文引导
-4. 全部填完 → 保存</code></pre>
-<p><strong>没有企业微信</strong>：跳过这一项，不影响其它功能。</p>
-<hr>
-<h2>Gmail</h2>
-<p><strong>要准备</strong>：Google 账号</p>
-<p><strong>怎么做</strong>：</p>
-<pre><code>1. 设置 → 连接源 → Gmail → 开启
-2. 点「生成应用密码」，会展开引导：
-   · 开启两步验证
-   · 生成 16 位应用专用密码
-3. 粘贴 → 保存</code></pre>
-<p><strong>网络提示</strong>：部分地区直连 Gmail 会超时，面板会自动检测并提示你配代理（见下方）。</p>
-<hr>
-<h1>代理（需要时再配）</h1>
-<p><strong>大部分情况不用配。</strong> 面板检测到连不上境外服务时才会提示。</p>
-<h2>自动检测</h2>
-<p>启动时面板会测试各连接源的连通性：</p>
-<pre><code>GitHub    ✓ 可以直连
-Gmail     ✗ 连接超时 → 建议配置代理</code></pre>
-<p><strong>只有标 ✗ 的才需要配。</strong></p>
-<h2>配法</h2>
-<p>设置 → 代理，三种方式选一：</p>
-<table><thead><tr><th>方式</th><th>怎么做</th></tr></thead><tbody>
-<tr><td><strong>用已有的</strong></td><td>如果你电脑上开着代理软件，通常自动识别，不用管</td></tr>
-<tr><td><strong>手动填</strong></td><td>填 <code>http://127.0.0.1:&lt;端口&gt;</code> 或 <code>socks5://127.0.0.1:&lt;端口&gt;</code></td></tr>
-<tr><td><strong>拖拽识别</strong></td><td>把代理软件的程序或目录拖进拖拽区，自动识别端口</td></tr>
-</tbody></table>
-<h2>分域规则（已预置好）</h2>
-<p>默认已经配好，不需要改：</p>
-<table><thead><tr><th>走代理</th><th>直连</th></tr></thead><tbody>
-<tr><td>GitHub</td><td>QQ 邮箱</td></tr>
-<tr><td>Gmail</td><td>企业微信</td></tr>
-<tr><td>部分境外服务</td><td>飞书</td></tr>
-<tr><td></td><td>国内站点</td></tr>
-</tbody></table>
-<hr>
-<h1>装完检查清单</h1>
-<table><thead><tr><th>#</th><th>检查项</th><th>怎么看</th></tr></thead><tbody>
-<tr><td>1</td><td>面板能打开</td><td>浏览器显示界面</td></tr>
-<tr><td>2</td><td>至少一个连接源是绿色</td><td>设置 → 连接源</td></tr>
-<tr><td>3</td><td>白名单里有你自己</td><td>设置 → 权限与安全</td></tr>
-<tr><td>4</td><td>预算已设</td><td>设置 → 模型与算力</td></tr>
-</tbody></table>
-<p><strong>四项都过了，就能用了。</strong></p>
-<hr>
-<h1>遇到问题</h1>
-<h2>面板打不开</h2>
-<table><thead><tr><th>检查</th><th>怎么做</th></tr></thead><tbody>
-<tr><td>服务在跑吗</td><td>任务管理器/活动监视器看有没有 node 进程</td></tr>
-<tr><td>端口被占吗</td><td>换端口：设置 → 基本 → 面板端口</td></tr>
-<tr><td>地址对吗</td><td>必须带 <code>?token=...</code>，从启动窗口复制完整地址</td></tr>
-</tbody></table>
-<h2>连接源一直红色</h2>
-<table><thead><tr><th>检查</th><th>怎么做</th></tr></thead><tbody>
-<tr><td>凭证填对了吗</td><td>重新填一遍，注意别带空格</td></tr>
-<tr><td>网络通吗</td><td>面板上有「测试连接」按钮</td></tr>
-<tr><td>需要代理吗</td><td>见上方代理章节</td></tr>
-</tbody></table>
-<h2>想重装</h2>
-<p><strong>白板版</strong>：删掉文件夹，重新解压。</p>
-<p><strong>插件版</strong>：</p>
-<pre><code class="language-bash">dsh plugin --profile superagent remove dsh-superagent
-rm -rf ~/.dsh/profiles/superagent</code></pre>
-<hr>
-<h1>系统要求</h1>
+<h2>版本要求</h2>
 <table><thead><tr><th>项</th><th>要求</th></tr></thead><tbody>
-<tr><td>操作系统</td><td>Windows 10/11 (64位) / macOS 11+ / Linux (glibc 2.28+)</td></tr>
-<tr><td>内存</td><td>建议 4GB 以上可用</td></tr>
-<tr><td>磁盘</td><td>约 500MB（含运行数据）</td></tr>
-<tr><td>网络</td><td>能访问你要用的那些服务</td></tr>
+<tr><td>Node.js</td><td>22.19+ 或 24+</td></tr>
+<tr><td>DSH</td><td>0.2.1 或 0.2.2 系列（peer 依赖为可选项，版本不完全匹配也能启动）</td></tr>
+<tr><td>磁盘</td><td>约 10 MB（插件）+ 工单目录</td></tr>
 </tbody></table>
-<p><strong>白板版不需要预装 Node.js 或 DSH</strong>，都已内置。</p>
-<p><strong>插件版需要</strong>：DSH 0.2.1-rc.1 ~ 0.2.2 系列 + Node.js 22.19+。</p>
 <hr>
-<p><a href="../install.html">← 返回首页</a> | <a href="../docs/zh/01-overview.html">完整文档</a></p>
+<h2>装不上时</h2>
+<table><thead><tr><th>现象</th><th>原因</th><th>怎么办</th></tr></thead><tbody>
+<tr><td><code>EADDRINUSE: 3082</code></td><td>端口被占</td><td>改 <code>cordis.patch.yml</code> 里的 <code>port</code>，或先停掉占用的进程</td></tr>
+<tr><td><code>invalid config: stateDir</code></td><td>白板版漏了替换占位符</td><td>手动把 <code>cordis.patch.yml</code> 里的 <code>__STATE_DIR__</code> 换成真实绝对路径</td></tr>
+<tr><td><code>Lock file is already being held</code></td><td>上一个实例没退干净</td><td>杀掉占用端口的 node 进程再启动</td></tr>
+<tr><td><code>Cannot find module 'graceful-fs'</code></td><td>用的是早期发布的、没带依赖的包</td><td>重新下载本期包</td></tr>
+<tr><td><code>onExit is not a function</code></td><td>同上，<code>signal-exit</code> 版本不对</td><td>重新下载本期包</td></tr>
+<tr><td>来源一直「待处理」</td><td>缺凭据</td><td>看状态下写的那句话，它说的是缺哪一项</td></tr>
+</tbody></table>
+<hr>
+<h2>卸载</h2>
+<table><thead><tr><th>形态</th><th>怎么卸</th></tr></thead><tbody>
+<tr><td>白板版</td><td>删掉 <code>~/.dsh/profiles/superagent</code> 和 <code>~/.dsh/state/superagent</code></td></tr>
+<tr><td>插件版</td><td><code>dsh plugin remove dsh-superagent</code>，再删上面两个目录</td></tr>
+<tr><td>破甲版</td><td>先 <code>dsh purge revert</code>，再按上面两步删</td></tr>
+</tbody></table>
+<p>不会留别的东西——除了你自己配的来源凭据，那些在 <code>~/.dsh/state/superagent/orchestrator.sqlite</code> 里。</p>
 <nav class="doc-nav">
 <a class="prev" href="index.html">← 返回首页</a>
 <a class="next" href="docs/zh/01-overview.html">完整文档 →</a>
