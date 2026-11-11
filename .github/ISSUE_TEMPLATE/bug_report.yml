@@ -1,0 +1,145 @@
+name: Bug report
+description: 报告一个能复现的问题（装不上、来源连不上、面板不对、工单跑歪了）
+title: "[Bug] "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        谢谢报告。填得越具体，越可能是「一个问题一次修好」。
+
+        ⚠️ **先看一眼：这份表单会公开。** 下面这些**绝对不要贴**：
+
+        - 访问令牌、授权码、app secret、`GH_TOKEN`、`SESSDATA`、OneBot 的 `access_token`
+        - 群号、QQ 号、邮箱地址、飞书 chat_id、GitHub 私有仓库名
+        - `<stateDir>/orchestrator.sqlite` 或 `cordis.patch.yml` 的完整内容（里面有凭据）
+
+        要贴配置就贴**键名**，值写成 `***`。要贴日志就先过一遍再贴。
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我搜过已有 issue，没有重复
+          required: true
+        - label: 我贴出来的内容里没有任何令牌、授权码、群号或邮箱地址
+          required: true
+
+  - type: dropdown
+    id: package
+    attributes:
+      label: 装的是哪个包
+      description: 两者行为一样，但排查路径完全不同——白板版自带 profile，插件版要看你原有的 profile 配置。
+      options:
+        - 插件版（装进已有的 DSH，dsh-superagent-stable.tgz）
+        - 白板版（自带 DSH，superagent-native-stable.zip）
+        - 破甲版（插件版或白板版 + dsh purge apply）
+        - 源码直跑（git clone 后 pnpm install）
+        - 不确定
+    validations:
+      required: true
+
+  - type: input
+    id: dsh-version
+    attributes:
+      label: DSH 版本
+      description: 跑 `dsh --version` 的结果。插件版必须填——版本不匹配是「插件不加载」最常见的原因。
+      placeholder: 0.2.2-rc.1
+    validations:
+      required: true
+
+  - type: input
+    id: node-version
+    attributes:
+      label: Node 版本
+      description: 跑 `node -v` 的结果。要求 22.19+ 或 24+。
+      placeholder: v22.19.0
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: 操作系统
+      description: 写清版本。Windows 上的问题是另一类问题（路径、`gh` 账号绑定、批处理 CLI），请务必写准。
+      placeholder: Windows 11 23H2 / macOS 15.1 / Ubuntu 24.04
+    validations:
+      required: true
+
+  - type: dropdown
+    id: source
+    attributes:
+      label: 出问题的是哪个环节
+      options:
+        - 启动 / 安装（进程起不来、端口、锁文件）
+        - 某个来源（QQ / 微信 / 企微 / 邮箱 / 飞书 / GitHub）
+        - 评估与接单（该接的没接、不该接的接了）
+        - 执行（工单不跑、跑歪了、卡住）
+        - 面板（页面打不开、显示不对、设置存不上）
+        - 破甲模式（dsh purge apply / revert 之后异常）
+        - 其它
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 从「刚启动」开始写，一步一步来。能稳定复现的步骤比「有时候会」有用一百倍。
+      placeholder: |
+        1. 启动白板版，打开面板
+        2. 设置 → 来源 → 邮箱，填地址和授权码，保存
+        3. 从另一个邮箱发一封信给这个地址
+        4. 来源状态一直停在「待处理」，工单没有出现
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望发生什么
+      placeholder: 来源状态变成「运行中」，面板上出现一条待评估的候选。
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际发生了什么
+      description: "有报错就贴原话，不要转述。「保存失败」和「`invalid config: stateDir`」是两个完全不同的问题。"
+      placeholder: 状态一直是「待处理」，面板健康区显示 paused，没有更多说明。
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志片段
+      description: |
+        启动那个终端的输出，或面板里的健康详情。只贴相关的那十几行就够，不要整份贴。
+
+        **贴之前先删掉：令牌、授权码、URL 里的 `?token=` 参数、群号、邮箱地址、私有仓库名。**
+      render: text
+      placeholder: |
+        dsh-superagent is waiting for setup: ...
+        [error] mail: poll failed: ...
+    validations:
+      required: false
+
+  - type: input
+    id: state-dir
+    attributes:
+      label: 工单与状态目录（可选）
+      description: 只写路径本身，不要把这个目录里的任何文件内容贴上来——凭据在 `orchestrator.sqlite` 里。
+      placeholder: ~/.dsh/state/superagent
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: 还有什么
+      description: 你试过什么、关掉什么之后正常了、是不是升级之后才出现。
+    validations:
+      required: false
