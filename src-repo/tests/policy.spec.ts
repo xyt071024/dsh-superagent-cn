@@ -255,6 +255,8 @@ describe('settings migration', () => {
       policy: { rules: [], sources: { feishu: { allowed: [{ id: MEMBER, name: 'A' }], admission: {} }, github: { allowed: [{ id: 'a' }], admission: {} } } },
       eval: { mode: 'auto', timeoutSeconds: 90, model: { provider: 'p', model: 'm' } },
       executor: { model: null, maxWorkers: 5, directory: '', prepare: '', blockedCommands: [] },
+      routing: { multiSession: 'single', placement: 'background', thinking: 'auto', allow: [], difficultyThreshold: 60 },
+      budget: { archiveEnabled: true, archivePercent: 65, notifyLongTask: true, longTaskMinutes: 10, dailyTokens: 0 },
     })
     expect(migrateSettings(migrated)).toEqual(migrated)
   })
