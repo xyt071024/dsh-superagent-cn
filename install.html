@@ -27,45 +27,64 @@
 <h1>安装与接入</h1>
 <p><a href="../index.html">← 返回首页</a> | <a href="../docs/zh/01-overview.html">完整文档</a></p>
 <hr>
-<p>本页告诉你<strong>到底怎么把这个东西装起来用</strong>。分清楚自己是哪种情况，对号入座。</p>
+<p>本页告诉你<strong>到底怎么装起来用</strong>，以及<strong>每个连接源要准备什么</strong>。</p>
 <hr>
-<h2>先回答一个问题：能做成插件吗？</h2>
-<p><strong>能。</strong> 有两种形态，都能用：</p>
+<h2>先回答一个核心问题：能做成插件吗？</h2>
+<p><strong>能。</strong> 两种形态：</p>
 <table><thead><tr><th>形态</th><th>是什么</th><th>适合谁</th></tr></thead><tbody>
-<tr><td><strong>插件版</strong></td><td>装进你<strong>现有</strong>的 DSH，侧栏多一个入口</td><td>已经装了 DSH 的人（大多数）</td></tr>
-<tr><td><strong>白板版</strong></td><td>一个<strong>自带 DSH 的完整压缩包</strong>，解压就能跑</td><td>没装过 DSH、或想独立一套的人</td></tr>
+<tr><td><strong>插件版</strong></td><td>装进你<strong>现有</strong>的 DSH，侧栏多一个入口</td><td>已装 DSH 的人（大多数）</td></tr>
+<tr><td><strong>白板版</strong></td><td>自带 DSH 的完整压缩包，<strong>解压即用</strong></td><td>没装过 DSH、或要独立环境</td></tr>
 </tbody></table>
-<p><strong>推荐插件版</strong>：不用重装 DSH，不动你现有的任何插件。</p>
+<p><strong>推荐插件版</strong>：不用重装 DSH，不动你现有的插件。</p>
 <hr>
-<h2>安装前检查</h2>
-<table><thead><tr><th>项</th><th>要求</th><th>怎么查</th></tr></thead><tbody>
-<tr><td>DSH 版本</td><td>0.2.1-rc.1 ~ 0.2.2 系列</td><td><code>dsh --version</code></td></tr>
+<h2>装之前检查</h2>
+<table><thead><tr><th>项</th><th>要求</th><th>命令</th></tr></thead><tbody>
+<tr><td>DSH</td><td>0.2.1-rc.1 ~ 0.2.2 系列</td><td><code>dsh --version</code></td></tr>
 <tr><td>Node.js</td><td>22.19+ 或 24+</td><td><code>node -v</code></td></tr>
 <tr><td>pnpm</td><td>任意较新版本</td><td><code>pnpm -v</code></td></tr>
 <tr><td>Git</td><td>2.32+</td><td><code>git --version</code></td></tr>
 </tbody></table>
-<p><strong>版本适配说明</strong>：本项目针对 DSH <strong>0.2.1-rc.1 / rc.2 / rc.3 / rc.5 / 0.2.2-rc.1</strong> 做过验证。其它版本不一定能跑，装之前先核对。</p>
+<p><strong>版本适配</strong>：针对 DSH <strong>0.2.1-rc.1 / rc.2 / rc.3 / rc.5 / 0.2.2-rc.1</strong> 验证过。其它版本不一定能跑。</p>
 <hr>
 <h1>方式一：插件版（推荐）</h1>
-<h2>步骤 1：下载插件包</h2>
-<p>从 <a href="https://github.com/xyt071024/dsh-superagent-cn/releases">Releases</a> 下载：</p>
-<pre><code>dsh-superagent-plugin-v&lt;版本&gt;.tar.gz</code></pre>
-<p><strong>不需要解压</strong>，DSH 直接装这个包。</p>
-<h2>步骤 2：创建独立 profile</h2>
-<p>⚠️ <strong>不要装进你正在用的 profile</strong>，会互相干扰。</p>
-<pre><code class="language-bash">dsh superagent --from-default-profile web --dump-config &gt; /dev/null</code></pre>
-<p>这行会创建 <code>~/.dsh/profiles/superagent</code>，从你的 web profile 复制一份模板。</p>
-<p><strong>如果提示 profile 已存在</strong>：说明你之前装过。不要重跑这条命令（会覆盖配置），直接跳到步骤 3。</p>
-<h2>步骤 3：安装插件</h2>
-<pre><code class="language-bash">dsh plugin --profile superagent add &lt;插件包路径或 npm 包名&gt;</code></pre>
-<p><strong>两种写法都行</strong>：</p>
-<pre><code class="language-bash"># 从本地压缩包
-dsh plugin --profile superagent add /path/to/dsh-superagent-plugin-v1.0.0.tar.gz
+<h2>Windows</h2>
+<pre><code class="language-powershell"># 1. 创建独立 profile（不会影响你现有的）
+dsh superagent --from-default-profile web --dump-config &gt; $null
 
-# 从 npm（如果已发布）
-dsh plugin --profile superagent add dsh-superagent</code></pre>
-<h2>步骤 4：配置</h2>
-<p>编辑 <code>~/.dsh/profiles/superagent/cordis.patch.yml</code>：</p>
+# 2. 装插件
+dsh plugin --profile superagent add dsh-superagent
+
+# 3. 配端口与数据目录（编辑下面的文件）
+notepad "$env:USERPROFILE\.dsh\profiles\superagent\cordis.patch.yml"
+
+# 4. 启动
+dsh --profile superagent</code></pre>
+<h2>macOS</h2>
+<pre><code class="language-bash"># 1. 创建独立 profile
+dsh superagent --from-default-profile web --dump-config &gt; /dev/null
+
+# 2. 装插件
+dsh plugin --profile superagent add dsh-superagent
+
+# 3. 配端口与数据目录
+$EDITOR ~/.dsh/profiles/superagent/cordis.patch.yml
+
+# 4. 启动
+dsh --profile superagent</code></pre>
+<h2>Linux</h2>
+<pre><code class="language-bash"># 1. 创建独立 profile
+dsh superagent --from-default-profile web --dump-config &gt; /dev/null
+
+# 2. 装插件
+dsh plugin --profile superagent add dsh-superagent
+
+# 3. 配端口与数据目录
+$EDITOR ~/.dsh/profiles/superagent/cordis.patch.yml
+
+# 4. 启动
+dsh --profile superagent</code></pre>
+<h2>配置文件内容</h2>
+<p>三个平台一样，只有 <code>stateDir</code> 路径不同：</p>
 <pre><code class="language-yaml">- id: webserver
   config:
     host: 127.0.0.1
@@ -73,135 +92,230 @@ dsh plugin --profile superagent add dsh-superagent</code></pre>
 
 - id: superagent
   config:
-    stateDir: /absolute/path/to/state/superagent</code></pre>
-<p><strong>两个关键点</strong>：</p>
-<ol>
-<li><code>stateDir</code> 必须是<strong>绝对路径</strong></li>
-<li>Windows 下用 <code>C:/path/with/forward/slash</code> 格式（正斜杠 + 盘符）</li>
-</ol>
-<p><strong>端口冲突</strong>：3082 被占用就换一个（3083、3084…）。</p>
-<h2>步骤 5：启动</h2>
-<pre><code class="language-bash">dsh --profile superagent</code></pre>
-<p>启动后终端会打印一个带 token 的地址，形如：</p>
+    stateDir: &lt;绝对路径&gt;/state/superagent</code></pre>
+<p><strong>各平台的 <code>stateDir</code> 写法</strong>：</p>
+<table><thead><tr><th>平台</th><th>写法</th></tr></thead><tbody>
+<tr><td>Windows</td><td><code>C:/Users/&lt;你&gt;/.dsh/state/superagent</code>（<strong>正斜杠</strong>）</td></tr>
+<tr><td>macOS</td><td><code>/Users/&lt;你&gt;/.dsh/state/superagent</code></td></tr>
+<tr><td>Linux</td><td><code>/home/&lt;你&gt;/.dsh/state/superagent</code></td></tr>
+</tbody></table>
+<p><strong>注意</strong>：必须是绝对路径。Windows 上用正斜杠，不要用反斜杠。</p>
+<h2>启动后</h2>
+<p>终端会打印一行：</p>
 <pre><code>dsh web: http://127.0.0.1:3082/?token=xxxxxxxx</code></pre>
-<p><strong>复制整个地址</strong>（含 token）在浏览器打开。</p>
-<h2>步骤 6：首次配置</h2>
-<p>面板打开后，进 <strong>设置</strong>，按顺序配：</p>
-<ol>
-<li><strong>基本</strong> — 确认数据目录、端口</li>
-<li><strong>连接源</strong> — 至少配一个（GitHub 最容易）</li>
-<li><strong>权限与安全</strong> — 填你的账号到白名单</li>
-<li><strong>模型与算力</strong> — 选模型、设预算</li>
-</ol>
-<p><strong>第一次用建议</strong>：接受模式保持 <code>observe</code>（只记录不执行），跑一周看看它的判断准不准。</p>
+<p><strong>复制整个地址</strong>（含 <code>?token=</code>）在浏览器打开。</p>
 <hr>
-<h1>方式二：白板版（独立完整包）</h1>
-<p><strong>适合</strong>：没装过 DSH、或者想要一套完全独立的，不污染现有环境。</p>
-<h2>下载</h2>
-<p>从 <a href="https://github.com/xyt071024/dsh-superagent-cn/releases">Releases</a> 下载：</p>
-<pre><code>dsh-superagent-standalone-v&lt;版本&gt;-&lt;平台&gt;.zip</code></pre>
-<p>平台后缀有三种：<code>win-x64</code> / <code>mac-arm64</code> / <code>linux-x64</code>。</p>
-<h2>解压后是什么</h2>
+<h1>方式二：白板版（解压即用）</h1>
+<h2>下载对应平台</h2>
+<table><thead><tr><th>平台</th><th>文件</th></tr></thead><tbody>
+<tr><td>Windows x64</td><td><code>dsh-superagent-standalone-v&lt;版本&gt;-win-x64.zip</code></td></tr>
+<tr><td>macOS (Apple Silicon)</td><td><code>dsh-superagent-standalone-v&lt;版本&gt;-mac-arm64.zip</code></td></tr>
+<tr><td>macOS (Intel)</td><td><code>dsh-superagent-standalone-v&lt;版本&gt;-mac-x64.zip</code></td></tr>
+<tr><td>Linux x64</td><td><code>dsh-superagent-standalone-v&lt;版本&gt;-linux-x64.zip</code></td></tr>
+</tbody></table>
+<h2>解压后里面是什么</h2>
 <pre><code>dsh-superagent-standalone/
-├── dsh.exe              ← 启动器（Windows）
-├── node/                ← 内置 Node 运行时，不用你装
-├── profiles/
-│   └── superagent/      ← 预配置好的 profile
-├── plugins/             ← 插件本体
-├── 启动.cmd             ← 双击就能跑
+├── dsh        或  dsh.exe     ← 启动器
+├── node/                      ← 内置 Node 运行时，不用你装
+├── profiles/superagent/       ← 预配置好的
+├── plugins/                   ← 插件本体
+├── 启动.cmd / 启动.sh          ← 双击/执行就能跑
 └── README.txt</code></pre>
-<h2>怎么用</h2>
+<h2>怎么启动</h2>
 <p><strong>Windows</strong>：双击 <code>启动.cmd</code></p>
 <p><strong>macOS / Linux</strong>：</p>
-<pre><code class="language-bash">chmod +x ./dsh
+<pre><code class="language-bash"># macOS（首次需要解除隔离）
+xattr -dr com.apple.quarantine ./dsh-superagent-standalone
+chmod +x ./dsh
+./dsh --profile superagent
+
+# Linux
+chmod +x ./dsh
 ./dsh --profile superagent</code></pre>
-<p><strong>不需要安装程序</strong>，解压即用。想卸载直接删文件夹。</p>
-<h2>和插件版的区别</h2>
+<p><strong>不需要安装程序。</strong> 解压 → 启动 → 完事。想卸载直接删文件夹。</p>
+<h2>两种形态对比</h2>
 <table><thead><tr><th></th><th>插件版</th><th>白板版</th></tr></thead><tbody>
 <tr><td>需要先装 DSH</td><td>是</td><td><strong>否</strong>（内置）</td></tr>
 <tr><td>影响现有环境</td><td>不影响（独立 profile）</td><td><strong>完全隔离</strong></td></tr>
-<tr><td>升级方式</td><td><code>dsh plugin update</code></td><td>下载新压缩包覆盖</td></tr>
-<tr><td>体积</td><td>小（几 MB）</td><td>大（含 Node + DSH，约 200MB）</td></tr>
-<tr><td>适合</td><td>已有 DSH 的用户</td><td>全新用户、演示、隔离测试</td></tr>
+<tr><td>升级</td><td><code>dsh plugin update</code></td><td>下载新压缩包覆盖</td></tr>
+<tr><td>体积</td><td>几 MB</td><td>约 200MB</td></tr>
+<tr><td>适合</td><td>已有 DSH</td><td>全新用户 / 演示 / 隔离测试</td></tr>
+</tbody></table>
+<hr>
+<h1>连接源：每个要准备什么</h1>
+<p><strong>这是最容易卡住的地方。</strong> 逐个说明。</p>
+<h2>1. GitHub（最简单）</h2>
+<p><strong>准备</strong>：不需要额外准备，只要你有 GitHub 账号。</p>
+<pre><code class="language-bash"># 检查是否已登录
+gh auth status
+
+# 没登录就登录（会开浏览器授权）
+gh auth login
+
+# 确认身份
+gh api user --jq .login</code></pre>
+<p>安装后进设置 → 连接源 → GitHub → 填你的仓库 <code>owner/name</code>。</p>
+<h2>2. QQ邮箱（推荐第一个配）</h2>
+<p><strong>准备</strong>：一个<strong>授权码</strong>（不是你的 QQ 密码）。</p>
+<p><strong>怎么拿</strong>：</p>
+<pre><code>1. 打开 https://mail.qq.com 登录
+2. 设置 → 账户
+3. 找到「POP3/IMAP/SMTP/Exchange/CardDAV/CalDAV服务」
+4. 开启「IMAP/SMTP服务」
+5. 按提示发短信验证
+6. 拿到一串 16 位授权码 —— 记下来</code></pre>
+<p><strong>填进设置</strong>：</p>
+<pre><code>邮箱地址：你的QQ邮箱@qq.com
+授权码：上面拿到的那串
+IMAP 服务器：imap.qq.com:993 (SSL)
+SMTP 服务器：smtp.qq.com:465 (SSL)</code></pre>
+<p><strong>注意</strong>：授权码只显示一次，丢了要重新生成。</p>
+<h2>3. 企业微信</h2>
+<p><strong>准备</strong>：企业管理员权限。</p>
+<pre><code>1. 登录 https://work.weixin.qq.com
+2. 应用管理 → 创建应用
+3. 记下：企业ID（corpid）、应用Secret、AgentId
+4. 在应用里配置「接收消息服务器」或开启 API 接收</code></pre>
+<p><strong>要填三项</strong>：<code>corpid</code> / <code>secret</code> / <code>agentId</code></p>
+<p><strong>没有企业</strong>：这条路走不通，跳过，用其它源。</p>
+<h2>4. 飞书</h2>
+<p><strong>准备</strong>：能创建应用。</p>
+<pre><code>1. 打开 https://open.feishu.cn
+2. 创建企业自建应用
+3. 开通权限：im:message、im:message:send_as_bot、im:chat
+4. 记下 App ID 和 App Secret
+5. 发布应用版本</code></pre>
+<p><strong>要填两项</strong>：<code>App ID</code> / <code>App Secret</code></p>
+<h2>5. Gmail</h2>
+<p><strong>准备</strong>：Google 账号 + 两步验证。</p>
+<pre><code>1. 开启两步验证：https://myaccount.google.com/security
+2. 生成应用专用密码：https://myaccount.google.com/apppasswords
+3. 选「邮件」+「Windows 计算机」，拿到 16 位密码</code></pre>
+<p><strong>网络</strong>：部分地区直连会超时，需要代理（见下方「代理」一节）。</p>
+<h2>6. QQ（需要额外装一个网关）</h2>
+<h3>重要说明</h3>
+<p>QQ 这一端<strong>不能只装我们一个插件就完事</strong>。它需要一个本地的 QQ 协议网关 <strong>SnowLuma</strong>，这是第三方软件，有独立的许可协议。</p>
+<p><strong>为什么不打包进安装包</strong>：SnowLuma 是<strong>源码可见非商业许可</strong>，不允许我们分发它的二进制。你必须自己去拿。</p>
+<h3>你需要做的三步</h3>
+<p><strong>第 1 步：下载 SnowLuma</strong></p>
+<p>去它的官方发布页拿（搜索引擎搜 "SnowLuma QQ" 或看社区指路）。</p>
+<p>放到一个固定目录，比如 <code>D:\SnowLuma</code>。</p>
+<p><strong>第 2 步：启动并扫码登录</strong></p>
+<pre><code class="language-bash"># Windows
+D:\SnowLuma\launcher.bat
+
+# 或直接跑
+node D:\SnowLuma\index.mjs</code></pre>
+<p>启动后会显示二维码，用手机 QQ 扫码登录。</p>
+<p><strong>默认端口</strong>：</p>
+<ul>
+<li>WebSocket：<code>3001</code></li>
+<li>HTTP：<code>3000</code></li>
+</ul>
+<p><strong>第 3 步：在 Super Agent 里配置</strong></p>
+<p>进设置 → 连接源 → QQ，填：</p>
+<pre><code>WebSocket 地址：ws://127.0.0.1:3001
+HTTP 地址：http://127.0.0.1:3000
+Access Token：（如果你在 SnowLuma 里配了，就填；没配留空）</code></pre>
+<h3>自动检测</h3>
+<p>安装包会带一个<strong>检测脚本</strong>，帮你确认 QQ 这段是否通：</p>
+<pre><code class="language-bash">dsh-superagent doctor --source qq</code></pre>
+<p>它会检查：</p>
+<ul>
+<li>SnowLuma 进程在不在</li>
+<li>端口 3001 / 3000 通不通</li>
+<li>是否已登录（能拿到账号信息）</li>
+<li>配置是否填对</li>
+</ul>
+<p><strong>哪一步没过，脚本会直接告诉你缺什么。</strong></p>
+<h3>如果还是连不上</h3>
+<table><thead><tr><th>症状</th><th>检查</th></tr></thead><tbody>
+<tr><td>端口不通</td><td>SnowLuma 启动了吗？防火墙挡了吗？</td></tr>
+<tr><td>通了但收不到消息</td><td>扫码登录了吗？看 SnowLuma 控制台</td></tr>
+<tr><td>收到了但发不出去</td><td>Access Token 填错了吗？</td></tr>
+<tr><td>一直重连</td><td>SnowLuma 版本太旧，去更新</td></tr>
+</tbody></table>
+<h2>7. 微信</h2>
+<p><strong>准备</strong>：Windows 上装微信客户端。</p>
+<p><strong>说明</strong>：微信没有官方 API，只能通过本地客户端。这条路<strong>不稳定</strong>——腾讯改版就得跟。我们用五层加固（进程守护、端口仲裁、双通道、去重、熔断）把可用性拉到 4 星，但<strong>这不是 100% 可靠</strong>。</p>
+<p><strong>首次配置</strong>：设置 → 连接源 → 微信 → 点「授权」，会打开微信窗口让你扫码。</p>
+<hr>
+<h1>代理（部分连接源需要）</h1>
+<p>GitHub、Gmail 在部分地区直连不稳定。</p>
+<h2>方式一：用你已有的代理（推荐）</h2>
+<p>如果你电脑上已经装了代理软件并开着，<strong>一般不用配</strong>——系统代理会被自动检测。</p>
+<h2>方式二：手动填</h2>
+<p>设置 → 代理 → 用户代理：</p>
+<pre><code>HTTP：  http://127.0.0.1:&lt;端口&gt;
+SOCKS5：socks5://127.0.0.1:&lt;端口&gt;</code></pre>
+<p>端口看你代理软件的设置页。</p>
+<h2>方式三：拖拽识别</h2>
+<p>设置 → 代理 → 把代理软件的<strong>可执行文件或安装目录</strong>拖进拖拽区，自动识别端口。</p>
+<h2>分域策略</h2>
+<p><strong>国内服务建议直连</strong>（走代理反而慢）：</p>
+<table><thead><tr><th>域名</th><th>建议</th></tr></thead><tbody>
+<tr><td>api.github.com</td><td>走代理</td></tr>
+<tr><td>imap.gmail.com</td><td>走代理</td></tr>
+<tr><td>imap.qq.com</td><td>直连</td></tr>
+<tr><td>企业微信 API</td><td>直连</td></tr>
+<tr><td>飞书 API</td><td>直连</td></tr>
 </tbody></table>
 <hr>
 <h1>常见问题</h1>
-<h2>Q：装完打不开 / 报错怎么办？</h2>
-<p>按这个顺序查：</p>
+<h2>Q：装完打不开 / 报错？</h2>
 <table><thead><tr><th>症状</th><th>原因</th><th>解决</th></tr></thead><tbody>
 <tr><td><code>EADDRINUSE</code></td><td>端口被占</td><td>换端口，或杀掉旧进程</td></tr>
 <tr><td><code>ValidationError: stateDir</code></td><td>路径格式不对</td><td>用绝对路径 + 正斜杠</td></tr>
-<tr><td><code>cannot resolve profile bundle</code></td><td>包名不对</td><td>检查包的 <code>package.json</code> 里 <code>name</code> 字段</td></tr>
-<tr><td><code>spawn env ENOENT</code></td><td>平台不兼容</td><td>见下方「平台差异」</td></tr>
-<tr><td>白屏 / 401</td><td>没带 token</td><td>用终端打印的完整地址（含 <code>?token=</code>）</td></tr>
+<tr><td><code>cannot resolve profile bundle</code></td><td>包名不对</td><td>检查包名是否为 <code>dsh-superagent</code></td></tr>
+<tr><td>白屏 / 401</td><td>没带 token</td><td>用终端打印的完整地址</td></tr>
+<tr><td>插件不出现</td><td>profile 没加载</td><td>检查 <code>package.json</code> 的 <code>dsh.profile.bundles</code> 里有它</td></tr>
 </tbody></table>
-<h2>Q：会不会影响我现有的插件？</h2>
-<p><strong>不会</strong>，因为装在独立 profile 里。</p>
-<p>但有一个<strong>必须开的开关</strong>：设置 → 高级 → <strong>「隔离进程环境变量」</strong>。</p>
-<p>这个插件会修改进程的 <code>PATH</code>，把 <code>gh</code> 和 <code>lark-cli</code> 的包装脚本插到最前面。不开隔离的话，同进程的其它插件调用 <code>gh</code> 时会用到它的账号。</p>
-<h2>Q：能不能装进我正在用的 profile？</h2>
-<p>技术上可以，但<strong>不建议</strong>。</p>
-<p>如果你坚持要，必须：</p>
-<ol>
-<li>先备份 <code>~/.dsh/profiles/&lt;你的profile&gt;/cordis.patch.yml</code></li>
-<li>开启「隔离进程环境变量」</li>
-<li>装完逐项验证原有插件是否正常</li>
-</ol>
-<h2>Q：升级怎么做？</h2>
-<p><strong>插件版</strong>：</p>
-<pre><code class="language-bash">dsh plugin --profile superagent update</code></pre>
-<p><strong>白板版</strong>：下载新压缩包，覆盖解压。</p>
-<p><strong>升级前务必备份</strong> <code>&lt;stateDir&gt;</code> 整个目录。</p>
-<h2>Q：卸载干净？</h2>
+<h2>Q：会影响我现有的插件吗？</h2>
+<p><strong>不会</strong>，装在独立 profile 里。</p>
+<p>但<strong>必须开一个开关</strong>：设置 → 高级 → <strong>「隔离进程环境变量」</strong>。</p>
+<p>这个插件会改进程的 <code>PATH</code>，不开隔离的话，同进程其它插件调 <code>gh</code> 会用到它的账号。</p>
+<h2>Q：怎么升级？</h2>
 <pre><code class="language-bash"># 插件版
+dsh plugin --profile superagent update
+
+# 白板版
+# 下载新压缩包，覆盖解压</code></pre>
+<p><strong>升级前备份</strong> <code>&lt;stateDir&gt;</code> 整个目录。</p>
+<h2>Q：怎么卸载干净？</h2>
+<pre><code class="language-bash"># 移除插件
 dsh plugin --profile superagent remove dsh-superagent
 
-# 删掉 profile
+# 删 profile
 rm -rf ~/.dsh/profiles/superagent
 
-# 删掉数据（谨慎，会丢历史）
+# 删数据（会丢历史，谨慎）
 rm -rf &lt;你的 stateDir&gt;</code></pre>
-<p><strong>白板版</strong>：直接删文件夹。</p>
+<p>白板版：直接删文件夹。</p>
 <hr>
-<h1>平台差异</h1>
-<p>本项目在 Windows 上做过完整适配，其它平台基本沿用官方实现。</p>
-<table><thead><tr><th>平台</th><th>状态</th><th>注意</th></tr></thead><tbody>
-<tr><td><strong>Windows 10/11</strong></td><td>✅ 已适配</td><td>见下</td></tr>
-<tr><td>macOS</td><td>✅ 预期可用</td><td>未完整实测</td></tr>
-<tr><td>Linux</td><td>✅ 预期可用</td><td>未完整实测</td></tr>
+<h1>平台支持情况</h1>
+<table><thead><tr><th>平台</th><th>插件版</th><th>白板版</th><th>备注</th></tr></thead><tbody>
+<tr><td><strong>Windows 10/11</strong></td><td>✅ 已实测</td><td>✅</td><td>官方实现有 4 处 POSIX 假设，本项目已修</td></tr>
+<tr><td><strong>macOS (Apple Silicon)</strong></td><td>✅ 预期可用</td><td>✅</td><td>未完整实测</td></tr>
+<tr><td><strong>macOS (Intel)</strong></td><td>✅ 预期可用</td><td>✅</td><td>未完整实测</td></tr>
+<tr><td><strong>Linux x64</strong></td><td>✅ 预期可用</td><td>✅</td><td>未完整实测</td></tr>
 </tbody></table>
-<h2>Windows 特别注意</h2>
-<p>官方实现按 POSIX 假设写的，Windows 上需要几处调整。<strong>本项目已包含这些修复</strong>，但你需要知道它们存在：</p>
-<table><thead><tr><th>问题</th><th>表现</th><th>本项目处理</th></tr></thead><tbody>
+<p><strong>诚实说明</strong>：Windows 是我们主要开发和验证的平台。macOS / Linux 沿用了官方实现，理论上能跑，但<strong>没有逐项实测</strong>。遇到问题请提 issue。</p>
+<p><strong>Windows 特别处理</strong>（已包含在安装包里）：</p>
+<table><thead><tr><th>问题</th><th>官方表现</th><th>本项目处理</th></tr></thead><tbody>
 <tr><td>没有 <code>env</code> 命令</td><td><code>spawn env ENOENT</code></td><td>改用进程参数传环境</td></tr>
-<tr><td>路径格式校验</td><td><code>stateDir</code> 必须是 <code>/</code> 开头</td><td>放宽为同时接受 <code>X:/</code></td></tr>
-<tr><td>只有 <code>pwsh</code> 没有 <code>bash</code></td><td>工具注册失败</td><td>按平台自动选 shell</td></tr>
-<tr><td>重启时端口自我抢占</td><td><code>EADDRINUSE</code></td><td>先停旧进程再起</td></tr>
-</tbody></table>
-<p><strong>启动方式</strong>：Windows 上官方那个 <code>scripts/dsh-superagent start</code> 用不了（依赖 tmux），直接用：</p>
-<pre><code class="language-cmd">dsh --profile superagent</code></pre>
-<p>或者用项目提供的 <code>启动.cmd</code>。</p>
-<hr>
-<h1>需要你准备的东西</h1>
-<p>按需准备，不是全部都要：</p>
-<table><thead><tr><th>连接源</th><th>需要什么</th><th>哪里拿</th></tr></thead><tbody>
-<tr><td>GitHub</td><td>已登录的账号</td><td>无需额外操作</td></tr>
-<tr><td>企业微信</td><td>企业 ID + 应用 Secret + AgentId</td><td>企业管理员后台</td></tr>
-<tr><td>QQ邮箱</td><td><strong>授权码</strong>（不是密码）</td><td>邮箱设置 → 账户 → 开启 IMAP → 生成</td></tr>
-<tr><td>飞书</td><td>App ID + App Secret</td><td>开放平台建自建应用</td></tr>
-<tr><td>Gmail</td><td>应用专用密码</td><td>开两步验证后生成</td></tr>
-<tr><td>QQ</td><td>已有的桥接配置</td><td>无需额外操作</td></tr>
-<tr><td>微信</td><td>本地客户端扫码授权</td><td>首次启动时扫</td></tr>
+<tr><td>路径校验</td><td>只接受 <code>/</code> 开头</td><td>放宽为同时接受 <code>X:/</code></td></tr>
+<tr><td>只有 <code>pwsh</code> 没 <code>bash</code></td><td>工具注册失败</td><td>按平台自动选 shell</td></tr>
+<tr><td>重启端口抢占</td><td><code>EADDRINUSE</code></td><td>先停旧进程再起</td></tr>
 </tbody></table>
 <hr>
-<h1>最小可用配置（第一次用）</h1>
-<p>想先跑起来看看，就配这些：</p>
-<pre><code>连接源：只开 GitHub，填一个你有的仓库
+<h1>最小可用配置</h1>
+<p>第一次用，配这些就够：</p>
+<pre><code>连接源：只开 QQ邮箱 或 GitHub（选一个）
 权限：白名单只填你自己
 模式：observe（只记录不执行）
 预算：日 ¥10
 自主权限：全关</code></pre>
-<p><strong>跑一周</strong>，看它记录了哪些「想做的事」。觉得判断准，再逐项放开。</p>
+<p><strong>跑一周</strong>，看它记录了哪些「想做的事」。觉得准了再逐项放开。</p>
 <hr>
 <p><a href="../index.html">← 返回首页</a> | <a href="../docs/zh/01-overview.html">完整文档</a></p>
 <nav class="doc-nav">
