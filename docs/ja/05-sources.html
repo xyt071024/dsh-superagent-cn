@@ -37,15 +37,16 @@
 <p><strong>新しいソースの追加 = 翻訳層を 1 つ書くこと</strong>であり、コアを変更する必要はありません。</p>
 <hr>
 <h2>2. 7 つのソース</h2>
-<table><thead><tr><th>#</th><th>プラットフォーム</th><th>プロトコル</th><th>安定性の目標</th><th>必要なもの</th></tr></thead><tbody>
-<tr><td>1</td><td>企業微信</td><td>公式 API + コールバック</td><td>★★★★★</td><td>企業 ID + アプリ Secret</td></tr>
-<tr><td>2</td><td>QQ メール</td><td>IMAP IDLE + SMTP</td><td>★★★★★</td><td>認証コード</td></tr>
-<tr><td>3</td><td>飛書</td><td>CLI + イベントストリーム</td><td>★★★★★</td><td>自社アプリの認証情報</td></tr>
-<tr><td>4</td><td>GitHub</td><td>CLI + 4 段ミラー</td><td>★★★★★</td><td>設定済み</td></tr>
-<tr><td>5</td><td>Gmail</td><td>IMAP + アプリパスワード</td><td>★★★★☆</td><td>2 段階認証</td></tr>
-<tr><td>6</td><td>QQ</td><td>WebSocket</td><td>★★★★☆</td><td>設定済み</td></tr>
-<tr><td>7</td><td>WeChat</td><td>ローカルクライアント</td><td>★★★★☆</td><td>委任</td></tr>
+<table><thead><tr><th>#</th><th>プラットフォーム</th><th>プロトコル</th><th>安定性の目標</th><th>実装状態</th><th>必要なもの</th></tr></thead><tbody>
+<tr><td>1</td><td>企業微信</td><td>公式 API + コールバック</td><td>★★★★★</td><td>実装済み・未検証</td><td>企業 ID + アプリ Secret</td></tr>
+<tr><td>2</td><td>QQ メール</td><td>IMAP IDLE + SMTP</td><td>★★★★★</td><td>実装済み・未検証</td><td>認証コード</td></tr>
+<tr><td>3</td><td>飛書</td><td>CLI + イベントストリーム</td><td>★★★★★</td><td>実装済み・未検証</td><td>自社アプリの認証情報</td></tr>
+<tr><td>4</td><td>GitHub</td><td>CLI + 4 段ミラー</td><td>★★★★★</td><td><strong>実測済み</strong></td><td>設定済み</td></tr>
+<tr><td>5</td><td>Gmail</td><td>IMAP + アプリパスワード</td><td>★★★★☆</td><td>実装済み・未検証</td><td>2 段階認証</td></tr>
+<tr><td>6</td><td>QQ</td><td>WebSocket</td><td>★★★★☆</td><td><strong>実測済み</strong></td><td>設定済み</td></tr>
+<tr><td>7</td><td>WeChat</td><td>ローカルクライアント</td><td>★★★★☆</td><td>実装済み・未検証</td><td>委任</td></tr>
 </tbody></table>
+<p><strong>「安定性の目標」は設計目標であり、実測値ではありません。</strong> 現在つながって実測できているのは GitHub と QQ の 2 つだけです。残りの 4 つはコードは書けていますが、このマシンでは一度も接続していません（WeChat と企業微信は経路自体がなく、飛書はアプリの認証情報がなく、メールは認証コードがありません）。状態の表記は <code>実測済み</code> / <code>実装済み・未検証</code> / <code>計画中</code> の 3 段階で固定です。</p>
 <hr>
 <h2>3. 各ソースが実装すべきもの</h2>
 <h3>3.1 必須の 3 項目</h3>
@@ -84,7 +85,7 @@ Trigger に翻訳：
 SMTP で送信</code></pre>
 <hr>
 <h2>4. 安定性：5 層の強化</h2>
-<p>目標：<strong>すべてのソースを 4 星以上に。</strong></p>
+<p>目標：<strong>すべてのソースを 4 星以上に。</strong> これは設計目標であり、現状ではありません。現在実測でつながっているのは GitHub と QQ の 2 つだけで、残り 4 つの強化層は実際の経路で検証されていません。</p>
 <h3>4.1 L1 — プロセス監視</h3>
 <pre><code>独立したウォッチドッグ
    ↓ 15 秒ごと
@@ -131,8 +132,9 @@ ID キャッシュを照会
 <p><strong>なぜ必要か</strong>：壊れたソースが再試行を続けると、すべての接続を占有し、他のソースを圧迫します。</p>
 <hr>
 <h2>5. 各ソースの詳細</h2>
-<h3>5.1 企業微信（最も安定）</h3>
-<p><strong>なぜ最も安定しているか</strong>：企業向けの公式 API で、プロトコルが安定しており、ドキュメントも揃っています。</p>
+<h3>5.1 企業微信（設計上は最も安定）</h3>
+<blockquote><p>状態：実装済み・未検証 —— このマシンには経路自体がなく、一度も接続していません。<code>/orchestrator/api/sources</code> は <code>state: setup</code> を返します。</p></blockquote>
+<p><strong>なぜ安定と考えるか</strong>：企業向けの公式 API で、プロトコルが安定しており、ドキュメントも揃っています。これはプロトコル自体に対する評価であり、このマシンでの経路の受け入れ結果ではありません。</p>
 <p><strong>2 つの接続方法</strong>：</p>
 <table><thead><tr><th>方法</th><th>能力</th><th>複雑さ</th></tr></thead><tbody>
 <tr><td>グループボット Webhook</td><td>送信のみ、受信不可</td><td>極めて低い</td></tr>
@@ -145,6 +147,7 @@ ID キャッシュを照会
 AgentId
 受信コールバック URL（任意、未設定ならポーリング）</code></pre>
 <h3>5.2 QQ メール（最も場面に合う）</h3>
+<blockquote><p>状態：実装済み・未検証 —— このマシンでは実際の認証コードで一度も接続しておらず、<code>/orchestrator/api/sources</code> は <code>state: paused</code>、<code>code: mailUnconfigured</code> を返します。Gmail は同じ IMAP + SMTP 実装を共有しているため、状態も同じです。</p></blockquote>
 <p><strong>なぜ適しているか</strong>：メールは本質的に非同期で、送信者が分かり、件名でスレッドにまとめられます。</p>
 <p><strong>技術的な要点</strong>：</p>
 <table><thead><tr><th>項目</th><th>値</th></tr></thead><tbody>
@@ -163,10 +166,12 @@ AgentId
    ↓
 再接続に成功 → UID カーソルで切断期間のメッセージを補完取得</code></pre>
 <h3>5.3 飛書</h3>
+<blockquote><p>状態：実装済み・未検証 —— 上流が持つ実装です。このマシンにはアプリの認証情報が設定されておらず（lark-cli は未 bind）、<code>state: setup</code> です。</p></blockquote>
 <p><strong>CLI は既にあり</strong>、アプリの認証情報が不足しています。</p>
 <p><strong>設定</strong>：自社アプリを作成し、App ID と App Secret を取得します。</p>
 <p><strong>能力</strong>：イベントストリームのプッシュ + メッセージの送受信。</p>
 <h3>5.4 GitHub（4 段ミラー）</h3>
+<blockquote><p>状態：<strong>実測済み</strong> —— 3080 の稼働インスタンスの <code>/orchestrator/api/sources</code> が <code>state: ready</code> を返し、<code>0 notifications; next poll ≥ 60s</code> です。</p></blockquote>
 <p><strong>これは本プロジェクトの重要な設計</strong>です。GitHub は一部の地域でアクセスが不安定だからです。</p>
 <pre><code>第 1 段：api.github.com       直結
     ↓ 失敗
@@ -182,6 +187,7 @@ AgentId
 ☑ ミラー2（ローカルキャッシュ）
 ☑ ミラー3（一括ダウンロード）</code></pre>
 <h3>5.5 Gmail</h3>
+<blockquote><p>状態：実装済み・未検証 —— QQ メールと同じ IMAP + SMTP 実装を共有しており、このマシンでは実際のアプリパスワードで一度も接続しておらず、<code>state: paused</code> です。</p></blockquote>
 <p><strong>技術的な要点</strong>：</p>
 <table><thead><tr><th>項目</th><th>値</th></tr></thead><tbody>
 <tr><td>受信</td><td><code>imap.gmail.com:993</code>（SSL）</td></tr>
@@ -190,6 +196,7 @@ AgentId
 </tbody></table>
 <p><strong>注意</strong>：Gmail は一部の地域で直結するとタイムアウトするため、必ずプロキシを経由します。</p>
 <h3>5.6 QQ</h3>
+<blockquote><p>状態：<strong>実測済み</strong> —— 3080 の稼働インスタンスの <code>/orchestrator/api/sources</code> が <code>state: ready</code> を返し、<code>stats.received = 14</code>（実際のグループメッセージ）です。</p></blockquote>
 <p><strong>ブリッジは既にあり</strong>、WebSocket を使います。</p>
 <p><strong>強化ポイント</strong>：</p>
 <ul>
@@ -198,7 +205,8 @@ AgentId
 <li>再接続後にオフラインメッセージを補完取得</li>
 </ul>
 <h3>5.7 WeChat（重点的な強化）</h3>
-<p><strong>ここが最も脆弱な部分であり、5 層の強化が必要です。</strong></p>
+<blockquote><p>状態：実装済み・未検証 —— OneBot プロトコルの実装を再利用しており、このマシンには WeChat 側のブリッジがなく、<code>state: setup</code> で、一度も接続していません。本節は強化の設計であり、実測結果ではありません。</p></blockquote>
+<p><strong>ここは設計上最も脆弱な部分であり、5 層の強化が必要です。</strong></p>
 <h4>なぜ脆弱なのか</h4>
 <table><thead><tr><th>問題</th><th>説明</th></tr></thead><tbody>
 <tr><td>公式 API がない</td><td>ローカルクライアント経由しかありません</td></tr>
@@ -237,15 +245,26 @@ AgentId
 <table><thead><tr><th>状態</th><th>意味</th><th>パネルの色</th></tr></thead><tbody>
 <tr><td><code>ready</code></td><td>正常に動作中</td><td>緑</td></tr>
 <tr><td><code>starting</code></td><td>起動中</td><td>青</td></tr>
+<tr><td><code>setup</code></td><td>設定が未完了（認証情報・経路の不足）</td><td>灰</td></tr>
 <tr><td><code>paused</code></td><td>一時停止（設定が未完了）</td><td>灰</td></tr>
 <tr><td><code>error</code></td><td>エラー</td><td>橙</td></tr>
 <tr><td><code>degraded</code></td><td>縮退（サーキットブレーカー中）</td><td>赤</td></tr>
 </tbody></table>
-<p><strong>状態は項目ごとに分かれています</strong>：</p>
+<p><strong>状態は項目ごとに分かれています</strong>（下のブロックはあくまで例示で、このマシンの実況ではありません。実況は本節末尾の観測表を参照してください）：</p>
 <pre><code>runtime  : ready     ← ホスト層
 github   : error     ← 業務層、こちらが重要
 email    : ready</code></pre>
 <p><strong>注意</strong>：<code>runtime: ready</code> はソースが正常であることを意味しません。<strong>必ず業務層の状態を見てください。</strong></p>
+<p><strong>このマシンで実際に観測された状態</strong>（3080 の稼働インスタンス <code>/orchestrator/api/sources</code> より）：</p>
+<table><thead><tr><th>ソース</th><th>観測された状態</th><th>説明</th></tr></thead><tbody>
+<tr><td>GitHub</td><td><code>ready</code></td><td><code>0 notifications; next poll ≥ 60s</code></td></tr>
+<tr><td>QQ</td><td><code>ready</code></td><td><code>stats.received = 14</code>、実際のグループメッセージ</td></tr>
+<tr><td>メール</td><td><code>paused</code></td><td><code>code: mailUnconfigured</code>、実際の認証コード未入力</td></tr>
+<tr><td>WeChat</td><td><code>setup</code></td><td>WeChat 側のブリッジがない</td></tr>
+<tr><td>企業微信</td><td><code>setup</code></td><td>経路自体がない</td></tr>
+<tr><td>飛書</td><td><code>setup</code></td><td>アプリの認証情報が未設定（lark-cli 未 bind）</td></tr>
+</tbody></table>
+<p><code>ready</code> は現在の設定でそのソースが本当に動いていることを意味し、<code>paused</code> / <code>setup</code> はコードはあるが設定が未完であることを意味します。<strong>「利用可能」ではありません。</strong></p>
 <hr>
 <h2>7. 新しいソースの追加</h2>
 <p>本プロジェクトが未対応のプラットフォームに接続する場合の手順：</p>
@@ -259,13 +278,15 @@ email    : ready</code></pre>
 <hr>
 <h2>8. ソース比較のまとめ</h2>
 <table><thead><tr><th>観点</th><th>企業微信</th><th>QQ メール</th><th>飛書</th><th>GitHub</th><th>Gmail</th><th>QQ</th><th>WeChat</th></tr></thead><tbody>
+<tr><td><strong>実装状態</strong></td><td>実装済み・未検証</td><td>実装済み・未検証</td><td>実装済み・未検証</td><td><strong>実測済み</strong></td><td>実装済み・未検証</td><td><strong>実測済み</strong></td><td>実装済み・未検証</td></tr>
 <tr><td>安定性</td><td>★★★★★</td><td>★★★★★</td><td>★★★★★</td><td>★★★★★</td><td>★★★★☆</td><td>★★★★☆</td><td>★★★★☆</td></tr>
 <tr><td>接続の難しさ</td><td>低</td><td>低</td><td>中</td><td>低</td><td>中</td><td>低</td><td>高</td></tr>
 <tr><td>必要な準備</td><td>企業資格</td><td>認証コード</td><td>アプリ作成</td><td>なし</td><td>2 段階認証</td><td>なし</td><td>委任</td></tr>
 <tr><td>非同期との相性</td><td>中</td><td><strong>高</strong></td><td>中</td><td>中</td><td>高</td><td>低</td><td>低</td></tr>
 <tr><td>推奨度</td><td>高</td><td><strong>最高</strong></td><td>高</td><td>必須</td><td>要件次第</td><td>高</td><td>代替候補</td></tr>
 </tbody></table>
-<p><strong>1 つだけ接続するなら QQ メールを選んでください</strong>：場面に最も合い（非同期、送信者が分かる、スレッドにまとめられる）、依存が最も少なく、プロトコルが標準的です。</p>
+<p><strong>注意</strong>：上表の「安定性」は設計目標であり、実測の評価ではありません。現在実測で動いているのは GitHub と QQ だけです。「実装済み・未検証」の 4 つについては、接続の難しさと推奨度はプロトコルの特性から下した判断であり、このマシンでは検証されていません。</p>
+<p><strong>1 つだけ接続するなら QQ メールを選んでください</strong>：場面に最も合い（非同期、送信者が分かる、スレッドにまとめられる）、依存が最も少なく、プロトコルが標準的です。ただしこの経路はこのマシンでは実際の認証コードでまだつないでいないため、最初の設定では認証コードを入力して接続テストを 1 回行う必要があります。</p>
 <hr>
 <p><a href="04-settings.html">← 前へ：設定 UI</a> | <a href="../../index.html">README に戻る</a> | <a href="06-proxy.html">次へ：プロキシ方式 →</a></p>
 <nav class="doc-nav">
