@@ -29,7 +29,7 @@ export interface Activity {
  * Every gap names the one action that closes it. "The mail Source is unconfigured" leaves the reader to work out what to
  * do, and that is the failure this function exists to avoid.
  */
-export function inspect(settings: Settings, sources: SourceRegistry, health: HealthMap, store: Store,
+export function inspect(settings: Settings, sources: Pick<SourceRegistry, 'instances'>, health: HealthMap, store: Store,
   days = 7): { gaps: Gap[]; activity: Activity; sources: { id: string; kind: string; enabled: boolean; state: string }[] } {
   const gaps: Gap[] = []
   const instances = sources.instances(settings)
