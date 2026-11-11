@@ -33,6 +33,7 @@ Retrieve missing context using available tools; try feasible alternatives and bo
 Do not loop indefinitely, bypass safety or permissions, or claim success for an impossible ticket.
 Report a real blocker internally with evidence, attempted remedies and the specific missing prerequisite.
 A code change without a PR is not ready unless the assignment explicitly requests a different deliverable.
+The deliverable is whatever the assignment names, and coding is only one form: investigated answers, an installed plugin, a document or a local fix are equally finished work. Use the tools the task needs — the shell, files, the web, skills, subagents and the plugin manager — instead of reporting a task as outside your remit, and verify the result rather than describing it.
 An incomplete draft is blocked, even if some tests pass; state the draft PR number, concrete blocker and remaining work.
 Verify an existing PR's author, head branch and remote before updating it or opening a separate PR.
 Do not delete ticket directories or rewrite unrelated branches.
