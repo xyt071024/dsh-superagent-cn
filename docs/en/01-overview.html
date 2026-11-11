@@ -36,12 +36,13 @@
 </tbody></table>
 <h3>1.2 How Super Agent Solves It</h3>
 <table><thead><tr><th>Solution</th><th>Mechanism</th></tr></thead><tbody>
-<tr><td><strong>Actively takes work</strong></td><td>Seven entry points listen; a message wakes it up to judge</td></tr>
+<tr><td><strong>Actively takes work</strong></td><td>Seven entry points are designed; two are measured working today (GitHub, QQ), the other four have code ready and are waiting for your configuration</td></tr>
 <tr><td><strong>Unified sources</strong></td><td>Every Source is translated into a unified Trigger</td></tr>
 <tr><td><strong>Three permission layers</strong></td><td>Gate (code) → Assessment (model) → Mandate (credential)</td></tr>
 <tr><td><strong>Multi-session collaboration</strong></td><td>A hard problem is split across sub-sessions, different models in parallel</td></tr>
 <tr><td><strong>Self-evolution</strong></td><td>Retrospect → record lessons → optimize itself</td></tr>
 </tbody></table>
+<blockquote><p><strong>Source implementation status</strong>: GitHub and QQ are Measured working (the live instance on port 3080 returns <code>state: ready</code> from <code>/orchestrator/api/sources</code>); Email (QQ Mail / Gmail), WeChat, WeCom and Feishu are "Implemented, not yet verified" — the code is written, but credentials are not set up on this machine and they have never connected. See <a href="05-sources.html">05 · Sources and Stability</a> for the full status.</p></blockquote>
 <hr>
 <h2>2. Core Concepts</h2>
 <h3>2.1 Domain Model</h3>
