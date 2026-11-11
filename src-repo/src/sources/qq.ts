@@ -309,10 +309,6 @@ export function oneBotKind(kind: string, title: { zh: string; en: string }, desc
   kind,
   title,
   description,
-  description: {
-    zh: '通过 OneBot 端点接收 QQ 群和私聊消息。群里只有 @ 智能体的消息才算发给它，私聊则都是。',
-    en: 'Receives QQ group and private messages through a OneBot endpoint. In a group only a message that @s the agent is for it; a private message always is.',
-  },
   schema: QqConfigSchema,
   fields: [
     { key: 'endpoint', type: 'text', pattern: 'https?://\\S+', label: { zh: 'OneBot 端点', en: 'OneBot endpoint' },
