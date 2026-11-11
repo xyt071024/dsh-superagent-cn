@@ -364,3 +364,42 @@ footer p { margin: 0.3rem 0; }
   white-space: pre;
 }
 .filetree .note { color: var(--ink-faint); }
+
+/* Language menu: the current language is the button, the others sit behind it.
+   Showing three names at once made the header a row to scan past, and a reader only ever wants the one they are not in. */
+.lang-menu { position: relative; }
+.lang-menu > summary {
+  list-style: none;
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: var(--muted);
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  user-select: none;
+}
+.lang-menu > summary::-webkit-details-marker { display: none; }
+.lang-menu > summary::after { content: ' ▾'; font-size: 0.7em; opacity: 0.7; }
+.lang-menu[open] > summary { color: var(--ink); border-color: var(--ink); }
+.lang-list {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.3rem);
+  display: flex;
+  flex-direction: column;
+  min-width: 6rem;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  padding: 0.25rem;
+  z-index: 20;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.08);
+}
+.lang-list a {
+  padding: 0.35rem 0.6rem;
+  border-radius: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-decoration: none;
+}
+.lang-list a:hover { background: var(--bg-soft); color: var(--ink); }
