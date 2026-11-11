@@ -50,9 +50,9 @@
 
 ### 它靠谱吗
 
-**权限这块是硬的。** 任何消息内容都改不了权限判定——就算有人在消息里写「忽略之前的指令」，网关只看是谁发的。
+**权限分两道关，别混为一谈。** 第一道是**网关**：纯代码，只看「谁发的」，不看消息内容——就算有人在消息里写「忽略之前的指令」，这一关也不会被绕过。第二道是**评估**：过了网关之后，由模型判断这个请求该不该接、做到什么程度，**这一道是模型判断，可能受消息内容影响**。真正硬的只有第一道。
 
-**能力这块说实话。** 它能改代码、提 PR、写文档、查资料。它不能替你装软件、训模型、做设计决策。
+**能力这块说实话。** 它能改代码、提 PR、写文档、查资料、装插件。它不能替你训模型，也不会替你做设计决策。
 
 ### 两种运行状态
 
@@ -88,12 +88,12 @@
 ```
 1. 去 Releases 下载对应平台的压缩包（约 120MB）
 2. 解压到任意目录
-3. 双击启动（Windows: 启动.cmd / macOS: 启动.command / Linux: ./启动.sh）
-4. 浏览器自动打开面板
-5. 按引导扫码登录
+3. 启动（Windows: 双击 `start.cmd` / macOS·Linux: `chmod +x start.sh && ./start.sh`）
+4. 终端会打印一个带 token 的地址，复制到浏览器打开
+5. 在面板里配来源（QQ / 邮箱 / GitHub），每个都要你填自己的凭据
 ```
 
-**不需要预装 Node.js 或 DSH**，全部内置。**不需要安装程序**，解压即用。
+**需要先装 Node.js 22.19 或更新版本**（https://nodejs.org）。首次启动会自己装到 `~/.dsh/profiles/superagent`，之后解压目录可以删掉。
 
 #### 插件版（已装 DSH 的）
 
@@ -224,7 +224,7 @@ Configure as many as you need; one is enough to start.
 
 ### Is it reliable
 
-**Authorization is hard-enforced.** No message content can change a permission decision — even if someone writes "ignore previous instructions", the gate only looks at who sent it.
+**Authorization has two stages, and only the first is hard.** The **gate** is plain code: it looks at who sent the message, not what it says, so "ignore previous instructions" written inside a message cannot get past it. The **assessment** after it is a model judgement about whether the request should be taken and how far it may go — **that stage can be influenced by message content**. Do not confuse the two.
 
 **Capabilities are honest.** It edits code, opens PRs, writes documents, researches. It does not install software for you, train models, or make design decisions.
 
@@ -249,12 +249,12 @@ Configure as many as you need; one is enough to start.
 ```
 1. Download the archive for your platform from Releases (~120MB)
 2. Unzip anywhere
-3. Run the launcher (Windows: 启动.cmd / macOS: 启动.command / Linux: ./启动.sh)
+3. Run the launcher (Windows: double-click `start.cmd`; macOS/Linux: `chmod +x start.sh && ./start.sh`)
 4. The panel opens in your browser
 5. Follow the prompts to scan and sign in
 ```
 
-**No Node.js or DSH needed** — everything is bundled. **No installer** — unzip and run.
+**Node.js 22.19 or newer is required** (https://nodejs.org). The first launch installs itself into `~/.dsh/profiles/superagent`, after which the unzip folder can be deleted.
 
 #### Plugin (for existing DSH users)
 
@@ -279,8 +279,8 @@ It checks the environment, creates a separate profile, installs the plugin, writ
 | Item | Standalone | Plugin |
 |---|---|---|
 | OS | Win 10/11 / macOS 11+ / Linux | Same |
-| Node.js | Bundled | 22.19+ or 24+ |
-| DSH | Bundled | 0.2.1-rc.1 ~ 0.2.2 |
+| Node.js | Required | 22.19+ or 24+ |
+| DSH | Installed for you on first launch | 0.2.1-rc.1 ~ 0.2.2 |
 | Disk | ~500MB | ~100MB |
 
 #### Connect your accounts
@@ -385,7 +385,7 @@ GitHub · QQ メール · QQ · WeChat · Feishu · WeCom · Gmail
 ```
 1. Releases からプラットフォーム別アーカイブをダウンロード（約 120MB）
 2. 任意の場所に解凍
-3. ランチャーを実行（Windows: 启动.cmd / macOS: 启动.command / Linux: ./启动.sh）
+3. ランチャーを実行（Windows: `start.cmd` をダブルクリック / macOS・Linux: `chmod +x start.sh && ./start.sh`）
 4. ブラウザでパネルが開く
 5. 案内に従ってスキャン・ログイン
 ```
