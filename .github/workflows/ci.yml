@@ -62,6 +62,32 @@ jobs:
             fi
           done
 
+  test:
+    name: Test (Linux only)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src-repo
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: src-repo/package.json
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Only on Linux. Several suites depend on POSIX tools (`sh`, `env`, `sleep`, symlinks) and on
+      # `path.relative()` producing `/`; on Windows they fail for reasons unrelated to the change. Running the suite
+      # where it is meaningful keeps "green" honest instead of training everyone to ignore a permanently red job.
+      - name: Run the suite
+        run: npx vitest run
+
   lint-scripts:
     name: Check the install scripts parse
     runs-on: ubuntu-latest
