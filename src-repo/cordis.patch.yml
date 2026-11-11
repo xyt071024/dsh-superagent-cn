@@ -117,6 +117,20 @@
                   modelSelection: true
                   modelDiscovery: true
                   agentPreset: standard
+              # Fan-out inside one ticket: a worker that can only spawn one child at a time serializes work the
+              # operator asked to run in parallel. `fork` shares the conversation, which is what a reviewer or an
+              # explorer of the same context needs; `workflow-ptc` is how several children are driven as one unit.
+              - id: tool-subagent-fork
+                name: '@deepseek-ai/dsh-tool-subagent'
+                config:
+                  provider: fork
+                  toolName: subagent_fork
+              - id: workflow-ptc
+                name: '@deepseek-ai/dsh-workflow-ptc'
+                config:
+                  provider: spawn
+              - id: tool-workflow
+                name: '@deepseek-ai/dsh-tool-workflow'
           - id: tool-todo
             name: '@deepseek-ai/dsh-tool-todo'
             config:
@@ -124,8 +138,22 @@
           - id: tool-web
             name: '@deepseek-ai/dsh-tool-web'
             config:
-              fetch: false
+              fetch: true
               searchTimeoutMs: 60000
+          # A worker is a general agent, not a code-only one: it may install the capability it needs. The plugin
+          # manager is what the panel uses, so a worker changes the profile exactly as an operator would, with the
+          # same refusals (management-required, unaddressable, not-bundle) and the same restart reporting.
+          - id: tool-plugin-manager
+            name: '@deepseek-ai/dsh-plugin-manager/tools'
+          # Asking a person, presenting a result and scheduling follow-up work are ordinary parts of doing a job.
+          # A worker's question reaches the operator through its report's human_action; these tools are for the
+          # cases where the person is already in the Session.
+          - id: tool-ask-user
+            name: '@deepseek-ai/dsh-tool-ask-user'
+          - id: present
+            name: '@deepseek-ai/dsh-tool-present'
+          - id: tool-schedule
+            name: '@deepseek-ai/dsh-tool-schedule'
     # The agent preset of the main Session (ROUTER_PRESET in src/app/sessions.ts). The worker's 5-second shell and job waits, so a command or a wait does not hold back the next candidates, and
     # only what the main Session uses: no subagents, web, file search or writes, todo list, questions to a person, presenting,
     # plan mode, plugin manager, scheduling, goals or workflows. No persona: the main Session's prompt is complete, so it has
