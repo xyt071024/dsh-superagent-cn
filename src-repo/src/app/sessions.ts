@@ -57,13 +57,19 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 /**
- * The DSH tools an Executor Session works with: files, search, the shell and its jobs, the web, skills, its todo list and
- * subagents. It gets no other tool the profile has, whenever it was registered: none that asks or shows a person something,
- * changes the profile, schedules work or starts goals outside the worker slots, the pause and a person's hold, starts or
- * messages other Sessions, or edits documents.
+ * The DSH tools an Executor Session works with: files, search, the shell and its jobs, the web, skills, its todo list,
+ * subagents, and the tools that let a general agent finish a general job — asking a person, presenting a result,
+ * scheduling follow-up work, and installing the plugin it needs.
+ *
+ * It still gets no tool that asks or shows a person something outside its own Session, changes the profile behind the
+ * operator's back, schedules work that outlives the ticket, starts goals, or starts and messages other Sessions: those
+ * stay with the main Session, which is what the operator watches. What it does get is every capability an ordinary
+ * DSH agent has, because a worker that can only edit code is not the agent this deployment promises.
  */
 const WORK_TOOLS = ['read', 'write', 'edit', 'read_image', 'glob', 'grep', 'bash', 'pwsh', 'job_output', 'job_list', 'job_kill', 'web_search',
-  'web_fetch', 'skill', 'todo_write', 'subagent', 'list_subagent_models', 'send_message', 'list_agents', 'interrupt_agent']
+  'web_fetch', 'skill', 'todo_write', 'subagent', 'list_subagent_models', 'send_message', 'list_agents', 'interrupt_agent',
+  // A general agent installs what it needs instead of reporting the work as impossible.
+  'plugin_manager', 'ask_user_question', 'present', 'schedule_create', 'schedule_list', 'schedule_view', 'schedule_edit']
 /** What the main Session is told when it would wait: what it waits for comes to it, and a waiting step holds back the next. */
 const NO_WAIT = 'Reports, follow_up notices, new candidates and a background job\'s end with its output arrive by themselves as messages; '
   + 'end the turn instead of waiting for them.'
