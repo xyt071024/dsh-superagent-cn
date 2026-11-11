@@ -25,299 +25,222 @@
 
 <main class="doc">
 <h1>安装与接入</h1>
-<p><a href="../index.html">← 返回首页</a> | <a href="../docs/zh/01-overview.html">完整文档</a></p>
+<p><a href="../install.html">← 返回首页</a> | <a href="../docs/zh/01-overview.html">完整文档</a></p>
 <hr>
-<p>本页告诉你<strong>到底怎么装起来用</strong>，以及<strong>每个连接源要准备什么</strong>。</p>
+<p>三种安装方式，选一个。<strong>装完就能用，不需要额外配置。</strong></p>
 <hr>
-<h2>先回答一个核心问题：能做成插件吗？</h2>
-<p><strong>能。</strong> 两种形态：</p>
-<table><thead><tr><th>形态</th><th>是什么</th><th>适合谁</th></tr></thead><tbody>
-<tr><td><strong>插件版</strong></td><td>装进你<strong>现有</strong>的 DSH，侧栏多一个入口</td><td>已装 DSH 的人（大多数）</td></tr>
-<tr><td><strong>白板版</strong></td><td>自带 DSH 的完整压缩包，<strong>解压即用</strong></td><td>没装过 DSH、或要独立环境</td></tr>
+<h2>方式一：白板版（最简单，推荐新手）</h2>
+<p><strong>下载 → 解压 → 双击 → 完成。</strong></p>
+<h3>1. 下载</h3>
+<p>去 <a href="https://github.com/xyt071024/dsh-superagent-cn/releases">Releases</a> 下对应平台的包：</p>
+<table><thead><tr><th>你的系统</th><th>下载文件</th></tr></thead><tbody>
+<tr><td>Windows 10/11 (64位)</td><td><code>dsh-superagent-v&lt;版本&gt;-win-x64.zip</code></td></tr>
+<tr><td>macOS (M1/M2/M3)</td><td><code>dsh-superagent-v&lt;版本&gt;-mac-arm64.zip</code></td></tr>
+<tr><td>macOS (Intel)</td><td><code>dsh-superagent-v&lt;版本&gt;-mac-x64.zip</code></td></tr>
+<tr><td>Linux (64位)</td><td><code>dsh-superagent-v&lt;版本&gt;-linux-x64.zip</code></td></tr>
 </tbody></table>
-<p><strong>推荐插件版</strong>：不用重装 DSH，不动你现有的插件。</p>
-<hr>
-<h2>装之前检查</h2>
-<table><thead><tr><th>项</th><th>要求</th><th>命令</th></tr></thead><tbody>
-<tr><td>DSH</td><td>0.2.1-rc.1 ~ 0.2.2 系列</td><td><code>dsh --version</code></td></tr>
-<tr><td>Node.js</td><td>22.19+ 或 24+</td><td><code>node -v</code></td></tr>
-<tr><td>pnpm</td><td>任意较新版本</td><td><code>pnpm -v</code></td></tr>
-<tr><td>Git</td><td>2.32+</td><td><code>git --version</code></td></tr>
+<p><strong>文件约 120MB</strong>（已压缩，内含 Node 运行时和全部依赖，解压后约 320MB）。</p>
+<h3>2. 解压</h3>
+<p>解压到你喜欢的位置，比如 <code>D:\SuperAgent</code> 或 <code>~/SuperAgent</code>。</p>
+<p><strong>不要放在中文路径或需要管理员权限的目录</strong>（如 <code>C:\Program Files</code>）。</p>
+<h3>3. 启动</h3>
+<table><thead><tr><th>系统</th><th>操作</th></tr></thead><tbody>
+<tr><td>Windows</td><td>双击 <code>启动.cmd</code></td></tr>
+<tr><td>macOS</td><td>双击 <code>启动.command</code>（首次需右键 → 打开）</td></tr>
+<tr><td>Linux</td><td>终端执行 <code>./启动.sh</code></td></tr>
 </tbody></table>
-<p><strong>版本适配</strong>：针对 DSH <strong>0.2.1-rc.1 / rc.2 / rc.3 / rc.5 / 0.2.2-rc.1</strong> 验证过。其它版本不一定能跑。</p>
+<h3>4. 首次启动会自动做什么</h3>
+<pre><code>1. 检查环境            ← 几秒
+2. 生成配置文件         ← 自动
+3. 启动服务            ← 自动
+4. 打开浏览器面板       ← 自动
+5. 显示二维码/引导页    ← 你只需要扫码</code></pre>
+<p><strong>整个过程不需要你填任何东西</strong>，只要扫码登录。</p>
+<h3>5. 扫码登录</h3>
+<p>面板会依次提示：</p>
+<pre><code>① QQ 邮箱     → 输入授权码（有引导，告诉你哪里拿）
+② QQ          → 扫码
+③ 微信        → 扫码
+④ 飞书        → 扫码
+⑤ 企业微信    → 扫码
+⑥ GitHub      → 浏览器授权</code></pre>
+<p><strong>配几个都行</strong>，不用的跳过。<strong>至少配一个</strong>。</p>
 <hr>
-<h1>方式一：插件版（推荐）</h1>
-<h2>Windows</h2>
-<pre><code class="language-powershell"># 1. 创建独立 profile（不会影响你现有的）
-dsh superagent --from-default-profile web --dump-config &gt; $null
-
-# 2. 装插件
-dsh plugin --profile superagent add dsh-superagent
-
-# 3. 配端口与数据目录（编辑下面的文件）
-notepad "$env:USERPROFILE\.dsh\profiles\superagent\cordis.patch.yml"
-
-# 4. 启动
-dsh --profile superagent</code></pre>
-<h2>macOS</h2>
-<pre><code class="language-bash"># 1. 创建独立 profile
-dsh superagent --from-default-profile web --dump-config &gt; /dev/null
-
-# 2. 装插件
-dsh plugin --profile superagent add dsh-superagent
-
-# 3. 配端口与数据目录
-$EDITOR ~/.dsh/profiles/superagent/cordis.patch.yml
-
-# 4. 启动
-dsh --profile superagent</code></pre>
-<h2>Linux</h2>
-<pre><code class="language-bash"># 1. 创建独立 profile
-dsh superagent --from-default-profile web --dump-config &gt; /dev/null
-
-# 2. 装插件
-dsh plugin --profile superagent add dsh-superagent
-
-# 3. 配端口与数据目录
-$EDITOR ~/.dsh/profiles/superagent/cordis.patch.yml
-
-# 4. 启动
-dsh --profile superagent</code></pre>
-<h2>配置文件内容</h2>
-<p>三个平台一样，只有 <code>stateDir</code> 路径不同：</p>
-<pre><code class="language-yaml">- id: webserver
-  config:
-    host: 127.0.0.1
-    port: 3082
-
-- id: superagent
-  config:
-    stateDir: &lt;绝对路径&gt;/state/superagent</code></pre>
-<p><strong>各平台的 <code>stateDir</code> 写法</strong>：</p>
-<table><thead><tr><th>平台</th><th>写法</th></tr></thead><tbody>
-<tr><td>Windows</td><td><code>C:/Users/&lt;你&gt;/.dsh/state/superagent</code>（<strong>正斜杠</strong>）</td></tr>
-<tr><td>macOS</td><td><code>/Users/&lt;你&gt;/.dsh/state/superagent</code></td></tr>
-<tr><td>Linux</td><td><code>/home/&lt;你&gt;/.dsh/state/superagent</code></td></tr>
-</tbody></table>
-<p><strong>注意</strong>：必须是绝对路径。Windows 上用正斜杠，不要用反斜杠。</p>
-<h2>启动后</h2>
-<p>终端会打印一行：</p>
-<pre><code>dsh web: http://127.0.0.1:3082/?token=xxxxxxxx</code></pre>
-<p><strong>复制整个地址</strong>（含 <code>?token=</code>）在浏览器打开。</p>
-<hr>
-<h1>方式二：白板版（解压即用）</h1>
-<h2>下载对应平台</h2>
-<table><thead><tr><th>平台</th><th>文件</th></tr></thead><tbody>
-<tr><td>Windows x64</td><td><code>dsh-superagent-standalone-v&lt;版本&gt;-win-x64.zip</code></td></tr>
-<tr><td>macOS (Apple Silicon)</td><td><code>dsh-superagent-standalone-v&lt;版本&gt;-mac-arm64.zip</code></td></tr>
-<tr><td>macOS (Intel)</td><td><code>dsh-superagent-standalone-v&lt;版本&gt;-mac-x64.zip</code></td></tr>
-<tr><td>Linux x64</td><td><code>dsh-superagent-standalone-v&lt;版本&gt;-linux-x64.zip</code></td></tr>
-</tbody></table>
-<h2>解压后里面是什么</h2>
-<pre><code>dsh-superagent-standalone/
-├── dsh        或  dsh.exe     ← 启动器
-├── node/                      ← 内置 Node 运行时，不用你装
-├── profiles/superagent/       ← 预配置好的
-├── plugins/                   ← 插件本体
-├── 启动.cmd / 启动.sh          ← 双击/执行就能跑
-└── README.txt</code></pre>
-<h2>怎么启动</h2>
-<p><strong>Windows</strong>：双击 <code>启动.cmd</code></p>
+<h2>方式二：插件版（已装 DSH 的用这个）</h2>
+<h3>一条命令</h3>
+<p><strong>Windows（PowerShell）</strong>：</p>
+<pre><code class="language-powershell">irm https://xyt071024.github.io/dsh-superagent-cn/install.ps1 | iex</code></pre>
 <p><strong>macOS / Linux</strong>：</p>
-<pre><code class="language-bash"># macOS（首次需要解除隔离）
-xattr -dr com.apple.quarantine ./dsh-superagent-standalone
-chmod +x ./dsh
-./dsh --profile superagent
+<pre><code class="language-bash">curl -fsSL https://xyt071024.github.io/dsh-superagent-cn/install.sh | bash</code></pre>
+<p><strong>这条命令会自动做完</strong>：</p>
+<pre><code>1. 检查 DSH 版本是否兼容
+2. 创建独立 profile（不碰你现有的）
+3. 下载并安装插件
+4. 写入配置文件
+5. 启动服务并打开面板</code></pre>
+<p><strong>装完就能用，不需要手动改任何配置文件。</strong></p>
+<h3>手动安装（如果你不想跑脚本）</h3>
+<pre><code class="language-bash"># 1. 建独立 profile
+dsh superagent --from-default-profile web --dump-config &gt; /dev/null
 
-# Linux
-chmod +x ./dsh
-./dsh --profile superagent</code></pre>
-<p><strong>不需要安装程序。</strong> 解压 → 启动 → 完事。想卸载直接删文件夹。</p>
-<h2>两种形态对比</h2>
-<table><thead><tr><th></th><th>插件版</th><th>白板版</th></tr></thead><tbody>
-<tr><td>需要先装 DSH</td><td>是</td><td><strong>否</strong>（内置）</td></tr>
-<tr><td>影响现有环境</td><td>不影响（独立 profile）</td><td><strong>完全隔离</strong></td></tr>
-<tr><td>升级</td><td><code>dsh plugin update</code></td><td>下载新压缩包覆盖</td></tr>
-<tr><td>体积</td><td>几 MB</td><td>约 200MB</td></tr>
-<tr><td>适合</td><td>已有 DSH</td><td>全新用户 / 演示 / 隔离测试</td></tr>
+# 2. 装插件
+dsh plugin --profile superagent add dsh-superagent
+
+# 3. 启动
+dsh --profile superagent</code></pre>
+<p>配置文件在 <code>~/.dsh/profiles/superagent/cordis.patch.yml</code>，装插件时会自动生成好的版本。</p>
+<hr>
+<h2>方式三：源码运行（开发者）</h2>
+<pre><code class="language-bash">git clone https://github.com/xyt071024/dsh-superagent-cn.git
+cd dsh-superagent-cn
+pnpm install
+pnpm build
+dsh --profile superagent</code></pre>
+<hr>
+<h1>连接源：装完怎么接</h1>
+<p><strong>全部在面板里点，不用改配置文件。</strong></p>
+<p>进 <strong>设置 → 连接源</strong>，按需开启。下面每个都写清楚要准备什么。</p>
+<hr>
+<h2>GitHub</h2>
+<p><strong>要准备</strong>：GitHub 账号（已有就行）</p>
+<p><strong>怎么做</strong>：</p>
+<pre><code>1. 设置 → 连接源 → GitHub → 开启
+2. 点「授权登录」→ 浏览器弹窗 → 点同意
+3. 填你要监听的仓库：owner/repo
+4. 保存</code></pre>
+<p><strong>就这三步。</strong> 授权是一次性的，之后不用再登。</p>
+<hr>
+<h2>QQ 邮箱（推荐第一个配）</h2>
+<p><strong>要准备</strong>：一个 QQ 邮箱</p>
+<p><strong>怎么做</strong>：</p>
+<pre><code>1. 设置 → 连接源 → QQ邮箱 → 开启
+2. 点「获取授权码」，会弹出图文引导：
+   · 打开 mail.qq.com
+   · 设置 → 账户
+   · 开启 IMAP/SMTP 服务
+   · 按提示发短信
+   · 复制那串 16 位授权码
+3. 粘贴授权码 → 保存</code></pre>
+<p><strong>引导是图文并茂的</strong>，跟着点就行。</p>
+<hr>
+<h2>QQ</h2>
+<p><strong>要准备</strong>：手机 QQ（用来扫码）</p>
+<p><strong>怎么做</strong>：</p>
+<pre><code>1. 设置 → 连接源 → QQ → 开启
+2. 点「一键配置」
+3. 面板自动完成：
+   · 检测本地是否已有 QQ 网关
+   · 没有就引导你下载（附官方链接）
+   · 启动网关
+   · 显示二维码
+4. 手机 QQ 扫码
+5. 面板显示「已连接」→ 完成</code></pre>
+<p><strong>全程只需要扫一次码。</strong></p>
+<blockquote><p><strong>关于 QQ 网关的说明</strong></p>
+<p>QQ 这端需要一个本地协议网关（<strong>SnowLuma</strong>）。按它的许可条款，我们不能把它的程序打包进我们的安装包，只能在你首次启动时从它的官方渠道获取。</p>
+<p><strong>你不需要手动去下载</strong>，面板会自动引导，你只需要点「下一步」和扫码。</p></blockquote>
+<hr>
+<h2>微信</h2>
+<p><strong>要准备</strong>：电脑上装了微信</p>
+<p><strong>怎么做</strong>：</p>
+<pre><code>1. 设置 → 连接源 → 微信 → 开启
+2. 点「连接微信」
+3. 面板自动检测微信客户端
+4. 弹出微信登录窗口 → 手机扫码
+5. 完成后显示「已连接」</code></pre>
+<p><strong>注意</strong>：微信没有官方接口，走本地客户端。腾讯更新客户端后可能需要重新适配，届时面板会提示。</p>
+<hr>
+<h2>飞书</h2>
+<p><strong>要准备</strong>：飞书账号（能创建应用）</p>
+<p><strong>怎么做</strong>：</p>
+<pre><code>1. 设置 → 连接源 → 飞书 → 开启
+2. 点「一键创建应用」
+3. 会打开飞书开放平台，按引导创建（约 2 分钟）
+4. 把 App ID 和 App Secret 粘回面板
+5. 保存</code></pre>
+<p><strong>引导会告诉你每一步点哪里。</strong></p>
+<hr>
+<h2>企业微信</h2>
+<p><strong>要准备</strong>：企业微信管理员权限</p>
+<p><strong>怎么做</strong>：</p>
+<pre><code>1. 设置 → 连接源 → 企业微信 → 开启
+2. 面板会显示要填三项：企业ID / 应用Secret / AgentId
+3. 点「不知道怎么拿？」会展开图文引导
+4. 全部填完 → 保存</code></pre>
+<p><strong>没有企业微信</strong>：跳过这一项，不影响其它功能。</p>
+<hr>
+<h2>Gmail</h2>
+<p><strong>要准备</strong>：Google 账号</p>
+<p><strong>怎么做</strong>：</p>
+<pre><code>1. 设置 → 连接源 → Gmail → 开启
+2. 点「生成应用密码」，会展开引导：
+   · 开启两步验证
+   · 生成 16 位应用专用密码
+3. 粘贴 → 保存</code></pre>
+<p><strong>网络提示</strong>：部分地区直连 Gmail 会超时，面板会自动检测并提示你配代理（见下方）。</p>
+<hr>
+<h1>代理（需要时再配）</h1>
+<p><strong>大部分情况不用配。</strong> 面板检测到连不上境外服务时才会提示。</p>
+<h2>自动检测</h2>
+<p>启动时面板会测试各连接源的连通性：</p>
+<pre><code>GitHub    ✓ 可以直连
+Gmail     ✗ 连接超时 → 建议配置代理</code></pre>
+<p><strong>只有标 ✗ 的才需要配。</strong></p>
+<h2>配法</h2>
+<p>设置 → 代理，三种方式选一：</p>
+<table><thead><tr><th>方式</th><th>怎么做</th></tr></thead><tbody>
+<tr><td><strong>用已有的</strong></td><td>如果你电脑上开着代理软件，通常自动识别，不用管</td></tr>
+<tr><td><strong>手动填</strong></td><td>填 <code>http://127.0.0.1:&lt;端口&gt;</code> 或 <code>socks5://127.0.0.1:&lt;端口&gt;</code></td></tr>
+<tr><td><strong>拖拽识别</strong></td><td>把代理软件的程序或目录拖进拖拽区，自动识别端口</td></tr>
+</tbody></table>
+<h2>分域规则（已预置好）</h2>
+<p>默认已经配好，不需要改：</p>
+<table><thead><tr><th>走代理</th><th>直连</th></tr></thead><tbody>
+<tr><td>GitHub</td><td>QQ 邮箱</td></tr>
+<tr><td>Gmail</td><td>企业微信</td></tr>
+<tr><td>部分境外服务</td><td>飞书</td></tr>
+<tr><td></td><td>国内站点</td></tr>
 </tbody></table>
 <hr>
-<h1>连接源：每个要准备什么</h1>
-<p><strong>这是最容易卡住的地方。</strong> 逐个说明。</p>
-<h2>1. GitHub（最简单）</h2>
-<p><strong>准备</strong>：不需要额外准备，只要你有 GitHub 账号。</p>
-<pre><code class="language-bash"># 检查是否已登录
-gh auth status
-
-# 没登录就登录（会开浏览器授权）
-gh auth login
-
-# 确认身份
-gh api user --jq .login</code></pre>
-<p>安装后进设置 → 连接源 → GitHub → 填你的仓库 <code>owner/name</code>。</p>
-<h2>2. QQ邮箱（推荐第一个配）</h2>
-<p><strong>准备</strong>：一个<strong>授权码</strong>（不是你的 QQ 密码）。</p>
-<p><strong>怎么拿</strong>：</p>
-<pre><code>1. 打开 https://mail.qq.com 登录
-2. 设置 → 账户
-3. 找到「POP3/IMAP/SMTP/Exchange/CardDAV/CalDAV服务」
-4. 开启「IMAP/SMTP服务」
-5. 按提示发短信验证
-6. 拿到一串 16 位授权码 —— 记下来</code></pre>
-<p><strong>填进设置</strong>：</p>
-<pre><code>邮箱地址：你的QQ邮箱@qq.com
-授权码：上面拿到的那串
-IMAP 服务器：imap.qq.com:993 (SSL)
-SMTP 服务器：smtp.qq.com:465 (SSL)</code></pre>
-<p><strong>注意</strong>：授权码只显示一次，丢了要重新生成。</p>
-<h2>3. 企业微信</h2>
-<p><strong>准备</strong>：企业管理员权限。</p>
-<pre><code>1. 登录 https://work.weixin.qq.com
-2. 应用管理 → 创建应用
-3. 记下：企业ID（corpid）、应用Secret、AgentId
-4. 在应用里配置「接收消息服务器」或开启 API 接收</code></pre>
-<p><strong>要填三项</strong>：<code>corpid</code> / <code>secret</code> / <code>agentId</code></p>
-<p><strong>没有企业</strong>：这条路走不通，跳过，用其它源。</p>
-<h2>4. 飞书</h2>
-<p><strong>准备</strong>：能创建应用。</p>
-<pre><code>1. 打开 https://open.feishu.cn
-2. 创建企业自建应用
-3. 开通权限：im:message、im:message:send_as_bot、im:chat
-4. 记下 App ID 和 App Secret
-5. 发布应用版本</code></pre>
-<p><strong>要填两项</strong>：<code>App ID</code> / <code>App Secret</code></p>
-<h2>5. Gmail</h2>
-<p><strong>准备</strong>：Google 账号 + 两步验证。</p>
-<pre><code>1. 开启两步验证：https://myaccount.google.com/security
-2. 生成应用专用密码：https://myaccount.google.com/apppasswords
-3. 选「邮件」+「Windows 计算机」，拿到 16 位密码</code></pre>
-<p><strong>网络</strong>：部分地区直连会超时，需要代理（见下方「代理」一节）。</p>
-<h2>6. QQ（需要额外装一个网关）</h2>
-<h3>重要说明</h3>
-<p>QQ 这一端<strong>不能只装我们一个插件就完事</strong>。它需要一个本地的 QQ 协议网关 <strong>SnowLuma</strong>，这是第三方软件，有独立的许可协议。</p>
-<p><strong>为什么不打包进安装包</strong>：SnowLuma 是<strong>源码可见非商业许可</strong>，不允许我们分发它的二进制。你必须自己去拿。</p>
-<h3>你需要做的三步</h3>
-<p><strong>第 1 步：下载 SnowLuma</strong></p>
-<p>去它的官方发布页拿（搜索引擎搜 "SnowLuma QQ" 或看社区指路）。</p>
-<p>放到一个固定目录，比如 <code>D:\SnowLuma</code>。</p>
-<p><strong>第 2 步：启动并扫码登录</strong></p>
-<pre><code class="language-bash"># Windows
-D:\SnowLuma\launcher.bat
-
-# 或直接跑
-node D:\SnowLuma\index.mjs</code></pre>
-<p>启动后会显示二维码，用手机 QQ 扫码登录。</p>
-<p><strong>默认端口</strong>：</p>
-<ul>
-<li>WebSocket：<code>3001</code></li>
-<li>HTTP：<code>3000</code></li>
-</ul>
-<p><strong>第 3 步：在 Super Agent 里配置</strong></p>
-<p>进设置 → 连接源 → QQ，填：</p>
-<pre><code>WebSocket 地址：ws://127.0.0.1:3001
-HTTP 地址：http://127.0.0.1:3000
-Access Token：（如果你在 SnowLuma 里配了，就填；没配留空）</code></pre>
-<h3>自动检测</h3>
-<p>安装包会带一个<strong>检测脚本</strong>，帮你确认 QQ 这段是否通：</p>
-<pre><code class="language-bash">dsh-superagent doctor --source qq</code></pre>
-<p>它会检查：</p>
-<ul>
-<li>SnowLuma 进程在不在</li>
-<li>端口 3001 / 3000 通不通</li>
-<li>是否已登录（能拿到账号信息）</li>
-<li>配置是否填对</li>
-</ul>
-<p><strong>哪一步没过，脚本会直接告诉你缺什么。</strong></p>
-<h3>如果还是连不上</h3>
-<table><thead><tr><th>症状</th><th>检查</th></tr></thead><tbody>
-<tr><td>端口不通</td><td>SnowLuma 启动了吗？防火墙挡了吗？</td></tr>
-<tr><td>通了但收不到消息</td><td>扫码登录了吗？看 SnowLuma 控制台</td></tr>
-<tr><td>收到了但发不出去</td><td>Access Token 填错了吗？</td></tr>
-<tr><td>一直重连</td><td>SnowLuma 版本太旧，去更新</td></tr>
+<h1>装完检查清单</h1>
+<table><thead><tr><th>#</th><th>检查项</th><th>怎么看</th></tr></thead><tbody>
+<tr><td>1</td><td>面板能打开</td><td>浏览器显示界面</td></tr>
+<tr><td>2</td><td>至少一个连接源是绿色</td><td>设置 → 连接源</td></tr>
+<tr><td>3</td><td>白名单里有你自己</td><td>设置 → 权限与安全</td></tr>
+<tr><td>4</td><td>预算已设</td><td>设置 → 模型与算力</td></tr>
 </tbody></table>
-<h2>7. 微信</h2>
-<p><strong>准备</strong>：Windows 上装微信客户端。</p>
-<p><strong>说明</strong>：微信没有官方 API，只能通过本地客户端。这条路<strong>不稳定</strong>——腾讯改版就得跟。我们用五层加固（进程守护、端口仲裁、双通道、去重、熔断）把可用性拉到 4 星，但<strong>这不是 100% 可靠</strong>。</p>
-<p><strong>首次配置</strong>：设置 → 连接源 → 微信 → 点「授权」，会打开微信窗口让你扫码。</p>
+<p><strong>四项都过了，就能用了。</strong></p>
 <hr>
-<h1>代理（部分连接源需要）</h1>
-<p>GitHub、Gmail 在部分地区直连不稳定。</p>
-<h2>方式一：用你已有的代理（推荐）</h2>
-<p>如果你电脑上已经装了代理软件并开着，<strong>一般不用配</strong>——系统代理会被自动检测。</p>
-<h2>方式二：手动填</h2>
-<p>设置 → 代理 → 用户代理：</p>
-<pre><code>HTTP：  http://127.0.0.1:&lt;端口&gt;
-SOCKS5：socks5://127.0.0.1:&lt;端口&gt;</code></pre>
-<p>端口看你代理软件的设置页。</p>
-<h2>方式三：拖拽识别</h2>
-<p>设置 → 代理 → 把代理软件的<strong>可执行文件或安装目录</strong>拖进拖拽区，自动识别端口。</p>
-<h2>分域策略</h2>
-<p><strong>国内服务建议直连</strong>（走代理反而慢）：</p>
-<table><thead><tr><th>域名</th><th>建议</th></tr></thead><tbody>
-<tr><td>api.github.com</td><td>走代理</td></tr>
-<tr><td>imap.gmail.com</td><td>走代理</td></tr>
-<tr><td>imap.qq.com</td><td>直连</td></tr>
-<tr><td>企业微信 API</td><td>直连</td></tr>
-<tr><td>飞书 API</td><td>直连</td></tr>
+<h1>遇到问题</h1>
+<h2>面板打不开</h2>
+<table><thead><tr><th>检查</th><th>怎么做</th></tr></thead><tbody>
+<tr><td>服务在跑吗</td><td>任务管理器/活动监视器看有没有 node 进程</td></tr>
+<tr><td>端口被占吗</td><td>换端口：设置 → 基本 → 面板端口</td></tr>
+<tr><td>地址对吗</td><td>必须带 <code>?token=...</code>，从启动窗口复制完整地址</td></tr>
 </tbody></table>
-<hr>
-<h1>常见问题</h1>
-<h2>Q：装完打不开 / 报错？</h2>
-<table><thead><tr><th>症状</th><th>原因</th><th>解决</th></tr></thead><tbody>
-<tr><td><code>EADDRINUSE</code></td><td>端口被占</td><td>换端口，或杀掉旧进程</td></tr>
-<tr><td><code>ValidationError: stateDir</code></td><td>路径格式不对</td><td>用绝对路径 + 正斜杠</td></tr>
-<tr><td><code>cannot resolve profile bundle</code></td><td>包名不对</td><td>检查包名是否为 <code>dsh-superagent</code></td></tr>
-<tr><td>白屏 / 401</td><td>没带 token</td><td>用终端打印的完整地址</td></tr>
-<tr><td>插件不出现</td><td>profile 没加载</td><td>检查 <code>package.json</code> 的 <code>dsh.profile.bundles</code> 里有它</td></tr>
+<h2>连接源一直红色</h2>
+<table><thead><tr><th>检查</th><th>怎么做</th></tr></thead><tbody>
+<tr><td>凭证填对了吗</td><td>重新填一遍，注意别带空格</td></tr>
+<tr><td>网络通吗</td><td>面板上有「测试连接」按钮</td></tr>
+<tr><td>需要代理吗</td><td>见上方代理章节</td></tr>
 </tbody></table>
-<h2>Q：会影响我现有的插件吗？</h2>
-<p><strong>不会</strong>，装在独立 profile 里。</p>
-<p>但<strong>必须开一个开关</strong>：设置 → 高级 → <strong>「隔离进程环境变量」</strong>。</p>
-<p>这个插件会改进程的 <code>PATH</code>，不开隔离的话，同进程其它插件调 <code>gh</code> 会用到它的账号。</p>
-<h2>Q：怎么升级？</h2>
-<pre><code class="language-bash"># 插件版
-dsh plugin --profile superagent update
-
-# 白板版
-# 下载新压缩包，覆盖解压</code></pre>
-<p><strong>升级前备份</strong> <code>&lt;stateDir&gt;</code> 整个目录。</p>
-<h2>Q：怎么卸载干净？</h2>
-<pre><code class="language-bash"># 移除插件
-dsh plugin --profile superagent remove dsh-superagent
-
-# 删 profile
-rm -rf ~/.dsh/profiles/superagent
-
-# 删数据（会丢历史，谨慎）
-rm -rf &lt;你的 stateDir&gt;</code></pre>
-<p>白板版：直接删文件夹。</p>
+<h2>想重装</h2>
+<p><strong>白板版</strong>：删掉文件夹，重新解压。</p>
+<p><strong>插件版</strong>：</p>
+<pre><code class="language-bash">dsh plugin --profile superagent remove dsh-superagent
+rm -rf ~/.dsh/profiles/superagent</code></pre>
 <hr>
-<h1>平台支持情况</h1>
-<table><thead><tr><th>平台</th><th>插件版</th><th>白板版</th><th>备注</th></tr></thead><tbody>
-<tr><td><strong>Windows 10/11</strong></td><td>✅ 已实测</td><td>✅</td><td>官方实现有 4 处 POSIX 假设，本项目已修</td></tr>
-<tr><td><strong>macOS (Apple Silicon)</strong></td><td>✅ 预期可用</td><td>✅</td><td>未完整实测</td></tr>
-<tr><td><strong>macOS (Intel)</strong></td><td>✅ 预期可用</td><td>✅</td><td>未完整实测</td></tr>
-<tr><td><strong>Linux x64</strong></td><td>✅ 预期可用</td><td>✅</td><td>未完整实测</td></tr>
+<h1>系统要求</h1>
+<table><thead><tr><th>项</th><th>要求</th></tr></thead><tbody>
+<tr><td>操作系统</td><td>Windows 10/11 (64位) / macOS 11+ / Linux (glibc 2.28+)</td></tr>
+<tr><td>内存</td><td>建议 4GB 以上可用</td></tr>
+<tr><td>磁盘</td><td>约 500MB（含运行数据）</td></tr>
+<tr><td>网络</td><td>能访问你要用的那些服务</td></tr>
 </tbody></table>
-<p><strong>诚实说明</strong>：Windows 是我们主要开发和验证的平台。macOS / Linux 沿用了官方实现，理论上能跑，但<strong>没有逐项实测</strong>。遇到问题请提 issue。</p>
-<p><strong>Windows 特别处理</strong>（已包含在安装包里）：</p>
-<table><thead><tr><th>问题</th><th>官方表现</th><th>本项目处理</th></tr></thead><tbody>
-<tr><td>没有 <code>env</code> 命令</td><td><code>spawn env ENOENT</code></td><td>改用进程参数传环境</td></tr>
-<tr><td>路径校验</td><td>只接受 <code>/</code> 开头</td><td>放宽为同时接受 <code>X:/</code></td></tr>
-<tr><td>只有 <code>pwsh</code> 没 <code>bash</code></td><td>工具注册失败</td><td>按平台自动选 shell</td></tr>
-<tr><td>重启端口抢占</td><td><code>EADDRINUSE</code></td><td>先停旧进程再起</td></tr>
-</tbody></table>
+<p><strong>白板版不需要预装 Node.js 或 DSH</strong>，都已内置。</p>
+<p><strong>插件版需要</strong>：DSH 0.2.1-rc.1 ~ 0.2.2 系列 + Node.js 22.19+。</p>
 <hr>
-<h1>最小可用配置</h1>
-<p>第一次用，配这些就够：</p>
-<pre><code>连接源：只开 QQ邮箱 或 GitHub（选一个）
-权限：白名单只填你自己
-模式：observe（只记录不执行）
-预算：日 ¥10
-自主权限：全关</code></pre>
-<p><strong>跑一周</strong>，看它记录了哪些「想做的事」。觉得准了再逐项放开。</p>
-<hr>
-<p><a href="../index.html">← 返回首页</a> | <a href="../docs/zh/01-overview.html">完整文档</a></p>
+<p><a href="../install.html">← 返回首页</a> | <a href="../docs/zh/01-overview.html">完整文档</a></p>
 <nav class="doc-nav">
 <a class="prev" href="index.html">← 返回首页</a>
 <a class="next" href="docs/zh/01-overview.html">完整文档 →</a>
