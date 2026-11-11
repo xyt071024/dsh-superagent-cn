@@ -153,6 +153,25 @@ dsh --profile superagent</code></pre>
   logs/                  ← ログ
   config-backup/         ← 設定バックアップ</code></pre>
 <p><strong>バックアップ方針</strong>：<code>&lt;stateDir&gt;</code> ディレクトリ全体を定期的にバックアップすれば十分です。</p>
+<h3>8.1 1 つのインスタンスは 1 つの仕事だけ</h3>
+<p>リポジトリが 2 つ、チームが 2 つ、あるいはプラットフォームのアカウントが 2 つなら、<strong>インスタンスも 2 つ</strong>にします。1 つのインスタンスに 2 つの仕事を負わせないでください。</p>
+<p>ルールは 1 つです：</p>
+<blockquote><p><strong>1 インスタンス = 1 profile = 1 リポジトリ = 1 bot。</strong></p></blockquote>
+<p>インスタンス間で共有するものはありません。profile、状態ディレクトリ、ポート、アカウントの許可リストはすべて独立です。だから片方を変更しても、もう片方に触れずに済みます。</p>
+<p><strong>2 つ目を追加するときに最も重要なのは、1 つ目を乱さないことです。</strong> 次の 4 つはそれぞれ固有でなければなりません：</p>
+<table><thead><tr><th>項目</th><th>ルール</th></tr></thead><tbody>
+<tr><td>profile</td><td>新しい名前。再利用しない</td></tr>
+<tr><td>ポート</td><td>別の番号。空いていることを確認する</td></tr>
+<tr><td>stateDir</td><td>新しいディレクトリ。絶対パス（プラグインは <code>~</code> を展開しません）</td></tr>
+<tr><td>bot の認証情報ディレクトリ</td><td><strong>必ず分ける</strong> — 共有すると 2 つのインスタンスが同じ身元で動くことになります</td></tr>
+</tbody></table>
+<p><strong>すべてのコマンドで <code>--profile</code> を明示してください。</strong> 既定値は単一インスタンス用です。</p>
+<p>手順の全体（読み取り専用の事前確認、設定が解析できることの検証、revision ごとの設定保存、受け入れチェックリスト）は、ソースリポジトリの <code>docs/009-second-instance.md</code> にあります。</p>
+<p><strong>最も見落としやすい 2 点</strong>：</p>
+<ol>
+<li><strong>新しい profile にはモデルが設定されていません。</strong> デスクトップ profile で使えるモデルが、そこには存在しないことがあります。各 profile の provider は、それぞれのプラグインが登録するものです。<code>eval</code> と <code>executor</code> のモデルは、新しい profile に実際にあるものを選んでください。</li>
+<li><strong>初回起動で <code>status</code> が 3 で終了するのは正常です。</strong> サービスは動いていて、設定待ちという意味です。再起動を繰り返さず、設定の保存に進んでください。</li>
+</ol>
 <hr>
 <h2>9. アップグレード</h2>
 <h3>9.1 融合版のアップグレード</h3>
