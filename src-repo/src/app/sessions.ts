@@ -18,6 +18,7 @@ import { modelFor } from './routing.ts'
 import { bundledSkills } from './skill-files.ts'
 import { SKILL_PREFIX, type PromptVersion, type Prompts } from './prompts.ts'
 import type { Store } from './store.ts'
+import type { UsageMeter } from './usage.ts'
 import { KV } from '../kv.ts'
 import type { RegisterTool, Tool } from './tools/tool.ts'
 
@@ -32,6 +33,8 @@ export interface SessionsHost {
   readonly health: HealthEntry
   readonly masterId: string
   readonly lifetime: AbortSignal
+  /** Daily token accounting, shared with the pass loop that refuses new work past the operator's limit. */
+  readonly usage: UsageMeter
   closing(): boolean
   /** Execution environment variables for `ticket`, rendered into its worker's system prompt. */
   environment(ticket: Ticket): Variable[]
@@ -96,10 +99,13 @@ export class Sessions {
   /** Decorated agents mapped to their registered disposers and skill scope until the agent is disposed or `Sessions.dispose()` runs. */
   private readonly bindings = new Map<Agent, SessionBinding>()
   private readonly retryHealth = new RetryHealth()
+  /** Daily token accounting; `Sessions` feeds every Session event into it, subagents included. */
+  readonly usage: UsageMeter
   private readonly ctx: Context
   /** Registers ordered `relay` and `notice` effect handlers that deliver to the main Session. */
   constructor(private readonly host: SessionsHost) {
     this.ctx = host.context
+    this.usage = host.usage
     this.agentDelivery = new AgentDelivery(host.context)
     // Deliver relays and notices to the main Session in the order they were queued.
     host.effects.handle('relay', ({ text }, requestId) => this.prompt(host.masterId, requestId, text, 'steer'), { ordered: true })
@@ -115,6 +121,9 @@ export class Sessions {
     ctx.on('session/event', (session, event) => {
       const agent = ctx.agents.get(session.id)
       const binding = agent && agent.session === session ? this.bindings.get(agent) : undefined
+      // Count usage for every Session the operator's limit covers, including a worker's subagents, before the per-Session
+      // checks below skip them: a subagent spends the same allowance.
+      this.usage.observe(event)
       if (!agent || !binding || binding.subagent) return
       this.retryHealth.observe(agent.id, event)
       this.updateModelHealth()
@@ -176,6 +185,13 @@ export class Sessions {
   }
   /** The id of the message `prompt` delivers under `requestId`, which DSH's inbox events name it by. */
   promptedId(requestId: string): MessageId { return messageId(key(requestId)) }
+  /**
+   * Every Session this plugin decorated, as `{ id, agent }`: the main Session and each ticket's worker, never a subagent.
+   * A context archiver measures these; it is a live view, so a Session disposed since the last read is absent.
+   */
+  managed(): { id: string; agent: Agent }[] {
+    return [...this.bindings.entries()].flatMap(([agent, binding]) => binding.subagent ? [] : [{ id: agent.id, agent }])
+  }
   /** Enqueues a steering relay to the main Session; relays are durable and retried by `Effects` until delivered, at most once per `requestId`. */
   relay(requestId: string, text: string): void { this.host.effects.enqueue('relay', requestId, { text }) }
   /** Enqueues a durable background notice for injection into the main Session; a new notice with the same `name` replaces a still-waiting notice of that `name`. */
@@ -269,8 +285,10 @@ export class Sessions {
     const register = this.registerTool(agent, binding)
     for (const tool of host.tools(agent, ticket)) register(tool.name, tool.description, tool.schema, tool.execute)
     if (master) {
-      // The preset enables `bash` or `pwsh` by platform; restrict only names tools this host really has.
-      const shell = ['bash', 'pwsh'].filter(name => agent.ctx.tools.get(name))
+      // The preset enables `bash` or `pwsh` by platform; restrict only names this host really has. The agent's own view
+      // includes the preset's tools, and reading through the parent scope covers a host that keeps them only there.
+      const parent = scopeParentOf(agent)
+      const shell = ['bash', 'pwsh'].filter(name => agent.ctx.tools.get(name) ?? agent.ctx.tools.get(name, parent))
       binding.disposers.push(agent.ctx.tools.restrict({ allow: ['skill', ...shell, 'read', 'read_image', 'job_output', 'job_list', 'job_kill'] }),
         agent.ctx.tools.guard(execution => noWait(execution, () => this.routed(agent))))
     } else {
@@ -301,9 +319,8 @@ export class Sessions {
     const store = this.host.store
     const parent = scopeParentOf(agent)
     // Restrict names global tools, so keep only the names this host actually has: a preset enables `bash` or `pwsh` by platform.
-    const known = WORK_TOOLS.filter(name => agent.ctx.tools.get(name))
-    const allow = known.filter(name => agent.ctx.tools.get(name, parent))
-    return [agent.ctx.tools.restrict({ allow }), agent.ctx.tools.guard(() => {
+    const known = WORK_TOOLS.filter(name => agent.ctx.tools.get(name, parent))
+    return [agent.ctx.tools.restrict({ allow: known }), agent.ctx.tools.guard(() => {
       const current = store.tickets.get(ticketId)
       return !current || !liveTicket(current) ? 'Ticket ended; new work needs a new authorized ticket' : undefined
     })]
