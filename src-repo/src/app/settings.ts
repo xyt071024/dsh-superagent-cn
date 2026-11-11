@@ -2,7 +2,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { z } from 'zod'
 import { UserError, type EngineForSettings } from '../core/index.ts'
-import { EvalConfigSchema, ExecutorConfigSchema, PolicyConfigSchema, RoutingConfigSchema, SettingsSchema, policyEffects, policyVersion } from '../policy.ts'
+import { BudgetConfigSchema, EvalConfigSchema, ExecutorConfigSchema, PolicyConfigSchema, RoutingConfigSchema, SettingsSchema, policyEffects, policyVersion } from '../policy.ts'
 import type { Settings as SettingsValue, SettingsBlock, SettingsOrigin, SettingsSave } from '../policy.ts'
 import type { SourceHost } from '../sources/host.ts'
 import type { HealthBoard, HealthEntry } from '../infra/health.ts'
@@ -29,7 +29,7 @@ interface Block {
   merge(settings: SettingsValue, value: unknown, id: string): SettingsValue
   guard?(current: SettingsValue, candidate: SettingsValue, origin: SettingsOrigin): void
 }
-const BLOCKS: Record<'policy' | 'eval' | 'executor' | 'routing' | 'source', Block> = {
+const BLOCKS: Record<'policy' | 'eval' | 'executor' | 'routing' | 'budget' | 'source', Block> = {
   policy: {
     parse: (value, sources) => {
       const policy = PolicyConfigSchema.parse(value)
@@ -41,6 +41,9 @@ const BLOCKS: Record<'policy' | 'eval' | 'executor' | 'routing' | 'source', Bloc
   // Routing only steers which model and Session a run uses, so it changes no authorization and needs no guard.
   routing: { parse: value => RoutingConfigSchema.parse(value),
     merge: (settings, value) => ({ ...settings, routing: value as SettingsValue['routing'] }) },
+  // Budget only steers when a context is archived and how much may be spent, so it changes no authorization either.
+  budget: { parse: value => BudgetConfigSchema.parse(value),
+    merge: (settings, value) => ({ ...settings, budget: value as SettingsValue['budget'] }) },
   executor: {
     parse: value => ExecutorConfigSchema.parse(value),
     merge: (settings, value) => ({ ...settings, executor: value as SettingsValue['executor'] }),
@@ -120,6 +123,7 @@ export class Settings {
       pause: { revision: revision('pause'), value: { paused: settings.paused } },
       eval: { revision: revision('eval'), value: settings.eval },
       executor: { revision: revision('executor'), value: settings.executor },
+      budget: { revision: revision('budget'), value: settings.budget },
       policy: { revision: revision('policy'), rules: rules.map(rule => ({ id: rule.id, name: rule.name, enabled: rule.enabled })),
         allowed: Object.fromEntries(Object.entries(parts).map(([id, part]) => [id, part.allowed.length])), read: 'settings/policy' },
       sources: sources.instances(settings).map(({ id, kind, enabled, installed }) =>
@@ -134,7 +138,8 @@ export class Settings {
     const { store, sources } = this.host
     const settings = store.settings(), id = block.startsWith('source:') ? block.slice('source:'.length) : undefined
     const instance = id === undefined ? undefined : sources.instances(settings).find(item => item.id === id)
-    const value = block === 'pause' ? { paused: settings.paused } : block === 'policy' || block === 'eval' || block === 'executor' ? settings[block]
+    const value = block === 'pause' ? { paused: settings.paused } : block === 'policy' || block === 'eval' || block === 'executor'
+      || block === 'routing' || block === 'budget' ? settings[block]
       : instance ? { enabled: instance.enabled, config: instance.config } : undefined
     if (value === undefined) throw new UserError('unknownBlock', { block })
     return { block, revision: store.blockRevision(block as SettingsSave), value }
