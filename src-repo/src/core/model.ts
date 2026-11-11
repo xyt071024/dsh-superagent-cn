@@ -1,8 +1,12 @@
 /** Domain model of a proactive agent: the concepts and their invariants, independent of any source, policy, or executor. */
 import type { Reason } from './reasons.ts'
 
-/** Actor identity in the source's own vocabulary; Policy decides which actors may originate work on that Source. */
-export interface ActorRef { source: string; id: string }
+/**
+ * Actor identity in the source's own vocabulary; Policy decides which actors may originate work on that Source.
+ * `name` is the display name the source reported, carried so a card or a reply can show who wrote without a second lookup;
+ * it is never what a Policy list matches on — `id` is.
+ */
+export interface ActorRef { source: string; id: string; name?: string }
 /** Thread identity; the rule that derives `id` from a native event belongs to the source. */
 export interface ThreadRef { source: string; id: string }
 /** Write-only address on a thread; the address format belongs to the source. */
