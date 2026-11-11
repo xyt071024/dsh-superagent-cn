@@ -36,12 +36,13 @@
 </tbody></table>
 <h3>1.2 Super Agent 的解法</h3>
 <table><thead><tr><th>解法</th><th>机制</th></tr></thead><tbody>
-<tr><td><strong>主动接活</strong></td><td>七个入口监听，有消息就醒来判断</td></tr>
+<tr><td><strong>主动接活</strong></td><td>七个入口的设计，当前已实测两个（GitHub、QQ），其余四个代码就绪、等你配置</td></tr>
 <tr><td><strong>多源统一</strong></td><td>所有来源翻译成统一的 Trigger</td></tr>
 <tr><td><strong>三层权限</strong></td><td>网关（代码）→ 评估（模型）→ 授权（凭证）</td></tr>
 <tr><td><strong>多会话协同</strong></td><td>难题拆给多个子会话，不同模型并行</td></tr>
 <tr><td><strong>自我进化</strong></td><td>复盘 → 记经验 → 优化自己</td></tr>
 </tbody></table>
+<blockquote><p><strong>来源实现状态</strong>：GitHub、QQ 已实测（线上 3080 实例 <code>/orchestrator/api/sources</code> 返回 <code>state: ready</code>）；邮箱（QQ 邮箱 / Gmail）、微信、企业微信、飞书为「代码完成，未验证」——代码写完了，本机还没配好凭证、从未连通过。详细状态见 <a href="05-sources.html">05 · 连接源与稳定性</a>。</p></blockquote>
 <hr>
 <h2>2. 核心概念</h2>
 <h3>2.1 领域模型</h3>
