@@ -15,6 +15,7 @@ import type { HealthMap } from '../views/sources.ts'
 import type { Sessions } from '../sessions.ts'
 import type { Settings } from '../settings.ts'
 import type { Store } from '../store.ts'
+import { pluginTool } from './plugin.ts'
 import { AcknowledgementSchema, readTool, tool, type Tool } from './tool.ts'
 
 const RoutingNoteSchema = z.string().trim()
@@ -282,18 +283,19 @@ export function mainTools(host: MainToolsHost, agent: Agent): Tool[] {
         return { source: args.source, allowed: after.length, added: names(after, before), removed: names(before, after) }
       },
     }),
+    pluginTool(host.context),
     tool({
       name: 'orchestrator_self_inspect',
       description: 'Report what this installation lacks and what it has been doing, each gap naming the one action that closes it. Use it on a request to check the setup, or before proposing a change to it.',
       schema: InspectSchema,
-      execute: args => inspect(host.store.settings(), host.sources as SourceRegistry, host.health, host.store as Store,
+      execute: async args => inspect(host.store.settings(), host.sources as SourceRegistry, host.health, host.store as Store,
         args.days ?? 7),
     }),
     tool({
       name: 'orchestrator_self_hygiene',
       description: 'Check the installation for stale state an agent can fix itself: open tickets whose working directory no longer exists. Fixing a missing directory is a repair, not a change to a person\'s work.',
       schema: z.object({}).strict(),
-      execute: () => hygiene(host.store as Store),
+      execute: async () => hygiene(host.store as Store),
     }),
     tool({
       name: 'orchestrator_prompts_save',
