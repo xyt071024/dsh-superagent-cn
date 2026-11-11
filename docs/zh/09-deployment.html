@@ -153,6 +153,25 @@ dsh --profile superagent</code></pre>
   logs/                  ← 日志
   config-backup/         ← 配置备份</code></pre>
 <p><strong>备份策略</strong>：整个 <code>&lt;stateDir&gt;</code> 目录定期备份即可。</p>
+<h3>8.1 一个实例只服务一件事</h3>
+<p>如果你有两个仓库、两个团队、或者两个平台账号，<strong>开两个实例，不要让一个实例管两件</strong>。</p>
+<p>一条硬规则：</p>
+<blockquote><p><strong>一个实例 = 一个 profile = 一个仓库 = 一个 bot。</strong></p></blockquote>
+<p>实例之间什么都不共享：profile、状态目录、端口、账号白名单，各自独立。这样改一个不会碰到另一个。</p>
+<p><strong>加第二个实例时，最要紧的是别动第一个。</strong> 四件事各自唯一：</p>
+<table><thead><tr><th>项</th><th>规则</th></tr></thead><tbody>
+<tr><td>profile</td><td>新名字，不复用</td></tr>
+<tr><td>端口</td><td>换一个，先确认没被占</td></tr>
+<tr><td>stateDir</td><td>新目录，绝对路径（插件不展开 <code>~</code>）</td></tr>
+<tr><td>bot 凭据目录</td><td><strong>必须独立</strong> —— 共用凭据目录等于两个实例用同一个身份活动</td></tr>
+</tbody></table>
+<p><strong>每一步都要显式写 <code>--profile</code></strong>，不要依赖脚本默认值——默认值是给单实例用的。</p>
+<p>完整步骤（含只读预检、配置解析校验、按 revision 保存设置、验收清单）见源码仓库的 <code>docs/009-second-instance.md</code>。</p>
+<p><strong>最容易漏的两处</strong>：</p>
+<ol>
+<li><strong>新 profile 没有配模型</strong>。桌面 profile 里能用的模型，新 profile 里可能根本不存在——不同 profile 的 provider 是各自插件注册的。设置里的 <code>eval</code> / <code>executor</code> 模型必须挑新 profile 真有的。</li>
+<li><strong>首次启动 <code>status</code> 退出 3 是正常的</strong>，意思是「服务起来了，还在等设置」。这时不要反复重启，去把设置保存完。</li>
+</ol>
 <hr>
 <h2>9. 升级</h2>
 <h3>9.1 融合版升级</h3>
