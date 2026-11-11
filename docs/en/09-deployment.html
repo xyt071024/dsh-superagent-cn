@@ -153,6 +153,25 @@ dsh --profile superagent</code></pre>
   logs/                  ← logs
   config-backup/         ← configuration backups</code></pre>
 <p><strong>Backup strategy</strong>: back up the whole <code>&lt;stateDir&gt;</code> directory periodically.</p>
+<h3>8.1 One instance serves one thing</h3>
+<p>Two repositories, two teams or two platform accounts mean <strong>two instances</strong>. Do not let one instance carry two.</p>
+<p>The rule:</p>
+<blockquote><p><strong>One instance = one profile = one repository = one bot.</strong></p></blockquote>
+<p>Nothing is shared between instances: not the profile, not the state directory, not the port, not the account list. That is what makes it safe to change one without touching the other.</p>
+<p><strong>When adding a second instance, the first thing that matters is not disturbing the first one.</strong> Four things must each be unique:</p>
+<table><thead><tr><th>Item</th><th>Rule</th></tr></thead><tbody>
+<tr><td>profile</td><td>a new name, never reused</td></tr>
+<tr><td>port</td><td>a different one, confirmed free</td></tr>
+<tr><td>stateDir</td><td>a new directory, absolute (the plugin does not expand <code>~</code>)</td></tr>
+<tr><td>bot credential directory</td><td><strong>must be separate</strong> — a shared credential directory means two instances acting as the same identity</td></tr>
+</tbody></table>
+<p><strong>Write <code>--profile</code> explicitly in every command.</strong> The default is meant for a single instance.</p>
+<p>For the full procedure — read-only pre-checks, verifying the configuration parses, saving settings by revision, and the acceptance list — see <code>docs/009-second-instance.md</code> in the source repository.</p>
+<p><strong>The two things most easily missed</strong>:</p>
+<ol>
+<li><strong>A new profile has no models configured.</strong> A model that works in your desktop profile may not exist there at all: each profile's providers are registered by its own plugins. Pick <code>eval</code> and <code>executor</code> models the new profile actually has.</li>
+<li><strong><code>status</code> exiting 3 on the first start is normal.</strong> It means the service runs and still waits for settings. Do not keep restarting it — go and save the settings.</li>
+</ol>
 <hr>
 <h2>9. Upgrading</h2>
 <h3>9.1 Upgrading the Merged Edition</h3>
