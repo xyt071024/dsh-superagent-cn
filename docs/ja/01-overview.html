@@ -36,12 +36,13 @@
 </tbody></table>
 <h3>1.2 Super Agent の解決策</h3>
 <table><thead><tr><th>解決策</th><th>仕組み</th></tr></thead><tbody>
-<tr><td><strong>自分から仕事を取る</strong></td><td>7 つの入口を監視し、メッセージがあれば起きて判断します</td></tr>
+<tr><td><strong>自分から仕事を取る</strong></td><td>7 つの入口を設計しています。現在実測で動いているのは 2 つ（GitHub、QQ）で、残り 4 つはコードが用意済みで、設定を待っている状態です</td></tr>
 <tr><td><strong>複数ソースの統一</strong></td><td>すべてのソースを統一された Trigger に翻訳します</td></tr>
 <tr><td><strong>3 層の権限</strong></td><td>ゲート（コード）→ 評価（モデル）→ 委任（資格情報）</td></tr>
 <tr><td><strong>マルチセッション協調</strong></td><td>難しい課題を複数のサブセッションに分割し、異なるモデルが並行して進めます</td></tr>
 <tr><td><strong>自己進化</strong></td><td>振り返り → 経験を記録 → 自分を最適化</td></tr>
 </tbody></table>
+<blockquote><p><strong>ソースの実装状態</strong>：GitHub と QQ は実測済みです（3080 の稼働インスタンスの <code>/orchestrator/api/sources</code> が <code>state: ready</code> を返します）。メール（QQ メール / Gmail）、WeChat、企業微信、飛書は「実装済み・未検証」で、コードは書けていますが、このマシンでは認証情報が未設定のため一度も接続していません。詳細は <a href="05-sources.html">05 · 接続ソースと安定性</a> を参照してください。</p></blockquote>
 <hr>
 <h2>2. 中核概念</h2>
 <h3>2.1 ドメインモデル</h3>
