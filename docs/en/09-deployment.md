@@ -185,6 +185,34 @@ See the eight groups in [Settings UI](04-settings.md).
 
 **Backup strategy**: back up the whole `<stateDir>` directory periodically.
 
+### 8.1 One instance serves one thing
+
+Two repositories, two teams or two platform accounts mean **two instances**. Do not let one instance carry two.
+
+The rule:
+
+> **One instance = one profile = one repository = one bot.**
+
+Nothing is shared between instances: not the profile, not the state directory, not the port, not the account list. That is what makes it safe to change one without touching the other.
+
+**When adding a second instance, the first thing that matters is not disturbing the first one.** Four things must each be unique:
+
+| Item | Rule |
+| --- | --- |
+| profile | a new name, never reused |
+| port | a different one, confirmed free |
+| stateDir | a new directory, absolute (the plugin does not expand `~`) |
+| bot credential directory | **must be separate** — a shared credential directory means two instances acting as the same identity |
+
+**Write `--profile` explicitly in every command.** The default is meant for a single instance.
+
+For the full procedure — read-only pre-checks, verifying the configuration parses, saving settings by revision, and the acceptance list — see `docs/009-second-instance.md` in the source repository.
+
+**The two things most easily missed**:
+
+1. **A new profile has no models configured.** A model that works in your desktop profile may not exist there at all: each profile's providers are registered by its own plugins. Pick `eval` and `executor` models the new profile actually has.
+2. **`status` exiting 3 on the first start is normal.** It means the service runs and still waits for settings. Do not keep restarting it — go and save the settings.
+
 ---
 
 ## 9. Upgrading
