@@ -25,6 +25,11 @@ const CRLF = '\r\n'
 /** Quotes a string for IMAP, escaping the quote and backslash characters the protocol reserves. */
 const quoted = (text: string): string => `"${text.replace(/[\\"]/g, char => `\\${char}`)}"`
 
+/**
+ * One IMAP connection: greeting, `LOGIN`, one mailbox `SELECT`, and the `FETCH`es the caller asks for.
+ * Every command is tagged and awaited in turn, so replies never interleave; a reply to a tag nobody is waiting for is
+ * dropped rather than mistaken for the current answer.
+ */
 export class ImapClient {
   private socket?: Socket | TLSSocket
   private buffer = ''
