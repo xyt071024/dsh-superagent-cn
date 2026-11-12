@@ -59,14 +59,14 @@ QQ — it decides whether the work should be taken, how far it can go, then does
 ### Option 1 — plugin (DSH already installed)
 
 ```bash
-dsh plugin add https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/dsh-superagent-stable.tgz
+dsh plugin add https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Plugin-Stable-v0.2.0.tgz
 ```
 
 Restart DSH; a **Superagent** entry appears in the sidebar.
 
 ### Option 2 — standalone (runs from a zip)
 
-Download `superagent-native-stable.zip` from [Releases](https://github.com/xyt071024/dsh-superagent-cn/releases), unzip it, and run `start.cmd` (Windows) or `./start.sh` (macOS / Linux).
+Download `Super-Agent-Standalone-Windows-macOS-Linux-Stable-v0.2.0.zip` from [Releases](https://github.com/xyt071024/dsh-superagent-cn/releases), unzip it, and run `start.cmd` (Windows) or `./start.sh` (macOS / Linux).
 
 The first run installs the profile into `~/.dsh/profiles/superagent` and picks a free port (3082–3182). **Read the panel address it prints** — that is your port, not a documented default.
 
