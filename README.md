@@ -64,7 +64,7 @@ dsh plugin add https://github.com/xyt071024/dsh-superagent-cn/releases/download/
 
 ### 方式二：白板版（解压即用）
 
-从 [Releases](https://github.com/xyt071024/dsh-superagent-cn/releases) 下载 `Super-Agent-Standalone-Windows-macOS-Linux-Stable-v0.2.0.zip` 解压，双击 `start.cmd`（Windows）或 `./start.sh`（macOS / Linux）。
+从 [Releases](https://github.com/xyt071024/dsh-superagent-cn/releases) 下载对应你系统的 `Super-Agent-Bundled-<系统>-<架构>-Stable-v0.2.0.zip`（自带 Node 与 DSH，约 200 MB），解压后双击 `start.cmd`（Windows）或 `./start.sh`（macOS / Linux）。
 
 首次运行会把 profile 装进 `~/.dsh/profiles/superagent`、随机挑一个空闲端口（3082–3182），然后启动。**安装器会打印你自己的面板地址**，读那一行。
 
