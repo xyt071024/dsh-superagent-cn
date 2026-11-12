@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="200" viewBox="0 0 820 200" role="img" aria-label="Super Agent for DeepSeek Harness">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="55%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#312e81"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="50%" stop-color="#818cf8"/>
+      <stop offset="100%" stop-color="#c084fc"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="820" height="200" fill="url(#bg)"/>
+  <circle cx="700" cy="40" r="150" fill="#6366f1" opacity="0.10"/>
+  <circle cx="90" cy="180" r="120" fill="#38bdf8" opacity="0.08"/>
+
+  <!-- mark: a node wired to several intakes, the shape of the thing -->
+  <g stroke="url(#accent)" stroke-width="2.4" fill="none" opacity="0.95">
+    <circle cx="92" cy="100" r="26"/>
+    <path d="M92 74 V54 M92 126 V146 M66 100 H46 M118 100 H138"/>
+    <path d="M74 82 L58 66 M110 82 L126 66 M74 118 L58 134 M110 118 L126 134"/>
+  </g>
+  <circle cx="92" cy="100" r="9" fill="#818cf8"/>
+
+  <text x="168" y="92" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="42" font-weight="700" fill="#f8fafc" letter-spacing="1">Super Agent</text>
+  <text x="168" y="126" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="19" fill="#94a3b8" letter-spacing="0.4">for DeepSeek Harness</text>
+  <text x="168" y="158" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="14" fill="#64748b" letter-spacing="0.3">七源收活 · 三层授权 · 多会话并行 · 上下文自动交接</text>
+
+  <rect x="168" y="170" width="120" height="3" rx="1.5" fill="url(#accent)"/>
+</svg>
