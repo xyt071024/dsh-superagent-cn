@@ -13,7 +13,7 @@ function Install-SuperAgent {
         # 0 means "pick a free port": an install every user puts on the same number is one a scanner knows in advance, and
         # two such installs cannot coexist. $env:SUPERAGENT_PORT or -SaPort overrides it.
         [int]$SaPort = $(if ($env:SUPERAGENT_PORT) { [int]$env:SUPERAGENT_PORT } else { 0 }),
-        [string]$SaBundle = 'https://xyt071024.github.io/dsh-superagent-cn/releases/dl/dsh-superagent-stable.tgz',
+        [string]$SaBundle = 'https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Plugin-Stable-v0.2.0.tgz',
         [switch]$SaPurge
     )
 
@@ -92,7 +92,10 @@ function Install-SuperAgent {
     Write-Host ""
     Write-Host "[4/6] Installing the plugin"
 
-    $bundle = if ($SaPurge) { $SaBundle -replace '-stable\.tgz$', '-purge.tgz' } else { $SaBundle }
+    # Purge swaps the build inside the name: `-Stable-` becomes `-Purge-`, version intact. Matching only a trailing
+    # `-stable.tgz` silently stopped working once the file name carried a version, so the switch names the segment it
+    # actually changes.
+    $bundle = if ($SaPurge) { $SaBundle -replace '-Stable-', '-Purge-' } else { $SaBundle }
     $work = Join-Path $env:TEMP ("sa-install-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
     New-Item -ItemType Directory -Force -Path $work | Out-Null
     try {
