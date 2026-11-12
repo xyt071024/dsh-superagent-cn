@@ -65,7 +65,7 @@ DSH を再起動すると、サイドバーに **Superagent** が現れます。
 
 ### 方法 2 — スタンドアロン版（zip から実行）
 
-[Releases](https://github.com/xyt071024/dsh-superagent-cn/releases) から `Super-Agent-Standalone-Windows-macOS-Linux-Stable-v0.2.0.zip` をダウンロードして展開し、`start.cmd`（Windows）または `./start.sh`（macOS / Linux）を実行します。
+[Releases](https://github.com/xyt071024/dsh-superagent-cn/releases) からお使いのシステム用の `Super-Agent-Bundled-<os>-<arch>-Stable-v0.2.0.zip`（Node と DSH 同梱、約 200 MB）をダウンロードして展開し、`start.cmd`（Windows）または `./start.sh`（macOS / Linux）を実行します。
 
 初回実行で profile が `~/.dsh/profiles/superagent` に導入され、空いているポート（3082–3182）が選ばれます。**表示されたパネルのアドレスを読んでください** —— それがあなたのポートです。
 
