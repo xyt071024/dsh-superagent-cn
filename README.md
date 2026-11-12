@@ -57,14 +57,14 @@
 ### 方式一：插件版（已经装了 DSH）
 
 ```bash
-dsh plugin add https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/dsh-superagent-stable.tgz
+dsh plugin add https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Plugin-Stable-v0.2.0.tgz
 ```
 
 然后重启 DSH，侧边栏出现 **Superagent** 入口。
 
 ### 方式二：白板版（解压即用）
 
-从 [Releases](https://github.com/xyt071024/dsh-superagent-cn/releases) 下载 `superagent-native-stable.zip` 解压，双击 `start.cmd`（Windows）或 `./start.sh`（macOS / Linux）。
+从 [Releases](https://github.com/xyt071024/dsh-superagent-cn/releases) 下载 `Super-Agent-Standalone-Windows-macOS-Linux-Stable-v0.2.0.zip` 解压，双击 `start.cmd`（Windows）或 `./start.sh`（macOS / Linux）。
 
 首次运行会把 profile 装进 `~/.dsh/profiles/superagent`、随机挑一个空闲端口（3082–3182），然后启动。**安装器会打印你自己的面板地址**，读那一行。
 
