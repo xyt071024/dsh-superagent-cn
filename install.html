@@ -27,8 +27,8 @@
 <p>不用先装 DSH。这份包自带 profile 配置，第一次启动会把它装到正确位置并拉取唯一一个依赖。</p>
 <h3>1. 下载</h3>
 <table><thead><tr><th>版本</th><th>下载</th></tr></thead><tbody>
-<tr><td>稳定版</td><td><a href="https://xyt071024.github.io/dsh-superagent-cn/releases/dl/superagent-native-stable.zip">superagent-native-stable.zip</a>（1.7 MB）</td></tr>
-<tr><td>破甲版</td><td><a href="https://xyt071024.github.io/dsh-superagent-cn/releases/dl/superagent-native-purge.zip">superagent-native-purge.zip</a>（1.7 MB）</td></tr>
+<tr><td>稳定版</td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Standalone-Windows-macOS-Linux-Stable-v0.2.0.zip">Super-Agent-Standalone-Windows-macOS-Linux-Stable-v0.2.0.zip</a>（1.7 MB）</td></tr>
+<tr><td>破甲版</td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Standalone-Windows-macOS-Linux-Purge-v0.2.0.zip">Super-Agent-Standalone-Windows-macOS-Linux-Purge-v0.2.0.zip</a>（1.7 MB）</td></tr>
 </tbody></table>
 <p>两版的区别只在破甲版额外依赖 <code>dsh-purge-community</code> 并需要多跑一次 <code>dsh purge apply</code>。其余完全相同。</p>
 <h3>2. 解压并启动</h3>
@@ -58,7 +58,7 @@
 <hr>
 <h2>方式二：插件版（已有 DSH）</h2>
 <h3>一条命令</h3>
-<pre><code class="language-bash">dsh plugin add https://xyt071024.github.io/dsh-superagent-cn/releases/dl/dsh-superagent-stable.tgz</code></pre>
+<pre><code class="language-bash">dsh plugin add https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Plugin-Stable-v0.2.0.tgz</code></pre>
 <p>破甲版把 <code>-stable</code> 换成 <code>-purge</code>。</p>
 <p>包内已带全部运行时依赖（proper-lockfile、zod、graceful-fs、retry、signal-exit），<strong>不需要联网装依赖</strong>。</p>
 <h3>然后建 profile</h3>
