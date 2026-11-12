@@ -21,45 +21,54 @@
 
 <main class="doc">
 <h1>安装</h1>
-<p>两种形态，任选一种。<strong>都需要先装 Node.js 22.19 或更新版本</strong>（https://nodejs.org）。</p>
+<p>12 个包，按两件事选：<strong>你的系统</strong>和<strong>要不要装 Node</strong>。</p>
+<p>名字读一遍就够，不用打开看：</p>
+<pre><code>Super-Agent-Bundled-Windows-x64-Stable-v0.2.0.zip
+          ↑形态     ↑系统  ↑架构  ↑构建</code></pre>
 <hr>
-<h2>方式一：白板版（解压即用，推荐）</h2>
-<p>不用先装 DSH。这份包自带 profile 配置，第一次启动会把它装到正确位置并拉取唯一一个依赖。</p>
-<h3>1. 下载</h3>
-<table><thead><tr><th>版本</th><th>下载</th></tr></thead><tbody>
-<tr><td>稳定版</td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Standalone-Windows-macOS-Linux-Stable-v0.2.0.zip">Super-Agent-Standalone-Windows-macOS-Linux-Stable-v0.2.0.zip</a>（1.7 MB）</td></tr>
-<tr><td>破甲版</td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Standalone-Windows-macOS-Linux-Purge-v0.2.0.zip">Super-Agent-Standalone-Windows-macOS-Linux-Purge-v0.2.0.zip</a>（1.7 MB）</td></tr>
+<h2>先决定一件事：内置版还是纯净版</h2>
+<table><thead><tr><th></th><th>内置版 Bundled</th><th>纯净版 Clean</th></tr></thead><tbody>
+<tr><td>大小</td><td>约 200 MB（下载）/ 解压后约 655 MB</td><td>0.3 MB</td></tr>
+<tr><td>要先装 Node 吗</td><td><strong>不用</strong></td><td>要（22.19+ 或 24+）</td></tr>
+<tr><td>要先装 DSH 吗</td><td><strong>不用</strong></td><td>要</td></tr>
+<tr><td>怎么跑</td><td>解压，双击 <code>start.cmd</code></td><td><code>dsh plugin add</code></td></tr>
 </tbody></table>
-<p>两版的区别只在破甲版额外依赖 <code>dsh-purge-community</code> 并需要多跑一次 <code>dsh purge apply</code>。其余完全相同。</p>
-<h3>2. 解压并启动</h3>
-<p>解压到任意目录（<strong>解压目录放哪都行</strong>，启动后不再依赖它）。</p>
+<p><strong>想省事就选内置版。</strong> 它把 Node 运行时和 DeepSeek Harness 本体都装进包里了，解压双击就能跑，不需要事先装任何东西。</p>
+<p>代价就是那个 655 MB —— 换来的是「不用折腾环境」。</p>
+<p><strong>已经有 DSH 在跑、只想加这个插件</strong>，就选纯净版，0.3 MB。</p>
+<hr>
+<h2>内置版：按系统选一个</h2>
+<table><thead><tr><th>系统</th><th>稳定版</th><th>破甲版</th></tr></thead><tbody>
+<tr><td><strong>Windows x64</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Bundled-Windows-x64-Stable-v0.2.0.zip">Bundled-Windows-x64-Stable</a></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Bundled-Windows-x64-Purge-v0.2.0.zip">Bundled-Windows-x64-Purge</a></td></tr>
+<tr><td><strong>macOS Apple Silicon</strong>（M1/M2/M3/M4）</td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Bundled-macOS-arm64-Stable-v0.2.0.zip">Bundled-macOS-arm64-Stable</a></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Bundled-macOS-arm64-Purge-v0.2.0.zip">Bundled-macOS-arm64-Purge</a></td></tr>
+<tr><td><strong>macOS Intel</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Bundled-macOS-x64-Stable-v0.2.0.zip">Bundled-macOS-x64-Stable</a></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Bundled-macOS-x64-Purge-v0.2.0.zip">Bundled-macOS-x64-Purge</a></td></tr>
+<tr><td><strong>Linux x64</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Bundled-Linux-x64-Stable-v0.2.0.zip">Bundled-Linux-x64-Stable</a></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Bundled-Linux-x64-Purge-v0.2.0.zip">Bundled-Linux-x64-Purge</a></td></tr>
+</tbody></table>
+<p>不确定 Mac 是哪种芯片：左上角苹果菜单 → 关于本机 → 看「芯片」一栏。写 Apple M 几就是 arm64，写 Intel 就是 x64。</p>
+<h3>解压并启动</h3>
+<p>解压到任意目录（解压目录放哪都行，启动后不再依赖它）。</p>
 <table><thead><tr><th>系统</th><th>启动</th></tr></thead><tbody>
 <tr><td>Windows</td><td>双击 <code>start.cmd</code></td></tr>
 <tr><td>macOS / Linux</td><td><code>chmod +x start.sh &amp;&amp; ./start.sh</code></td></tr>
 </tbody></table>
-<p>第一次启动会做三件事，都是自动的：</p>
+<p>第一次启动会自动做完这些，不需要你干预：</p>
 <pre><code>1. 把 profile 装到 ~/.dsh/profiles/superagent
-2. 把 stateDir 占位符替换成你的真实主目录
-3. npm install 装那一个依赖</code></pre>
-<p>约 15 秒。之后终端会打印一个带 token 的地址，形如（<strong>端口每次安装随机</strong>，落在 3082–3182，读你自己那行输出）：</p>
+2. 用包里自带的 Node 挑一个空闲端口（3082–3182）
+3. 启动，打印一个带 token 的地址</code></pre>
+<p>然后终端会打印：</p>
 <pre><code>dsh web: http://127.0.0.1:3118/?token=xxxxxxxx</code></pre>
-<blockquote><p>端口不设公共默认值：所有人都用同一个端口，等于给扫描器一个写好的号码，两台机器也没法并存。</p>
-<p>想固定就用 <code>--port=&lt;端口&gt;</code>（Windows：<code>-SaPort &lt;端口&gt;</code>）。</p></blockquote>
-<p>点开它。</p>
-<blockquote><p>如果之前已经装过 superagent，启动器会<strong>拒绝覆盖</strong>并提示你先移走旧的 <code>~/.dsh/profiles/superagent</code>。这是故意的：那个目录里有你的工单和设置。</p></blockquote>
-<h3>3. 配一个来源</h3>
-<p>打开面板 → 左侧 <strong>Superagent</strong> → <strong>设置</strong> → <strong>来源</strong>，挑一个配：</p>
-<table><thead><tr><th>来源</th><th>要准备什么</th><th>状态会变成</th></tr></thead><tbody>
-<tr><td><strong>QQ</strong></td><td>一个 OneBot v11 端点地址 + 访问令牌（如 SnowLuma、NapCat）</td><td>运行中</td></tr>
-<tr><td><strong>邮箱</strong></td><td>QQ 邮箱/Gmail 地址 + <strong>授权码</strong>（不是登录密码）</td><td>运行中</td></tr>
-<tr><td><strong>GitHub</strong></td><td>一个能推送到目标仓库的 <code>gh</code> 登录</td><td>运行中</td></tr>
-</tbody></table>
-<p>配好一个就能用。没配的会显示「待处理」并写清缺什么。</p>
+<p><strong>端口是你自己机器上挑的，读你那行输出</strong>，不要照着上面的例子点。</p>
+<blockquote><p>端口不设公共默认值：所有人都用同一个端口，等于给扫描器一个写好的号码，两台机器也没法并存。</p></blockquote>
+<blockquote><p>如果之前装过 superagent，启动器会<strong>拒绝覆盖</strong>并提示你先移走旧的 <code>~/.dsh/profiles/superagent</code>。这是故意的：那个目录里有你的工单和设置。</p></blockquote>
 <hr>
-<h2>方式二：插件版（已有 DSH）</h2>
-<h3>一条命令</h3>
-<pre><code class="language-bash">dsh plugin add https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Plugin-Stable-v0.2.0.tgz</code></pre>
-<p>破甲版把 <code>-stable</code> 换成 <code>-purge</code>。</p>
+<h2>纯净版：已经有 DSH 的话</h2>
+<p>只有插件本体，不含 Node 和 DSH。</p>
+<table><thead><tr><th>构建</th><th>下载</th></tr></thead><tbody>
+<tr><td>稳定版</td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Clean-Any-Platform-Stable-v0.2.0.zip">Super-Agent-Clean-Any-Platform-Stable-v0.2.0.zip</a></td></tr>
+<tr><td>破甲版</td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Clean-Any-Platform-Purge-v0.2.0.zip">Super-Agent-Clean-Any-Platform-Purge-v0.2.0.zip</a></td></tr>
+</tbody></table>
+<p>解压后里面是一个 tgz，直接装：</p>
+<pre><code class="language-bash">dsh plugin add ./Super-Agent-Plugin-Stable-v0.2.0.tgz</code></pre>
 <p>包内已带全部运行时依赖（proper-lockfile、zod、graceful-fs、retry、signal-exit），<strong>不需要联网装依赖</strong>。</p>
 <h3>然后建 profile</h3>
 <pre><code class="language-bash">dsh superagent --from-default-profile web --dump-config &gt; /dev/null</code></pre>
@@ -75,6 +84,25 @@
 <p>启动：</p>
 <pre><code class="language-bash">dsh --profile superagent</code></pre>
 <hr>
+<h2>稳定版和破甲版的区别</h2>
+<table><thead><tr><th></th><th>Stable</th><th>Purge</th></tr></thead><tbody>
+<tr><td>改 DSH 本体吗</td><td>不改</td><td>改（86 处补丁）</td></tr>
+<tr><td>装完还要做什么</td><td>没了</td><td>额外两步：<code>dsh plugin add dsh-purge-community</code> 然后 <code>dsh purge apply</code></td></tr>
+<tr><td>出问题怎么退</td><td>—</td><td><code>dsh purge revert</code></td></tr>
+</tbody></table>
+<p>破甲版让模型对指令的服从更彻底。它<strong>不改变</strong>网关白名单：谁能派活仍然由配置决定。</p>
+<p>用它之前请先读 <a href="purge.html">破甲说明</a>。</p>
+<hr>
+<h2>配一个来源</h2>
+<p>打开面板 → 左侧 <strong>Superagent</strong> → <strong>设置</strong> → <strong>来源</strong>，挑一个配：</p>
+<table><thead><tr><th>来源</th><th>要准备什么</th><th>状态会变成</th></tr></thead><tbody>
+<tr><td><strong>QQ</strong></td><td>一个 OneBot v11 端点地址 + 访问令牌（如 SnowLuma、NapCat）</td><td>运行中</td></tr>
+<tr><td><strong>邮箱</strong></td><td>QQ 邮箱/Gmail 地址 + <strong>授权码</strong>（不是登录密码）</td><td>运行中</td></tr>
+<tr><td><strong>GitHub</strong></td><td>一个能推送到目标仓库的 <code>gh</code> 登录</td><td>运行中</td></tr>
+<tr><td><strong>飞书</strong></td><td>一个机器人 app id / secret</td><td>运行中</td></tr>
+</tbody></table>
+<p>配好一个就能用。没配的会显示「待处理」并写清缺什么。</p>
+<hr>
 <h2><code>isolateEnvironment: true</code> 为什么是必须的</h2>
 <p>superagent 会往<strong>进程级</strong> <code>PATH</code> 里插入一个目录，里面放着 <code>gh</code> 和 <code>lark-cli</code> 的包装脚本，让执行器的命令走智能体自己的账号。</p>
 <p>如果你的 profile 里还有别的插件（多数人的都有），它们调 <code>gh</code> 时会<strong>静默拿到智能体的账号</strong>，而不是你自己的。</p>
@@ -82,26 +110,27 @@
 <p><strong>独立 profile 里可以不开；融合进你的日常 profile 时必须开。</strong></p>
 <hr>
 <h2>版本要求</h2>
-<table><thead><tr><th>项</th><th>要求</th></tr></thead><tbody>
-<tr><td>Node.js</td><td>22.19+ 或 24+</td></tr>
-<tr><td>DSH</td><td>0.2.1 或 0.2.2 系列（peer 依赖为可选项，版本不完全匹配也能启动）</td></tr>
-<tr><td>磁盘</td><td>约 10 MB（插件）+ 工单目录</td></tr>
+<table><thead><tr><th></th><th>内置版</th><th>纯净版</th></tr></thead><tbody>
+<tr><td>Node.js</td><td>自带，无需安装</td><td>22.19+ 或 24+</td></tr>
+<tr><td>DSH</td><td>自带 0.2.2</td><td>0.2.1 或 0.2.2 系列</td></tr>
+<tr><td>磁盘</td><td>约 655 MB</td><td>约 10 MB + 工单目录</td></tr>
 </tbody></table>
 <hr>
 <h2>装不上时</h2>
 <table><thead><tr><th>现象</th><th>原因</th><th>怎么办</th></tr></thead><tbody>
-<tr><td><code>EADDRINUSE: 3082</code></td><td>端口被占</td><td>重新跑安装器让它挑一个空闲端口，或改 <code>cordis.patch.yml</code> 里的 <code>port</code></td></tr>
-<tr><td><code>invalid config: stateDir</code></td><td>白板版漏了替换占位符</td><td>手动把 <code>cordis.patch.yml</code> 里的 <code>__STATE_DIR__</code> 换成真实绝对路径</td></tr>
+<tr><td><code>EADDRINUSE</code></td><td>端口被占</td><td>重新跑安装器让它挑一个空闲端口，或改 <code>cordis.patch.yml</code> 里的 <code>port</code></td></tr>
+<tr><td><code>The bundled Node runtime is missing</code></td><td>内置版没解压完整</td><td>重新解压；压缩包有 200 MB，确认下全了</td></tr>
 <tr><td><code>Lock file is already being held</code></td><td>上一个实例没退干净</td><td>杀掉占用端口的 node 进程再启动</td></tr>
 <tr><td><code>Cannot find module 'graceful-fs'</code></td><td>用的是早期发布的、没带依赖的包</td><td>重新下载本期包</td></tr>
-<tr><td><code>onExit is not a function</code></td><td>同上，<code>signal-exit</code> 版本不对</td><td>重新下载本期包</td></tr>
+<tr><td>macOS 提示「无法验证开发者」</td><td>系统签名检查</td><td>右键点 <code>start.sh</code> → 打开，或 <code>xattr -d com.apple.quarantine start.sh</code></td></tr>
 <tr><td>来源一直「待处理」</td><td>缺凭据</td><td>看状态下写的那句话，它说的是缺哪一项</td></tr>
+<tr><td>面板侧边栏没有 Superagent</td><td>插件没加载</td><td>看启动输出里有没有 <code>dsh-superagent</code> 的报错，把它贴到 issue</td></tr>
 </tbody></table>
 <hr>
 <h2>卸载</h2>
 <table><thead><tr><th>形态</th><th>怎么卸</th></tr></thead><tbody>
-<tr><td>白板版</td><td>删掉 <code>~/.dsh/profiles/superagent</code> 和 <code>~/.dsh/state/superagent</code></td></tr>
-<tr><td>插件版</td><td><code>dsh plugin remove dsh-superagent</code>，再删上面两个目录</td></tr>
+<tr><td>内置版</td><td>删掉 <code>~/.dsh/profiles/superagent</code> 和 <code>~/.dsh/state/superagent</code>，再删解压目录</td></tr>
+<tr><td>纯净版</td><td><code>dsh plugin remove dsh-superagent</code>，再删上面两个目录</td></tr>
 <tr><td>破甲版</td><td>先 <code>dsh purge revert</code>，再按上面两步删</td></tr>
 </tbody></table>
 <p>不会留别的东西——除了你自己配的来源凭据，那些在 <code>~/.dsh/state/superagent/orchestrator.sqlite</code> 里。</p>
