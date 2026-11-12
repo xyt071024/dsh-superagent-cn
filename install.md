@@ -12,8 +12,8 @@
 
 | 版本 | 下载 |
 |---|---|
-| 稳定版 | [superagent-native-stable.zip](https://xyt071024.github.io/dsh-superagent-cn/releases/dl/superagent-native-stable.zip)（1.7 MB） |
-| 破甲版 | [superagent-native-purge.zip](https://xyt071024.github.io/dsh-superagent-cn/releases/dl/superagent-native-purge.zip)（1.7 MB） |
+| 稳定版 | [Super-Agent-Standalone-Windows-macOS-Linux-Stable-v0.2.0.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Standalone-Windows-macOS-Linux-Stable-v0.2.0.zip)（1.7 MB） |
+| 破甲版 | [Super-Agent-Standalone-Windows-macOS-Linux-Purge-v0.2.0.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Standalone-Windows-macOS-Linux-Purge-v0.2.0.zip)（1.7 MB） |
 
 两版的区别只在破甲版额外依赖 `dsh-purge-community` 并需要多跑一次 `dsh purge apply`。其余完全相同。
 
@@ -66,7 +66,7 @@ dsh web: http://127.0.0.1:3118/?token=xxxxxxxx
 ### 一条命令
 
 ```bash
-dsh plugin add https://xyt071024.github.io/dsh-superagent-cn/releases/dl/dsh-superagent-stable.tgz
+dsh plugin add https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Plugin-Stable-v0.2.0.tgz
 ```
 
 破甲版把 `-stable` 换成 `-purge`。
