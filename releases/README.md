@@ -1,85 +1,99 @@
-# 下载 / Downloads
+# 下载
 
-Super Agent for DeepSeek Harness 的全部安装包。按形态分两大类，各自再分「标准版」与「破甲版」。
+Super Agent for DeepSeek Harness v0.2.0 的全部安装包。
+
+名字读一遍就够，不用打开看：`Super-Agent-Bundled-Windows-x64-Stable-v0.2.0.zip`
+—— 形态 · 系统 · 架构 · 构建。
 
 ---
 
-## 直接下载
+## 内置版 Bundled：自带你需要的一切
 
-下面六个文件都在 [`dl/`](dl/) 目录下，可直接点链接下载，也可用页面内的命令安装。
+**不需要先装 Node.js，也不需要装 DSH。** 解压双击就跑。
 
-### 插件版（装进已有的 DSH）
+每个包约 200 MB 下载、解压后约 655 MB —— 里面是完整的 Node 22.19 运行时加 DeepSeek Harness 本体及其依赖。
 
-| 版本 | 文件 | 大小 | 说明 |
-|---|---|---|---|
-| 标准版 | [`dsh-superagent-stable.tgz`](dl/dsh-superagent-stable.tgz) | 324 KB | 只加 Super Agent，不动既有权限设计 |
-| 破甲版 | [`dsh-superagent-purge.tgz`](dl/dsh-superagent-purge.tgz) | 324 KB | 额外削弱三层权限中的提示词层，见下方警告 |
+| 系统 | 稳定版 | 破甲版 |
+|---|---|---|
+| Windows x64 | [Stable](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Bundled-Windows-x64-Stable-v0.2.0.zip) | [Purge](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Bundled-Windows-x64-Purge-v0.2.0.zip) |
+| macOS arm64（M 系列） | [Stable](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Bundled-macOS-arm64-Stable-v0.2.0.zip) | [Purge](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Bundled-macOS-arm64-Purge-v0.2.0.zip) |
+| macOS x64（Intel） | [Stable](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Bundled-macOS-x64-Stable-v0.2.0.zip) | [Purge](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Bundled-macOS-x64-Purge-v0.2.0.zip) |
+| Linux x64 | [Stable](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Bundled-Linux-x64-Stable-v0.2.0.zip) | [Purge](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Bundled-Linux-x64-Purge-v0.2.0.zip) |
 
-安装：
+解压后：Windows 双击 `start.cmd`；macOS / Linux 跑 `chmod +x start.sh && ./start.sh`。
+
+第一次启动会自动铺 profile、用包里自带的 Node 挑一个空闲端口（3082–3182）并打印带 token 的地址。**端口是你机器上挑的，读你自己那行输出。**
+
+不确定 Mac 是哪种芯片：左上角苹果菜单 → 关于本机 → 「芯片」一栏。Apple M 几 = arm64，Intel = x64。
+
+---
+
+## 纯净版 Clean：只有插件
+
+给已经装好 Node.js 和 DSH 的人。0.3 MB，解压后是一个 tgz。
+
+| 构建 | 下载 |
+|---|---|
+| 稳定版 | [Clean-Any-Platform-Stable](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Clean-Any-Platform-Stable-v0.2.0.zip) |
+| 破甲版 | [Clean-Any-Platform-Purge](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Clean-Any-Platform-Purge-v0.2.0.zip) |
+
+解压后：
 
 ```bash
-dsh plugin add https://xyt071024.github.io/dsh-superagent-cn/releases/dl/dsh-superagent-stable.tgz
+dsh plugin add ./Super-Agent-Plugin-Stable-v0.2.0.tgz
 ```
 
-### 白板版（自带 DSH，解压即用）
+包内已带全部运行时依赖，不需要联网装依赖。
 
-| 版本 | 文件 | 大小 | 说明 |
-|---|---|---|---|
-| 标准版 | [`superagent-native-stable.zip`](dl/superagent-native-stable.zip) | 1.7 MB | 全新 DSH profile，只含 Super Agent |
-| 破甲版 | [`superagent-native-purge.zip`](dl/superagent-native-purge.zip) | 1.7 MB | 同上 + 破甲 |
+也可以直接装 tarball，不下载 zip：
 
-解压后双击 `start.cmd`（Windows）或 `chmod +x start.sh && ./start.sh`（macOS / Linux）。第一次启动会自动铺 profile 并装那一个依赖，约 15 秒。
-
-### 分卷压缩包（给手动安装的人）
-
-| 版本 | 文件 | 说明 |
-|---|---|---|
-| 插件版标准 | [`superagent-plugin-stable.zip`](dl/superagent-plugin-stable.zip) | tgz + 依赖 + 安装脚本 + 说明 |
-| 插件版破甲 | [`superagent-plugin-purge.zip`](dl/superagent-plugin-purge.zip) | 同上 |
-| 白板版标准 | [`superagent-native-stable.zip`](dl/superagent-native-stable.zip) | 与上面白板版同一份 |
-| 白板版破甲 | [`superagent-native-purge.zip`](dl/superagent-native-purge.zip) | 同上 |
+| 构建 | tarball |
+|---|---|
+| 稳定版 | [Super-Agent-Plugin-Stable-v0.2.0.tgz](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Plugin-Stable-v0.2.0.tgz) |
+| 破甲版 | [Super-Agent-Plugin-Purge-v0.2.0.tgz](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Plugin-Purge-v0.2.0.tgz) |
 
 ---
 
 ## ⚠️ 破甲版说明
 
-破甲版（purge）会削弱 Super Agent 自身的三层权限设计中的**提示词层**，让模型对指令的服从更彻底。它**不改变**网关白名单：谁能派活仍然由配置决定。
+破甲版（Purge）会修改 DSH 本体（86 处补丁），让模型对指令的服从更彻底。
+它**不改变**网关白名单：谁能派活仍然由配置决定。
 
-用它之前请先读 [破甲说明](../purge.html)，并在需要时执行 `dsh purge revert` 恢复。
-
----
-
-## 安装前需要什么
-
-| 形态 | 需要 |
-|---|---|
-| 插件版 | 一个已经能跑的 DSH，Node.js 22.19+ |
-| 白板版 | 只要 Node.js 22.19+ |
-
-Node.js：<https://nodejs.org>
-
-完整步骤见 [安装文档](../install.html)。
-
----
-
-## 校验
-
-每个包都可用以下方式确认真伪（比对文件大小与解压后的结构）：
+装完还要额外两步：
 
 ```bash
-# 插件版
-curl -sL -o t.tgz https://xyt071024.github.io/dsh-superagent-cn/releases/dl/dsh-superagent-stable.tgz
-ls -l t.tgz && tar -tzf t.tgz | head
-
-# 白板版
-curl -sL -o t.zip https://xyt071024.github.io/dsh-superagent-cn/releases/dl/superagent-native-stable.zip
-unzip -l t.zip | head
+dsh plugin add dsh-purge-community
+dsh purge apply          # 撤销：dsh purge revert
 ```
 
-下载到的包里**不含任何人的账号、白名单、仓库名或令牌**——所有配置项都是空占位符，第一次启动后在设置界面里填自己的。
+用之前请先读 [破甲说明](../purge.html)。
 
 ---
 
-## 版本
+## 为什么内置版这么大
 
-当前打包版本：**0.2.0**。历史与变更见仓库根的 `CHANGELOG.md`。
+| 内容 | 大小 |
+|---|---|
+| Node.js 22.19 运行时（已裁剪，去掉 npm 与头文件） | 约 110 MB |
+| DeepSeek Harness 本体及其依赖 | 约 490 MB |
+| Super Agent 插件 + profile 骨架 | 约 2 MB |
+| **压缩后** | **约 200 MB** |
+
+白板版用不到的 LibreOffice 文档组件（182 MB）已经裁掉。
+换来的是「解压双击就能跑，不用先装任何东西」——不内置的话，你就得自己装 Node、再装 DSH，那正是这个包想省掉的事。
+
+**每个包只含自己平台的 Node**，所以有四个系统分支：Windows 的包在 macOS 上跑不了，反过来也一样。
+
+---
+
+## 装不上时
+
+| 现象 | 怎么办 |
+|---|---|
+| `EADDRINUSE` | 重新跑安装器让它挑端口，或改 `cordis.patch.yml` 里的 `port` |
+| `The bundled Node runtime is missing` | 包没解压完整，重新解压 |
+| `Lock file is already being held` | 上一个实例没退干净，杀掉占用端口的 node 进程 |
+| macOS 提示「无法验证开发者」 | 右键 `start.sh` → 打开，或 `xattr -d com.apple.quarantine start.sh` |
+| 面板没有 Superagent 入口 | 看启动输出里 `dsh-superagent` 的报错，贴到 issue |
+
+完整排查见 [安装说明](../install.html)。
