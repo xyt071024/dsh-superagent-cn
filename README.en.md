@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/xyt071024/dsh-superagent-cn/releases"><img src="https://img.shields.io/badge/release-v0.2.0-2ea44f" alt="release"></a>
+  <a href="https://github.com/xyt071024/dsh-superagent-cn/releases"><img src="https://img.shields.io/badge/release-v0.3.0-2ea44f" alt="release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="license"></a>
   <a href="https://xyt071024.github.io/dsh-superagent-cn/"><img src="https://img.shields.io/badge/docs-中文%20%7C%20EN%20%7C%20日本語-6f42c1" alt="docs"></a>
   <img src="https://img.shields.io/badge/Node-22.19%2B%20%7C%2024%2B-339933" alt="node">
@@ -27,7 +27,7 @@
 **Super Agent: it works while you are away.** An email arrives, someone mentions it on GitHub, a message comes in on
 QQ — it decides whether the work should be taken, how far it can go, then does it and reports back.
 
-> Takes work from many sources → decides whether to accept → splits it across parallel child sessions → reports when done.
+> Takes work from many sources → decides whether to accept → opens teammates and splits the work when it is large enough → reports when done.
 > Built on DeepSeek's open-source [dsh-superagent-prototype](https://github.com/deepseek-ai/dsh-superagent-prototype)
 > (MIT), adding three message sources, multiple instances, routing, self-evolution, automatic context hand-off and a
 > general-purpose tool surface.
@@ -59,14 +59,14 @@ QQ — it decides whether the work should be taken, how far it can go, then does
 ### Option 1 — plugin (DSH already installed)
 
 ```bash
-dsh plugin --profile superagent add https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Plugin-Stable-v0.2.0.tgz
+dsh plugin --profile superagent add https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Plugin-Stable-v0.3.0.tgz
 ```
 
 Restart DSH; a **Superagent** entry appears in the sidebar.
 
 ### Option 2 — standalone (runs from a zip)
 
-Download `Super-Agent-Bundled-<os>-<arch>-Stable-v0.2.0.zip` for your system from [Releases](https://github.com/xyt071024/dsh-superagent-cn/releases) — it bundles Node and DSH, about 200 MB — then unzip and run `start.cmd` (Windows) or `./start.sh` (macOS / Linux).
+Download `Super-Agent-Bundled-<os>-<arch>-Stable-v0.3.0.zip` for your system from [Releases](https://github.com/xyt071024/dsh-superagent-cn/releases) — it bundles Node and DSH, about 200 MB — then unzip and run `start.cmd` (Windows) or `./start.sh` (macOS / Linux).
 
 The first run installs the profile into `~/.dsh/profiles/superagent` and picks a free port (3082–3182). **Read the panel address it prints** — that is your port, not a documented default.
 
@@ -205,7 +205,7 @@ src/
 └── setup.ts            # environment probes and the problems they raise
 
 prompts/                # worker.md(<=1000) / orchestrator.md(<=1400) / work.md / shared.md
-skills/                 # six built-in skills, registered into the skill roots at runtime
+skills/                 # nine built-in skills, registered into the skill roots at runtime
 ├── dsh-superagent-shell/      # shell, background jobs, the sandbox
 ├── dsh-superagent-install/    # install a plugin/CLI/runtime, then verify it
 ├── dsh-superagent-research/   # read the source, separate verified from assumed
