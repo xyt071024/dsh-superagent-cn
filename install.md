@@ -18,7 +18,7 @@ Super-Agent-Bundled-Windows-x64-Stable-v0.2.0.zip
 | 大小 | 约 200 MB（下载）/ 解压后约 655 MB | 0.3 MB |
 | 要先装 Node 吗 | **不用** | 要（22.19+ 或 24+） |
 | 要先装 DSH 吗 | **不用** | 要 |
-| 怎么跑 | 解压，双击 `start.cmd` | `dsh plugin add` |
+| 怎么跑 | 解压，双击 `start.cmd` | `dsh plugin --profile superagent add` |
 
 **想省事就选内置版。** 它把 Node 运行时和 DeepSeek Harness 本体都装进包里了，解压双击就能跑，不需要事先装任何东西。
 代价就是那个 655 MB —— 换来的是「不用折腾环境」。
@@ -81,7 +81,7 @@ dsh web: http://127.0.0.1:3118/?token=xxxxxxxx
 解压后里面是一个 tgz，直接装：
 
 ```bash
-dsh plugin add ./Super-Agent-Plugin-Stable-v0.2.0.tgz
+dsh plugin --profile superagent add ./Super-Agent-Plugin-Stable-v0.2.0.tgz
 ```
 
 包内已带全部运行时依赖（proper-lockfile、zod、graceful-fs、retry、signal-exit），**不需要联网装依赖**。
@@ -118,7 +118,7 @@ dsh --profile superagent
 | | Stable | Purge |
 |---|---|---|
 | 改 DSH 本体吗 | 不改 | 改（86 处补丁） |
-| 装完还要做什么 | 没了 | 额外两步：`dsh plugin add dsh-purge-community` 然后 `dsh purge apply` |
+| 装完还要做什么 | 没了 | 额外两步：`dsh plugin --profile superagent add dsh-purge-community` 然后 `dsh purge apply` |
 | 出问题怎么退 | — | `dsh purge revert` |
 
 破甲版让模型对指令的服从更彻底。它**不改变**网关白名单：谁能派活仍然由配置决定。
@@ -182,7 +182,7 @@ superagent 会往**进程级** `PATH` 里插入一个目录，里面放着 `gh` 
 | 形态 | 怎么卸 |
 |---|---|
 | 内置版 | 删掉 `~/.dsh/profiles/superagent` 和 `~/.dsh/state/superagent`，再删解压目录 |
-| 纯净版 | `dsh plugin remove dsh-superagent`，再删上面两个目录 |
+| 纯净版 | `dsh plugin --profile superagent remove dsh-superagent`，再删上面两个目录 |
 | 破甲版 | 先 `dsh purge revert`，再按上面两步删 |
 
 不会留别的东西——除了你自己配的来源凭据，那些在 `~/.dsh/state/superagent/orchestrator.sqlite` 里。
