@@ -102,8 +102,12 @@ fi
 echo ""
 echo "[3/6] Preparing the profile"
 
-SA_DIR="$HOME/.dsh/profiles/$SA_PROFILE"
-SA_STATE="$HOME/.dsh/state/$SA_PROFILE"
+# The profile directory must be where the `dsh` command will look for it. DSH honours `DSH_HOME` when it is set, and
+# falls back to `~/.dsh` otherwise; hard-coding `$HOME/.dsh` wrote the configuration to one place while `dsh plugin add`
+# installed the package into another, and the final check then reported the install as incomplete.
+SA_ROOT="${DSH_HOME:-$HOME/.dsh}"
+SA_DIR="$SA_ROOT/profiles/$SA_PROFILE"
+SA_STATE="$SA_ROOT/state/$SA_PROFILE"
 
 # The plugin hands `stateDir` straight to Node's path handling, which on Windows does not understand a MSYS path such
 # as `/d/home/...` — the directory is simply never created, and the profile looks installed while all data goes nowhere.
