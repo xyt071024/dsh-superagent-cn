@@ -58,7 +58,7 @@
 ### 方法 1 — プラグイン版（DSH 導入済み）
 
 ```bash
-dsh plugin add https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Plugin-Stable-v0.2.0.tgz
+dsh plugin --profile superagent add https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Plugin-Stable-v0.2.0.tgz
 ```
 
 DSH を再起動すると、サイドバーに **Superagent** が現れます。
