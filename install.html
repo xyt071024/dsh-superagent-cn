@@ -31,7 +31,7 @@
 <tr><td>大小</td><td>约 200 MB（下载）/ 解压后约 655 MB</td><td>0.3 MB</td></tr>
 <tr><td>要先装 Node 吗</td><td><strong>不用</strong></td><td>要（22.19+ 或 24+）</td></tr>
 <tr><td>要先装 DSH 吗</td><td><strong>不用</strong></td><td>要</td></tr>
-<tr><td>怎么跑</td><td>解压，双击 <code>start.cmd</code></td><td><code>dsh plugin add</code></td></tr>
+<tr><td>怎么跑</td><td>解压，双击 <code>start.cmd</code></td><td><code>dsh plugin --profile superagent add</code></td></tr>
 </tbody></table>
 <p><strong>想省事就选内置版。</strong> 它把 Node 运行时和 DeepSeek Harness 本体都装进包里了，解压双击就能跑，不需要事先装任何东西。</p>
 <p>代价就是那个 655 MB —— 换来的是「不用折腾环境」。</p>
@@ -68,7 +68,7 @@
 <tr><td>破甲版</td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Clean-Any-Platform-Purge-v0.2.0.zip">Super-Agent-Clean-Any-Platform-Purge-v0.2.0.zip</a></td></tr>
 </tbody></table>
 <p>解压后里面是一个 tgz，直接装：</p>
-<pre><code class="language-bash">dsh plugin add ./Super-Agent-Plugin-Stable-v0.2.0.tgz</code></pre>
+<pre><code class="language-bash">dsh plugin --profile superagent add ./Super-Agent-Plugin-Stable-v0.2.0.tgz</code></pre>
 <p>包内已带全部运行时依赖（proper-lockfile、zod、graceful-fs、retry、signal-exit），<strong>不需要联网装依赖</strong>。</p>
 <h3>然后建 profile</h3>
 <pre><code class="language-bash">dsh superagent --from-default-profile web --dump-config &gt; /dev/null</code></pre>
@@ -87,7 +87,7 @@
 <h2>稳定版和破甲版的区别</h2>
 <table><thead><tr><th></th><th>Stable</th><th>Purge</th></tr></thead><tbody>
 <tr><td>改 DSH 本体吗</td><td>不改</td><td>改（86 处补丁）</td></tr>
-<tr><td>装完还要做什么</td><td>没了</td><td>额外两步：<code>dsh plugin add dsh-purge-community</code> 然后 <code>dsh purge apply</code></td></tr>
+<tr><td>装完还要做什么</td><td>没了</td><td>额外两步：<code>dsh plugin --profile superagent add dsh-purge-community</code> 然后 <code>dsh purge apply</code></td></tr>
 <tr><td>出问题怎么退</td><td>—</td><td><code>dsh purge revert</code></td></tr>
 </tbody></table>
 <p>破甲版让模型对指令的服从更彻底。它<strong>不改变</strong>网关白名单：谁能派活仍然由配置决定。</p>
@@ -130,7 +130,7 @@
 <h2>卸载</h2>
 <table><thead><tr><th>形态</th><th>怎么卸</th></tr></thead><tbody>
 <tr><td>内置版</td><td>删掉 <code>~/.dsh/profiles/superagent</code> 和 <code>~/.dsh/state/superagent</code>，再删解压目录</td></tr>
-<tr><td>纯净版</td><td><code>dsh plugin remove dsh-superagent</code>，再删上面两个目录</td></tr>
+<tr><td>纯净版</td><td><code>dsh plugin --profile superagent remove dsh-superagent</code>，再删上面两个目录</td></tr>
 <tr><td>破甲版</td><td>先 <code>dsh purge revert</code>，再按上面两步删</td></tr>
 </tbody></table>
 <p>不会留别的东西——除了你自己配的来源凭据，那些在 <code>~/.dsh/state/superagent/orchestrator.sqlite</code> 里。</p>
