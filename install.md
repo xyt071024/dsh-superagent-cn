@@ -5,7 +5,7 @@
 名字读一遍就够，不用打开看：
 
 ```
-Super-Agent-Bundled-Windows-x64-Stable-v0.2.0.zip
+Super-Agent-Bundled-Windows-x64-Stable-v0.3.0.zip
           ↑形态     ↑系统  ↑架构  ↑构建
 ```
 
@@ -31,10 +31,10 @@ Super-Agent-Bundled-Windows-x64-Stable-v0.2.0.zip
 
 | 系统 | 稳定版 | 破甲版 |
 |---|---|---|
-| **Windows x64** | [Bundled-Windows-x64-Stable](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Bundled-Windows-x64-Stable-v0.2.0.zip) | [Bundled-Windows-x64-Purge](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Bundled-Windows-x64-Purge-v0.2.0.zip) |
-| **macOS Apple Silicon**（M1/M2/M3/M4） | [Bundled-macOS-arm64-Stable](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Bundled-macOS-arm64-Stable-v0.2.0.zip) | [Bundled-macOS-arm64-Purge](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Bundled-macOS-arm64-Purge-v0.2.0.zip) |
-| **macOS Intel** | [Bundled-macOS-x64-Stable](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Bundled-macOS-x64-Stable-v0.2.0.zip) | [Bundled-macOS-x64-Purge](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Bundled-macOS-x64-Purge-v0.2.0.zip) |
-| **Linux x64** | [Bundled-Linux-x64-Stable](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Bundled-Linux-x64-Stable-v0.2.0.zip) | [Bundled-Linux-x64-Purge](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Bundled-Linux-x64-Purge-v0.2.0.zip) |
+| **Windows x64** | [Bundled-Windows-x64-Stable](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Bundled-Windows-x64-Stable-v0.3.0.zip) | [Bundled-Windows-x64-Purge](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Bundled-Windows-x64-Purge-v0.3.0.zip) |
+| **macOS Apple Silicon**（M1/M2/M3/M4） | [Bundled-macOS-arm64-Stable](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Bundled-macOS-arm64-Stable-v0.3.0.zip) | [Bundled-macOS-arm64-Purge](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Bundled-macOS-arm64-Purge-v0.3.0.zip) |
+| **macOS Intel** | [Bundled-macOS-x64-Stable](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Bundled-macOS-x64-Stable-v0.3.0.zip) | [Bundled-macOS-x64-Purge](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Bundled-macOS-x64-Purge-v0.3.0.zip) |
+| **Linux x64** | [Bundled-Linux-x64-Stable](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Bundled-Linux-x64-Stable-v0.3.0.zip) | [Bundled-Linux-x64-Purge](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Bundled-Linux-x64-Purge-v0.3.0.zip) |
 
 不确定 Mac 是哪种芯片：左上角苹果菜单 → 关于本机 → 看「芯片」一栏。写 Apple M 几就是 arm64，写 Intel 就是 x64。
 
@@ -75,13 +75,13 @@ dsh web: http://127.0.0.1:3118/?token=xxxxxxxx
 
 | 构建 | 下载 |
 |---|---|
-| 稳定版 | [Super-Agent-Clean-Any-Platform-Stable-v0.2.0.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Clean-Any-Platform-Stable-v0.2.0.zip) |
-| 破甲版 | [Super-Agent-Clean-Any-Platform-Purge-v0.2.0.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Clean-Any-Platform-Purge-v0.2.0.zip) |
+| 稳定版 | [Super-Agent-Clean-Any-Platform-Stable-v0.3.0.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Clean-Any-Platform-Stable-v0.3.0.zip) |
+| 破甲版 | [Super-Agent-Clean-Any-Platform-Purge-v0.3.0.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Clean-Any-Platform-Purge-v0.3.0.zip) |
 
 解压后里面是一个 tgz，直接装：
 
 ```bash
-dsh plugin --profile superagent add ./Super-Agent-Plugin-Stable-v0.2.0.tgz
+dsh plugin --profile superagent add ./Super-Agent-Plugin-Stable-v0.3.0.tgz
 ```
 
 包内已带全部运行时依赖（proper-lockfile、zod、graceful-fs、retry、signal-exit），**不需要联网装依赖**。
