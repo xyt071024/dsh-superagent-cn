@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/xyt071024/dsh-superagent-cn/releases"><img src="https://img.shields.io/badge/release-v0.2.0-2ea44f" alt="release"></a>
+  <a href="https://github.com/xyt071024/dsh-superagent-cn/releases"><img src="https://img.shields.io/badge/release-v0.3.0-2ea44f" alt="release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="license"></a>
   <a href="https://xyt071024.github.io/dsh-superagent-cn/"><img src="https://img.shields.io/badge/docs-中文%20%7C%20EN%20%7C%20日本語-6f42c1" alt="docs"></a>
   <img src="https://img.shields.io/badge/Node-22.19%2B%20%7C%2024%2B-339933" alt="node">
@@ -27,7 +27,7 @@
 **Super Agent：あなたが不在の間も働きます。** メールが届いた、GitHub でメンションされた、QQ にメッセージが来た——
 その仕事を引き受けるべきか、どこまでできるかを自分で判断し、実行して報告します。
 
-> 複数の入口から仕事を受け取り → 引き受けるか判断し → 複数の子セッションに分割して並行実行し → 完了を報告するエージェント。
+> 複数の入口から仕事を受け取り → 引き受けるか判断し → 十分に大きければメンバーを開いて分担し → 完了を報告するエージェント。
 > DeepSeek のオープンソース [dsh-superagent-prototype](https://github.com/deepseek-ai/dsh-superagent-prototype)（MIT）を基に、
 > 三つのメッセージ入口、複数インスタンス、ルーティング、自己進化、コンテキストの自動引き継ぎ、汎用ツール群を追加しています。
 
@@ -37,7 +37,7 @@
 
 - 📥 **七つの入口を自動で監視** — GitHub / QQメール / QQ / WeChat / WeCom / Feishu / Gmail。一つだけでも動きます
 - 🚦 **三段階の認可** — ゲート（純粋なコード、送信者が誰かだけを見る）/ 評価（引き受けるかをモデルが判断）/ マンデート（不変）
-- 🧠 **仕事を分割** — 難しいタスクは複数の子セッションへ。それぞれ別のモデルで並行実行できます
+- 🧠 **仕事を本当に分割** — 実行セッション自身が名前付きメンバーを開き、書き込み範囲を分けて切り分け、結果をまとめます
 - 🗂️ **コンテキストの自動引き継ぎ** — 設定した割合（既定 65%）に達するとアーカイブし、新しいコンテキストへ引き継いで続行
 - 💰 **支出の上限** — 日次のトークン台帳。超過すると新しい仕事は受けず、実行中のものは完走させます
 - 🔧 **汎用ツール群** — コード、文書、調査、シェル、そして**自分でプラグインを導入**。足りないものは入れます
@@ -58,14 +58,14 @@
 ### 方法 1 — プラグイン版（DSH 導入済み）
 
 ```bash
-dsh plugin --profile superagent add https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Plugin-Stable-v0.2.0.tgz
+dsh plugin --profile superagent add https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Plugin-Stable-v0.3.0.tgz
 ```
 
 DSH を再起動すると、サイドバーに **Superagent** が現れます。
 
 ### 方法 2 — スタンドアロン版（zip から実行）
 
-[Releases](https://github.com/xyt071024/dsh-superagent-cn/releases) からお使いのシステム用の `Super-Agent-Bundled-<os>-<arch>-Stable-v0.2.0.zip`（Node と DSH 同梱、約 200 MB）をダウンロードして展開し、`start.cmd`（Windows）または `./start.sh`（macOS / Linux）を実行します。
+[Releases](https://github.com/xyt071024/dsh-superagent-cn/releases) からお使いのシステム用の `Super-Agent-Bundled-<os>-<arch>-Stable-v0.3.0.zip`（Node と DSH 同梱、約 200 MB）をダウンロードして展開し、`start.cmd`（Windows）または `./start.sh`（macOS / Linux）を実行します。
 
 初回実行で profile が `~/.dsh/profiles/superagent` に導入され、空いているポート（3082–3182）が選ばれます。**表示されたパネルのアドレスを読んでください** —— それがあなたのポートです。
 
