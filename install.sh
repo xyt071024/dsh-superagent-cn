@@ -11,7 +11,7 @@ set -euo pipefail
 # Named SA_* because PROFILE is a common shell variable and this script may be sourced in a shell the user keeps.
 SA_PROFILE="${SUPERAGENT_PROFILE:-superagent}"
 SA_PURGE=0
-SA_BUNDLE="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Plugin-Stable-v0.2.0.tgz"
+SA_BUNDLE="${SUPERAGENT_BUNDLE:-https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Plugin-Stable-v0.2.0.tgz}"
 # No shared default port: an install every user puts on 3082 is a port a scanner knows in advance, and two such installs
 # cannot coexist. A random port in a documented range is found by reading this run's output, not by guessing.
 SA_PORT=""
@@ -104,6 +104,18 @@ echo "[3/6] Preparing the profile"
 
 SA_DIR="$HOME/.dsh/profiles/$SA_PROFILE"
 SA_STATE="$HOME/.dsh/state/$SA_PROFILE"
+
+# The plugin hands `stateDir` straight to Node's path handling, which on Windows does not understand a MSYS path such
+# as `/d/home/...` — the directory is simply never created, and the profile looks installed while all data goes nowhere.
+# When this script runs under MSYS/Cygwin (Git Bash, and the bundled bash this project is tested with), convert the path
+# to the native form first. Plain Linux and macOS have no `cygpath` and need no conversion.
+if command -v cygpath >/dev/null 2>&1; then
+  SA_STATE="$(cygpath -m "$SA_STATE")"
+  SA_DIR_NATIVE="$(cygpath -m "$SA_DIR")"
+else
+  SA_DIR_NATIVE="$SA_DIR"
+fi
+info "state directory: $SA_STATE"
 mkdir -p "$SA_DIR"
 ok "$SA_DIR"
 
@@ -125,7 +137,12 @@ curl -fsSL --retry 3 --max-time 300 -o "$SA_WORK/dsh-superagent.tgz" "$SA_BUNDLE
 info "sha256 $( { shasum -a 256 "$SA_WORK/dsh-superagent.tgz" 2>/dev/null || sha256sum "$SA_WORK/dsh-superagent.tgz"; } | cut -d' ' -f1)"
 
 # The package is passed by path: a bare name resolves to whatever the registry calls `dsh-superagent`, which is not this build.
-( cd "$SA_DIR" && dsh plugin add "$SA_WORK/dsh-superagent.tgz" ) \
+#
+# --profile is required, not inferred: `dsh plugin` forwards its arguments to pnpm inside the profile directory, and which
+# profile that is comes from the option alone. Without it the command exits with
+# "required option '--profile <name>' not specified" and installs nothing — which is exactly what this installer did
+# until the flag was added.
+dsh plugin --profile "$SA_PROFILE" add "$SA_WORK/dsh-superagent.tgz" \
   || die "dsh plugin add failed; the package is still at $SA_WORK/dsh-superagent.tgz for inspection."
 ok "plugin installed from the downloaded package"
 
@@ -134,7 +151,12 @@ echo ""
 echo "[5/6] Writing the configuration"
 
 SA_CONFIG="$SA_DIR/cordis.patch.yml"
-if [ -f "$SA_CONFIG" ]; then
+# `dsh plugin add` above already initialised the profile, so this file exists by now holding DSH's own empty default
+# (`[]`, plus comment lines). Treating "the file exists" as "someone else's install" therefore refused to write our
+# settings on every single run: a fresh install ended up with an empty patch layer and Super Agent never loaded.
+# The real question is whether the file has entries of its own, so comments and blank lines are stripped first.
+SA_MEANINGFUL="$(grep -vE '^[[:space:]]*(#|$)' "$SA_CONFIG" 2>/dev/null | tr -d '[:space:]' || true)"
+if [ -f "$SA_CONFIG" ] && [ -n "$SA_MEANINGFUL" ] && [ "$SA_MEANINGFUL" != "[]" ]; then
   # An existing file belongs to another install. Backup and stop: merging YAML by text is how a working profile loses
   # its plugin list, and this script cannot know what the operator added.
   SA_BACKUP="$SA_CONFIG.bak-$(date +%Y%m%d-%H%M%S)"
@@ -168,6 +190,39 @@ else
   disabled: false
 YAML
   ok "wrote $SA_CONFIG"
+fi
+
+# The profile must name the bundles it composes, and `dsh plugin add` only ever adds the plugin's own bundle. Without
+# `@deepseek-ai/dsh-web-app`, nothing provides the webserver, session controller, workspace registry or agent presets, so
+# every Super Agent component sits in "pending (waiting for services)" and no panel ever appears. This is separate from
+# the patch layer above: that one configures components, this one decides which components exist.
+SA_PKG="$SA_DIR/package.json"
+if [ -f "$SA_PKG" ]; then
+  node - "$SA_PKG" <<'NODE'
+const fs = require('node:fs')
+const file = process.argv[2]
+const pkg = JSON.parse(fs.readFileSync(file, 'utf8'))
+const bundles = pkg.dsh?.profile?.bundles ?? []
+if (!bundles.includes('@deepseek-ai/dsh-web-app')) {
+  // After dsh-base and before the plugin, which is the order a working profile uses.
+  const at = bundles.indexOf('dsh-superagent')
+  bundles.splice(at === -1 ? bundles.length : at, 0, '@deepseek-ai/dsh-web-app')
+  pkg.dsh = { ...pkg.dsh, profile: { ...pkg.dsh?.profile, bundles } }
+  fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + '\n')
+  console.log('  added @deepseek-ai/dsh-web-app to the profile bundles')
+}
+NODE
+  # The plugin was added from a temporary tarball, which stops existing when this script exits. Point the dependency at a
+  # copy kept inside the profile so a later `pnpm install` cannot fail on a missing file.
+  cp "$SA_WORK/dsh-superagent.tgz" "$SA_DIR/dsh-superagent.tgz"
+  node - "$SA_PKG" <<'NODE'
+const fs = require('node:fs')
+const file = process.argv[2]
+const pkg = JSON.parse(fs.readFileSync(file, 'utf8'))
+pkg.dependencies = { ...pkg.dependencies, 'dsh-superagent': 'file:./dsh-superagent.tgz' }
+fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + '\n')
+NODE
+  ok "profile bundles and dependency pinned"
 fi
 
 # ---------- 6. verify ----------
