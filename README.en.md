@@ -59,7 +59,7 @@ QQ — it decides whether the work should be taken, how far it can go, then does
 ### Option 1 — plugin (DSH already installed)
 
 ```bash
-dsh plugin add https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Plugin-Stable-v0.2.0.tgz
+dsh plugin --profile superagent add https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Plugin-Stable-v0.2.0.tgz
 ```
 
 Restart DSH; a **Superagent** entry appears in the sidebar.
