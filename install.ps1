@@ -107,11 +107,12 @@ function Install-SuperAgent {
 
         # The package is passed by path: a bare name would resolve to whatever npm or the registry calls
         # `dsh-superagent`, which is not this build.
-        Push-Location $profileDir
-        try {
-            $out = & dsh plugin add $tgz 2>&1
-            if ($LASTEXITCODE -ne 0) { throw ($out | Out-String) }
-        } finally { Pop-Location }
+        #
+        # --profile is required, not inferred from the working directory: `dsh plugin` forwards its arguments to pnpm
+        # inside the profile directory, and the profile comes from this option alone. Without it the command fails with
+        # "required option '--profile <name>' not specified" and installs nothing.
+        $out = & dsh plugin --profile $SaProfile add $tgz 2>&1
+        if ($LASTEXITCODE -ne 0) { throw ($out | Out-String) }
         Ok "plugin installed from the downloaded package"
     } finally {
         # Kept on failure: the tarball is what someone needs to inspect or report a broken download.
