@@ -40,7 +40,7 @@ Super Agent for DeepSeek Harness v0.2.0 的全部安装包。
 解压后：
 
 ```bash
-dsh plugin add ./Super-Agent-Plugin-Stable-v0.2.0.tgz
+dsh plugin --profile superagent add ./Super-Agent-Plugin-Stable-v0.2.0.tgz
 ```
 
 包内已带全部运行时依赖，不需要联网装依赖。
@@ -62,7 +62,7 @@ dsh plugin add ./Super-Agent-Plugin-Stable-v0.2.0.tgz
 装完还要额外两步：
 
 ```bash
-dsh plugin add dsh-purge-community
+dsh plugin --profile superagent add dsh-purge-community
 dsh purge apply          # 撤销：dsh purge revert
 ```
 
