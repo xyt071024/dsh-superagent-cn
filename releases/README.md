@@ -1,8 +1,8 @@
 # 下载
 
-Super Agent for DeepSeek Harness v0.2.0 的全部安装包。
+Super Agent for DeepSeek Harness v0.3.0 的全部安装包。
 
-名字读一遍就够，不用打开看：`Super-Agent-Bundled-Windows-x64-Stable-v0.2.0.zip`
+名字读一遍就够，不用打开看：`Super-Agent-Bundled-Windows-x64-Stable-v0.3.0.zip`
 —— 形态 · 系统 · 架构 · 构建。
 
 ---
@@ -15,10 +15,10 @@ Super Agent for DeepSeek Harness v0.2.0 的全部安装包。
 
 | 系统 | 稳定版 | 破甲版 |
 |---|---|---|
-| Windows x64 | [Stable](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Bundled-Windows-x64-Stable-v0.2.0.zip) | [Purge](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Bundled-Windows-x64-Purge-v0.2.0.zip) |
-| macOS arm64（M 系列） | [Stable](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Bundled-macOS-arm64-Stable-v0.2.0.zip) | [Purge](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Bundled-macOS-arm64-Purge-v0.2.0.zip) |
-| macOS x64（Intel） | [Stable](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Bundled-macOS-x64-Stable-v0.2.0.zip) | [Purge](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Bundled-macOS-x64-Purge-v0.2.0.zip) |
-| Linux x64 | [Stable](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Bundled-Linux-x64-Stable-v0.2.0.zip) | [Purge](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Bundled-Linux-x64-Purge-v0.2.0.zip) |
+| Windows x64 | [Stable](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Bundled-Windows-x64-Stable-v0.3.0.zip) | [Purge](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Bundled-Windows-x64-Purge-v0.3.0.zip) |
+| macOS arm64（M 系列） | [Stable](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Bundled-macOS-arm64-Stable-v0.3.0.zip) | [Purge](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Bundled-macOS-arm64-Purge-v0.3.0.zip) |
+| macOS x64（Intel） | [Stable](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Bundled-macOS-x64-Stable-v0.3.0.zip) | [Purge](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Bundled-macOS-x64-Purge-v0.3.0.zip) |
+| Linux x64 | [Stable](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Bundled-Linux-x64-Stable-v0.3.0.zip) | [Purge](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Bundled-Linux-x64-Purge-v0.3.0.zip) |
 
 解压后：Windows 双击 `start.cmd`；macOS / Linux 跑 `chmod +x start.sh && ./start.sh`。
 
@@ -34,13 +34,13 @@ Super Agent for DeepSeek Harness v0.2.0 的全部安装包。
 
 | 构建 | 下载 |
 |---|---|
-| 稳定版 | [Clean-Any-Platform-Stable](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Clean-Any-Platform-Stable-v0.2.0.zip) |
-| 破甲版 | [Clean-Any-Platform-Purge](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Clean-Any-Platform-Purge-v0.2.0.zip) |
+| 稳定版 | [Clean-Any-Platform-Stable](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Clean-Any-Platform-Stable-v0.3.0.zip) |
+| 破甲版 | [Clean-Any-Platform-Purge](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Clean-Any-Platform-Purge-v0.3.0.zip) |
 
 解压后：
 
 ```bash
-dsh plugin --profile superagent add ./Super-Agent-Plugin-Stable-v0.2.0.tgz
+dsh plugin --profile superagent add ./Super-Agent-Plugin-Stable-v0.3.0.tgz
 ```
 
 包内已带全部运行时依赖，不需要联网装依赖。
@@ -49,8 +49,8 @@ dsh plugin --profile superagent add ./Super-Agent-Plugin-Stable-v0.2.0.tgz
 
 | 构建 | tarball |
 |---|---|
-| 稳定版 | [Super-Agent-Plugin-Stable-v0.2.0.tgz](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Plugin-Stable-v0.2.0.tgz) |
-| 破甲版 | [Super-Agent-Plugin-Purge-v0.2.0.tgz](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Plugin-Purge-v0.2.0.tgz) |
+| 稳定版 | [Super-Agent-Plugin-Stable-v0.3.0.tgz](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Plugin-Stable-v0.3.0.tgz) |
+| 破甲版 | [Super-Agent-Plugin-Purge-v0.3.0.tgz](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Plugin-Purge-v0.3.0.tgz) |
 
 ---
 
