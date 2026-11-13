@@ -13,7 +13,7 @@ function Install-SuperAgent {
         # 0 means "pick a free port": an install every user puts on the same number is one a scanner knows in advance, and
         # two such installs cannot coexist. $env:SUPERAGENT_PORT or -SaPort overrides it.
         [int]$SaPort = $(if ($env:SUPERAGENT_PORT) { [int]$env:SUPERAGENT_PORT } else { 0 }),
-        [string]$SaBundle = 'https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Plugin-Stable-v0.2.0.tgz',
+        [string]$SaBundle = 'https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Plugin-Stable-v0.3.0.tgz',
         [switch]$SaPurge
     )
 
