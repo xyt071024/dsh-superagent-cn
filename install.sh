@@ -11,7 +11,7 @@ set -euo pipefail
 # Named SA_* because PROFILE is a common shell variable and this script may be sourced in a shell the user keeps.
 SA_PROFILE="${SUPERAGENT_PROFILE:-superagent}"
 SA_PURGE=0
-SA_BUNDLE="${SUPERAGENT_BUNDLE:-https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Plugin-Stable-v0.2.0.tgz}"
+SA_BUNDLE="${SUPERAGENT_BUNDLE:-https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Plugin-Stable-v0.3.0.tgz}"
 # No shared default port: an install every user puts on 3082 is a port a scanner knows in advance, and two such installs
 # cannot coexist. A random port in a documented range is found by reading this run's output, not by guessing.
 SA_PORT=""
@@ -124,7 +124,7 @@ echo ""
 echo "[4/6] Installing the plugin"
 
 if [ "$SA_PURGE" -eq 1 ]; then
-  SA_BUNDLE="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Plugin-Purge-v0.2.0.tgz"
+  SA_BUNDLE="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Plugin-Purge-v0.3.0.tgz"
 fi
 
 SA_WORK="$(mktemp -d)"
