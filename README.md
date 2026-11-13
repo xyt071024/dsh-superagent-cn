@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/xyt071024/dsh-superagent-cn/releases"><img src="https://img.shields.io/badge/release-v0.2.0-2ea44f" alt="release"></a>
+  <a href="https://github.com/xyt071024/dsh-superagent-cn/releases"><img src="https://img.shields.io/badge/release-v0.3.0-2ea44f" alt="release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="license"></a>
   <a href="https://xyt071024.github.io/dsh-superagent-cn/"><img src="https://img.shields.io/badge/docs-中文%20%7C%20EN%20%7C%20日本語-6f42c1" alt="docs"></a>
   <img src="https://img.shields.io/badge/Node-22.19%2B%20%7C%2024%2B-339933" alt="node">
@@ -32,17 +32,59 @@
 
 ---
 
+## 🧭 它怎么干活（三种模式，一个工单走一遍）
+
+一个请求进来，走的是同一条流水线，区别只在「一个人做还是几个一起做」。
+
+### 模式一：一个人做（默认）
+
+```
+请求 → 网关判断谁发的 → 评估判断该不该接 → 建工单 → 一个执行会话做完 → 回报
+```
+
+适合：单个文件改一下、查一个问题、写一篇文档。**不要为了并行而并行**——切分的成本可能比活本身还高。
+
+### 模式二：拆开做（难度过门槛时自动）
+
+```
+请求 → … → 建工单 → 主会话判断「这个能拆」
+                      ├─ 开成员 A，派切片 1（文件 /src/a.js）
+                      ├─ 开成员 B，派切片 2（文件 /src/b.js）
+                      └─ 自己留切片 3（要动全局配置的那部分）
+                   成员干完 → 任务板标记完成 → 主会话审一遍 → 合并 → 回报
+```
+
+**关键约束**：两个成员绝不同时改同一个文件。文件系统没有锁，后写的会静默覆盖前面的。所以切片必须是「不用读别人正在改的文件也能做完」的那种。
+
+### 模式三：接力做（上下文快满时自动）
+
+```
+会话 A 用到窗口 65% → 归档上下文 → 开新上下文 B → 告诉 B「上一段已归档，接着干，别重头来」→ B 继续
+```
+
+这就是「多轮」的实际含义：**不是同一个会话无限跑下去**，而是快满时交接、新会话从断点接着做。所以它不会因为上下文撑爆而变慢或失忆。
+
+### 这三种模式的共同点
+
+- **都不打扰你**：除非需要你决定（凭据、钱、不可逆操作），全程安静。
+- **都可以回退**：每个工单有独立的工作目录，做完才合并。
+- **都留下证据**：报告里写清做了什么、跑过什么检查、还剩什么问题。
+
+---
+
 ## ✨ 速览
 
 - 📥 **七个入口自动盯** — GitHub / QQ邮箱 / QQ / 微信 / 企业微信 / 飞书 / Gmail，配几个都行，至少一个就能用
 - 🚦 **三层授权** — 网关（纯代码，只看谁发的）/ 评估（模型判断该不该接）/ 授权（不可变凭证）
-- 🧠 **自动拆活** — 难任务按难度拆给多个子会话，每个可跑不同模型并行推进
+- 🧠 **多会话真的会拆** — 难度跨过门槛时，执行会话自己开成员、切写作用域、发任务、收结果；成员之间能互通、互相监督、完成后接下一个
+- 💬 **成员是活着的** — 具名队友可以多轮对话，有共享任务板，卡住的能被别人唤醒，不是用完即弃的一次性子代理
+- 🎯 **跟着你换模型** — 你在面板里选了什么模型，新开的会话就用什么
 - 🗂️ **上下文自动归档** — 会话用到设定的比例（默认 65%）就归档并交接给新上下文，接着干不重来
 - 💰 **花钱有上限** — 每日 token 账本，超了拦新活但让在跑的跑完
 - 🔧 **全能工具面** — 能改代码、写文档、查资料、跑命令、**自己装插件**；缺什么装什么，不报告"做不到"
-- 📚 **六个内置技能** — shell / install / research / delegate / verify / docs，是这个 Agent 的"大脑"训练内容
+- 📚 **九个内置技能** — delegate / docs / feishu / github / install / mirror / research / shell / verify，是这个 Agent 的"大脑"训练内容
 - 🔇 **干活安静** — 全程不打扰，只在必须有人决定时开口
-- 🪶 **两种用法** — 白板版解压即用；插件版一条命令接进已有 DSH
+- 🪶 **两种用法** — 内置版解压双击就跑（自带 Node 与 DSH）；插件版一条命令接进已有 DSH
 
 ---
 
@@ -57,14 +99,14 @@
 ### 方式一：插件版（已经装了 DSH）
 
 ```bash
-dsh plugin --profile superagent add https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.2.0/Super-Agent-Plugin-Stable-v0.2.0.tgz
+dsh plugin --profile superagent add https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Plugin-Stable-v0.3.0.tgz
 ```
 
 然后重启 DSH，侧边栏出现 **Superagent** 入口。
 
 ### 方式二：白板版（解压即用）
 
-从 [Releases](https://github.com/xyt071024/dsh-superagent-cn/releases) 下载对应你系统的 `Super-Agent-Bundled-<系统>-<架构>-Stable-v0.2.0.zip`（自带 Node 与 DSH，约 200 MB），解压后双击 `start.cmd`（Windows）或 `./start.sh`（macOS / Linux）。
+从 [Releases](https://github.com/xyt071024/dsh-superagent-cn/releases) 下载对应你系统的 `Super-Agent-Bundled-<系统>-<架构>-Stable-v0.3.0.zip`（自带 Node 与 DSH，约 200 MB），解压后双击 `start.cmd`（Windows）或 `./start.sh`（macOS / Linux）。
 
 首次运行会把 profile 装进 `~/.dsh/profiles/superagent`、随机挑一个空闲端口（3082–3182），然后启动。**安装器会打印你自己的面板地址**，读那一行。
 
@@ -93,6 +135,67 @@ dsh plugin --profile superagent add https://github.com/xyt071024/dsh-superagent-
 ---
 
 ## 🧩 功能
+
+<details>
+<summary><b>多会话与多代理：一个工单怎么被拆开做</b>（点击展开）</summary>
+
+这是这一版变化最大的地方，也是之前最容易「看起来有、实际不跑」的地方。所以把机制本身讲清楚。
+
+**一句话**：一件活由**一个主执行会话**接手，它判断自己拆不拆；拆的话，**它自己开成员**，而不是系统预先开好一堆空会话等它用。
+
+### 判断要不要拆
+
+| 条件 | 来源 |
+|---|---|
+| 「自动拆分」开着（`multiSession: auto`） | 设置 → 调度 |
+| 评估给的难度 ≥ 你设的门槛（默认 60） | 设置 → 调度 → 难度门槛 |
+
+两个都满足，主执行会话收到的任务书里会多一段「你可以拆」的说明。**门槛不决定接不接这活**，只决定要不要并行。
+
+### 怎么拆
+
+1. 主执行会话用 `spawn_teammate` 开**具名成员**——每个成员是一个独立的 Session，有自己的工具集和权限，不是临时子进程。
+2. 它先想清楚**切片的边界**：一个切片必须是「不用读别人正在改的文件也能做完」的。切不明白就别拆，硬拆会互相覆盖。
+3. 每个切片在**共享任务板**上建一条任务，写明这块归哪些文件。
+4. 用 `send_message` 把切片派给成员，成员开工。
+
+### 成员之间怎么协作
+
+| 能力 | 工具 |
+|---|---|
+| 点对点通信 | `send_message`（定向发给某个具名成员） |
+| 看谁在干什么 | `list_agents`（running / inactive）、`team_task_list` |
+| 认领与更新任务 | `team_task_create` / `team_task_update` / `team_task_get` |
+| 等别人 | `wait_agent` |
+| 打断跑偏的成员 | `interrupt_agent` |
+
+**成员是活着的**：可以多轮对话，不是问一次就消失。一个成员干完自己的切片，会去任务板找未认领的任务接手，或者去帮卡住的成员。
+
+### 三条硬边界（不藏）
+
+1. **任务板不会自动叫醒任何人**。任务就绪不等于成员会自己开始——必须有人 `send_message` 它。
+2. **`wait_agent` 不会唤醒任何人**。它只观察你调用之后发生的变化；没有活跃同伴时立刻返回「无进展」。
+3. **写作用域是约定，不是锁**。两个成员写同一个文件，后写的会静默覆盖前面的。**这是设计上的取舍**：加锁会让并行变成排队。
+
+所以「切分」这一步必须由主执行会话认真做，而不是随便分。
+
+</details>
+
+<details>
+<summary><b>模型怎么选：跟着你走</b>（点击展开）</summary>
+
+优先级从高到低：
+
+1. **你显式配的执行模型**（`设置 → 执行 → 模型`）——你打字填的，它最优先。
+2. **你当前会话正在用的模型**（`设置 → 调度 → 继承当前模型`，默认开）——这就是「我用什么，新会话就用什么」。
+3. **按难度从已授权列表里挑**——难度不到门槛用第一个，到了用最后一个。
+4. **DSH 自己的默认模型**。
+
+第 3 条有个隐含约定要说明白：**列表的顺序有意义**，第一个是「日常用」，最后一个是「难活用」。这个顺序是你排的，代码不去猜。
+
+如果你更希望「永远按列表走，别管我现在用的是什么」，把「继承当前模型」关掉即可。
+
+</details>
 
 <details>
 <summary><b>权限与安全</b>（点击展开）</summary>
