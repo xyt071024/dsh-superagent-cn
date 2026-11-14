@@ -93,14 +93,21 @@ export class ImapClient {
     while ((index = this.buffer.indexOf(CRLF)) >= 0) {
       const line = this.buffer.slice(0, index)
       this.buffer = this.buffer.slice(index + CRLF.length)
-      // A literal (`{123}`) is followed by that many bytes of body, which arrive after the line that announced it.
+      // A literal (`{123}`) is followed by that many *bytes* of body, which arrive after the line that announced it.
+      //
+      // This used to slice by `String.length`, which counts UTF-16 code units. The two agree only while the text is pure
+      // ASCII; a single Chinese character is three bytes but one code unit, so every non-ASCII message was cut short —
+      // or, worse, the cut landed mid-literal and the rest of the stream was parsed as if it were a command reply. The
+      // offset has to be computed on the encoded bytes and the slice decoded afterwards.
       const literal = /\{(\d+)\}$/.exec(line)
       if (literal) {
         const size = Number(literal[1])
-        const need = size + CRLF.length
-        if (this.buffer.length < need) { this.buffer = `${line}${CRLF}${this.buffer}`; return }
-        this.deliver(`${line}${CRLF}${this.buffer.slice(0, size)}`)
-        this.buffer = this.buffer.slice(need)
+        const need = size + Buffer.byteLength(CRLF)
+        const bytes = Buffer.from(this.buffer, 'utf8')
+        if (bytes.length < need) { this.buffer = `${line}${CRLF}${this.buffer}`; return }
+        const body = bytes.subarray(0, size).toString('utf8')
+        this.deliver(`${line}${CRLF}${body}`)
+        this.buffer = bytes.subarray(need).toString('utf8')
         continue
       }
       this.deliver(line)
