@@ -3,8 +3,9 @@ import type { Reason } from './reasons.ts'
 
 /**
  * Actor identity in the source's own vocabulary; Policy decides which actors may originate work on that Source.
- * `name` is the display name the source reported, carried so a card or a reply can show who wrote without a second lookup;
- * it is never what a Policy list matches on — `id` is.
+ *
+ * `name` is a display name the source happened to supply (a mail `From` header, a chat nickname). It is for people reading
+ * a ticket, never for matching: Policy compares `id`, because a display name can be changed or forged by its owner.
  */
 export interface ActorRef { source: string; id: string; name?: string }
 /** Thread identity; the rule that derives `id` from a native event belongs to the source. */
@@ -316,11 +317,7 @@ export interface Ticket {
  * Thread closed; the ticket then ends unless its work has not finished (see `Tickets.unfinished`).
  */
 export interface Follow { thread: string; own: boolean; closed?: { at: string; outcome: 'merged' | 'closed' } }
-export interface Execution {
-  name: string; directory: string; assignment: string
-  /** The assessment's 0-100 size estimate, kept so every worker Session of this ticket is placed on the same model. */
-  difficulty?: number
-}
+export interface Execution { name: string; directory: string; assignment: string }
 
 /** Whether a ticket is open: it has not ended. */
 export const liveTicket = (ticket: Pick<Ticket, 'ended'>): boolean => !ticket.ended
