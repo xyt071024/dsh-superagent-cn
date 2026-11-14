@@ -16,6 +16,7 @@ import { executionRoot, type Variable } from '../app/execution-environment.ts'
 import type { Sessions } from '../app/sessions.ts'
 import { WorktreeNameSchema } from '../app/assessment.ts'
 import { resultRelay } from '../app/notices.ts'
+import { isHard, multiSession } from '../app/routing.ts'
 import type { HealthEntry } from '../infra/health.ts'
 import { cancelled, collectJob, killJobs, runningJobs, stopBackground, stopSubagents, until, untilQuiet } from './background.ts'
 
@@ -107,8 +108,7 @@ export function ticketExecution(ticket: Ticket, outcome: Extract<AssessmentOutco
   const assignment = ticket.mandate.strength === 'inferred' && ruleIds
     ? `Proactively accepted under ${ruleIds.join(', ')}. Scope: ${outcome.scope}.${precedence}${note}`
     : note.trim()
-  return { name, directory: join(executionRoot(settings, stateDir), name), assignment,
-    ...typeof outcome.difficulty === 'number' ? { difficulty: outcome.difficulty } : {} }
+  return { name, directory: join(executionRoot(settings, stateDir), name), assignment }
 }
 /** Character limits for inline assignment and trigger text in worker messages; longer text is read via its resource. */
 const ASSIGNMENT_CHARS = 1500, TRIGGER_CHARS = 600
@@ -134,6 +134,18 @@ const RESUMED = 'This ticket ended earlier and the message that follows, on its 
   + 'more within the original scope, inspect the worktree, git history and PR state and continue; if it asks for work beyond that scope or '
   + 'for another ticket, hand it back with orchestrator_trigger_handback and report dropped; if it needs nothing, such as thanks, '
   + 'report dropped without a message. Report ready when the follow-up is done. Do not repeat completed work.'
+/**
+ * What a hard ticket is told about opening its own members.
+ *
+ * In the dispatch message rather than in `worker.md`, because that prompt is capped at 1000 characters and applies to every
+ * ticket, while this is one ticket and has no limit. The wording matters: a member that writes the same file as another
+ * silently loses its work, and the host's write scopes are a convention, not a lock.
+ */
+const TEAM_INSTRUCTION = 'This ticket is large enough to split. You may open members with spawn_teammate, give each one its own '
+  + 'task and its own files, and collect their results yourself. Give every member a distinct set of files to change — two '
+  + 'members editing one file overwrite each other silently. Check what each returns before you accept it, and close a member '
+  + 'you no longer need. When the work is done, the report is yours to write, not theirs.'
+
 const RETRIED = 'A person retried this ticket. Continue the assignment from the current worktree, git history and PR state.'
 /** Formats a policy-change input for the worker; inputs recorded before `effect` existed fall back to a general notice. */
 function policyMessage(effect?: PolicyEffect): string {
@@ -313,7 +325,8 @@ export class DshExecutor implements Executor {
         try {
           // Recreate the worker session if it was externally deleted.
           if (!this.host.context.agents.get(sessionId as SessionId)) {
-            await this.host.sessions.ensure(sessionId, ticket.execution?.directory ?? '', ticket.title, 'worker', this.hard(ticket))
+            await this.host.sessions.ensure(sessionId, ticket.execution?.directory ?? '', ticket.title, 'worker',
+              isHard(this.host.store.settings().routing, ticket.execution?.assignment))
           }
           if (input) await this.deliverInput(ticket, assignment, input)
         } catch (error) {
@@ -381,16 +394,6 @@ export class DshExecutor implements Executor {
     void this.background(stop)
   }
   /** Wait for a stop of the ticket's background work that runs, unless the host stops first. */
-  /**
-   * Whether this ticket's work is hard enough to place on the strongest approved model.
-   * An estimate the assessment did not give is not treated as hard: routing then uses the first approved route, which is
-   * the operator's own cheapest choice, rather than spending the strongest model on a guess.
-   */
-  private hard(ticket: Ticket): boolean {
-    const estimate = ticket.execution?.difficulty
-    if (typeof estimate !== 'number') return false
-    return estimate >= this.host.store.settings().routing.difficultyThreshold
-  }
   private async stopped(ticketId: string): Promise<void> {
     const stopping = this.stopping.get(ticketId)
     if (stopping) await until(stopping, this.host.lifetime)
@@ -449,7 +452,9 @@ export class DshExecutor implements Executor {
     }
     if (!current()) return
     const sessionId = workerSessionId(ticket.id)
-    const agent = await this.host.sessions.ensure(sessionId, workspace, ticket.title, 'worker', this.hard(ticket))
+    const reading = this.host.store.settings().routing
+    const agent = await this.host.sessions.ensure(sessionId, workspace, ticket.title, 'worker',
+      isHard(reading, ticket.execution?.assignment))
     if (!current()) return
     // The background work of the Assignment this one replaces stops first, so its end does not clear this one's message.
     await this.stopped(ticket.id)
@@ -469,10 +474,14 @@ export class DshExecutor implements Executor {
     const card = told || !source ? undefined : await this.triggerCard(ticket, source.id)
     if (!current()) return
     const batch = told ? [] : batchOf(this.host, ticket).map(batchLine)
+    // A hard ticket gets told, in the dispatch message itself, that it may open its own members. This is the only place the
+    // instruction can go: `worker.md` has a 1000-character cap and applies to every ticket, while this text is sent to one
+    // worker on one ticket and has no length limit. Without it `multiSession` was a setting that changed nothing.
+    const split = !told && multiSession(reading) && isHard(reading, ticket.execution?.assignment) ? { team: TEAM_INSTRUCTION } : {}
     const text = told ? JSON.stringify({ ticket_id: ticket.id, assignment: ticket.assignments.length, ...retried })
       : JSON.stringify({ ticket_id: ticket.id, title: ticket.title, ...(brief ? { assignment: brief } : {}),
         ...(read ? { assignment_chars: chars, assignment_read: read } : {}), ...(card ? { trigger: card } : {}),
-        ...(batch.length ? { batch } : {}), ...retried })
+        ...(batch.length ? { batch } : {}), ...split, ...retried })
     const requestId = later ? `assignment:${ticket.id}:${assignment.id}` : first
     await this.host.sessions.prompt(sessionId, requestId, text, 'queue',
       () => { if (!current()) throw new Error('Launch authorization changed before worker delivery') },
