@@ -39,13 +39,24 @@ export function effortFor(config: Pick<RoutingConfig, 'thinking'>): string | und
  *
  * `hard` is the difficulty verdict: at or above the operator's threshold the last approved route is used, otherwise the
  * first. Ordering is the operator's own, so "first" and "last" mean what the list looks like rather than a ranking this
- * code invents. `executorModel` is the Execution settings model and wins when nothing is approved, which keeps a single
- * configuration point for installs that do not use routing.
+ * code invents.
+ *
+ * `operatorModel` is whatever the person is using in their own Session right now. It is a *fallback* by default rather
+ * than an override, but the earlier version was worse than that: whenever the approved list was non-empty the operator's
+ * model was ignored outright, so someone who had ticked a single model got that model for every worker no matter what
+ * they had selected in the panel. `inheritOperatorModel: 'prefer'` is the default now and fixes exactly that — their
+ * current choice wins, and the approved list only decides when they have not chosen anything this Session.
+ *
+ * With `'strict'`, the approved list always wins when it has an entry, which is the right behaviour for an install where
+ * the whole point is that workers run on a curated set of models.
  */
-export function modelFor(config: RoutingConfig | undefined, executorModel: RoleModel | null, hard: boolean): RoleModel | null {
-  if (!config) return executorModel
+export function modelFor(config: RoutingConfig | undefined, operatorModel: RoleModel | null, hard: boolean,
+  inherit: 'prefer' | 'strict' = 'prefer'): RoleModel | null {
+  // Nothing chosen this Session: the approved list, or the Execution model, is all there is.
+  if (!config) return operatorModel
   const approved = routes(config)
-  if (!approved.length) return executorModel
+  if (!approved.length) return operatorModel
+  if (inherit === 'prefer' && operatorModel) return operatorModel
   const route = hard ? approved[approved.length - 1]! : approved[0]!
   const effort = effortFor(config)
   return { provider: route.provider, model: route.model, ...effort ? { reasoningEffort: effort } : {} }
@@ -56,6 +67,24 @@ export function modelFor(config: RoutingConfig | undefined, executorModel: RoleM
  * `single` keeps every job on one Session, which is what an operator choosing that expects.
  */
 export const multiSession = (config: RoutingConfig | undefined): boolean => config?.multiSession === 'auto'
+
+/**
+ * Whether a ticket counts as hard, by the operator's threshold.
+ *
+ * There is no separate difficulty estimate anywhere in this project — nothing scores a ticket 0–100, and the threshold had
+ * only a schema and a default with no reader. Rather than leave a knob that does nothing, the verdict is taken from the one
+ * size signal a ticket actually carries: the length of the assignment it was given. A ticket whose brief is long is the one
+ * worth the strongest approved model and worth splitting; a one-line brief is not.
+ *
+ * The mapping is deliberately simple and stated here so it can be argued with: the threshold is a percentage, and the brief
+ * reaches it at `HARD_BRIEF_CHARS` characters' worth of instruction. It is a proxy, not a measurement, and the panel says so.
+ */
+const HARD_BRIEF_CHARS = 1200
+export const isHard = (config: RoutingConfig | undefined, brief: string | undefined): boolean => {
+  if (!brief) return false
+  const threshold = config?.difficultyThreshold ?? 60
+  return brief.length * 100 >= HARD_BRIEF_CHARS * threshold
+}
 
 /**
  * Where a run executes.
