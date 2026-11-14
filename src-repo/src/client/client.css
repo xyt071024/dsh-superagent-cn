@@ -50,6 +50,8 @@
 .dt-inline-link:hover { text-decoration: underline; }
 .dt-textlink { padding: 0; border: 0; background: none; font: inherit; color: var(--dsw-alias-link); cursor: pointer; text-align: left; }
 .dt-textlink:hover { text-decoration: underline; }
+.dt-field-link { margin-left: 6px; font-size: 12px; color: var(--dsw-alias-link); white-space: nowrap; }
+.dt-field-link:hover { text-decoration: underline; }
 .dt-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; line-height: 20px; }
 .dt-kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; font-size: 13px; line-height: 20px; }
 .dt-kv dt { color: var(--dsw-alias-label-tertiary); }
@@ -380,14 +382,12 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-admission-slot { display: inline-flex; flex: none; width: 16px; }
 .dt-info-warn { color: var(--dsw-alias-state-warn-primary); }
 .dt-field-segmented { max-width: 240px; }
-
-/* Approved-model picker (see routing.tsx). */
-.dt-allowance { display: flex; flex-direction: column; gap: 10px; }
-.dt-allowance-group { border: 0.5px solid var(--dsw-alias-border-l3); border-radius: 10px; padding: 10px 12px; }
-.dt-allowance-head { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: var(--dsw-alias-label-primary); margin-bottom: 8px; }
-.dt-allowance-models { display: flex; flex-wrap: wrap; gap: 6px; }
-.dt-allowance-model { display: inline-flex; align-items: center; gap: 6px; border: 0.5px solid var(--dsw-alias-border-l3); border-radius: 8px; padding: 4px 10px; font-size: 12px; cursor: pointer; color: var(--dsw-alias-label-secondary); background: transparent; }
-.dt-allowance-model[data-on] { border-color: var(--dsw-alias-brand-primary, #4d6bfe); color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-1, transparent); }
-.dt-allowance-model input { margin: 0; }
-.dt-allowance-name { color: var(--dsw-alias-label-primary); }
-.dt-allowance-id { opacity: 0.65; font-family: var(--dsw-alias-font-mono, ui-monospace, monospace); }
+/* Setup guide: a numbered list a person can actually follow, with the steps still undone called out. */
+.dt-guide { margin: 8px 0 0; padding: 8px 10px; border-left: 2px solid var(--dsw-alias-border); }
+.dt-guide-steps { margin: 6px 0 0; padding-left: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.dt-guide-steps li { position: relative; padding-left: 26px; }
+.dt-guide-steps li[data-done] { opacity: 0.55; }
+.dt-guide-index { position: absolute; left: 0; top: 0; width: 18px; height: 18px; border-radius: 50%; font-size: 11px; display: grid; place-items: center; background: var(--dsw-alias-bg-2); color: var(--dsw-alias-text-2); }
+.dt-guide-steps li[data-done] .dt-guide-index { background: var(--dsw-alias-success, #2f855a); color: #fff; }
+.dt-guide-title { font-size: 13px; }
+.dt-guide-where, .dt-guide-done { font-size: 12px; color: var(--dsw-alias-text-2); margin-top: 2px; }
