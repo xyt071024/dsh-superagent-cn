@@ -18,6 +18,7 @@ import { modelFor } from './routing.ts'
 import { bundledSkills } from './skill-files.ts'
 import { SKILL_PREFIX, type PromptVersion, type Prompts } from './prompts.ts'
 import type { Store } from './store.ts'
+import type { RoleModel, Settings } from '../policy.ts'
 import type { UsageMeter } from './usage.ts'
 import { KV } from '../kv.ts'
 import type { RegisterTool, Tool } from './tools/tool.ts'
@@ -68,8 +69,25 @@ declare module '@deepseek-ai/cordis' {
  */
 const WORK_TOOLS = ['read', 'write', 'edit', 'read_image', 'glob', 'grep', 'bash', 'pwsh', 'job_output', 'job_list', 'job_kill', 'web_search',
   'web_fetch', 'skill', 'todo_write', 'subagent', 'list_subagent_models', 'send_message', 'list_agents', 'interrupt_agent',
+  // Agent Teams. `WORK_TOOLS` is an allow-list, and `restrict` drops every tool it does not name — so enabling the Team
+  // plugin in the preset is not enough on its own: without these names the team tools exist in the host and are stripped
+  // from the worker before it ever sees them. That is the second half of why a worker never split work across sessions.
+  'spawn_teammate', 'wait_agent', 'team_task_create', 'team_task_list', 'team_task_get', 'team_task_update',
+  // Delegation the preset already declares. `cordis.patch.yml` registers `tool-subagent-fork` (as `subagent_fork`) and
+  // `workflow-ptc`, but a name missing from this list is stripped by `restrict` before the worker ever sees it — the
+  // plugin is loaded, the tool exists in the host, and the worker still cannot call it. Both are named here.
+  'subagent_fork',
   // A general agent installs what it needs instead of reporting the work as impossible.
   'plugin_manager', 'ask_user_question', 'present', 'schedule_create', 'schedule_list', 'schedule_view', 'schedule_edit']
+/** What a subagent of a worker may use: look, read, run, and search — never write, and never open more members. */
+const SUBAGENT_TOOLS = ['read', 'read_image', 'grep', 'bash', 'job_output', 'job_list', 'job_kill', 'web_search', 'skill']
+/**
+ * What the main Session may use: enough to read, look at an image, run a command and manage its jobs.
+ *
+ * It routes and talks to people; it does not edit a ticket's files (that is the worker's job under its own write scope),
+ * does not search the web on its own account, and cannot start work outside the tickets it was given.
+ */
+const MAIN_TOOLS = ['skill', 'bash', 'read', 'read_image', 'job_output', 'job_list', 'job_kill']
 /** What the main Session is told when it would wait: what it waits for comes to it, and a waiting step holds back the next. */
 const NO_WAIT = 'Reports, follow_up notices, new candidates and a background job\'s end with its output arrive by themselves as messages; '
   + 'end the turn instead of waiting for them.'
@@ -168,14 +186,54 @@ export class Sessions {
     }
     if ('error' in result) throw result.error
     const settings = this.host.store.settings()
-    // An orchestrator decides whether to take work, so its model comes from the Eval settings; a worker's comes from the
-    // approved allowance, which falls back to the Execution model when the operator approved nothing.
-    const model = role === 'orchestrator' ? settings.eval.model : modelFor(settings.routing, settings.executor.model, hard)
+    // An orchestrator decides whether to take work, so its model comes from the Eval settings. A worker's comes from
+    // whatever the operator is using right now, unless they configured a model or asked the approved list to win.
+    const model = role === 'orchestrator'
+      ? settings.eval.model
+      : this.workerModel(settings, hard)
     await initializeRoleModel(ctx, result.agent, model)
     await this.decorate(result.agent)
     ctx.permissionPresets.set(result.agent.session, 'danger-full-access')
     await ctx.sessionController.rename({ sessionId: id as SessionId, title })
     return result.agent
+  }
+  /**
+   * The model a worker Session runs on, in the order the operator meant by the settings.
+   *
+   * 1. An explicit Execution model — they typed it, so it wins.
+   * 2. The model they are using in their own Session right now (`inheritOperatorModel: 'prefer'`, the default) — the
+   *    plainest reading of "use whatever I am using".
+   * 3. The approved route for this difficulty (`'strict'`, or when nothing is selected this Session).
+   * 4. DSH's own default, when none of the above applies.
+   */
+  private workerModel(settings: Settings, hard: boolean): RoleModel | null {
+    if (settings.executor.model) return settings.executor.model
+    const operator = this.operatorModel()
+    const inherit = settings.routing.inheritOperatorModel
+    // `modelFor` reads the operator model as the fallback and only keeps it under `prefer`; passing it in both modes is
+    // what lets `strict` deliberately ignore it.
+    return modelFor(settings.routing, operator, hard, inherit)
+  }
+  /**
+   * The model the operator's own main Session is running on, read live.
+   *
+   * A worker that inherits it is what people mean by "use whatever I am using": they picked a model in the panel, and a
+   * background session silently running on something else is a surprise, not a default. This is a fallback rather than
+   * the first choice — an approved routing list and an explicit Execution model still win — so a deliberate configuration
+   * is never overridden by an incidental one.
+   *
+   * Returns null when the main Session is not loaded yet or has no selection, in which case nothing is seeded and DSH's
+   * own default applies, exactly as before.
+   */
+  private operatorModel(): RoleModel | null {
+    const main = this.ctx.agents.get(this.host.masterId as SessionId)
+    if (!main) return null
+    const selection = main.session.snapshotEvents().findLast(event => event.type === 'model/selection')
+    if (!selection || selection.type !== 'model/selection') return null
+    // The provider, model and effort live in `data`, not in the event's own fields.
+    const { provider, model, reasoningEffort } = selection.data
+    if (!provider || !model) return null
+    return { provider, model, ...reasoningEffort ? { reasoningEffort } : {} }
   }
   /** Returns whether `sessionId` already holds the message delivered under `requestId`, or `false` if the session does not exist. */
   async holds(sessionId: string, requestId: string): Promise<boolean> {
@@ -321,11 +379,15 @@ export class Sessions {
    * (see the executor). Read inherited tools through the parent scope, which includes the preset's tools. The global view
    * misses preset tools; the agent's own view also includes local tools such as subagent, which restrict refuses to name.
    */
-  private workOnly(agent: Agent, ticketId: string): (() => void)[] {
+  private workOnly(agent: Agent, ticketId: string, subagent = false): (() => void)[] {
     const store = this.host.store
     const parent = scopeParentOf(agent)
     // Restrict names global tools, so keep only the names this host actually has: a preset enables `bash` or `pwsh` by platform.
-    const known = WORK_TOOLS.filter(name => agent.ctx.tools.get(name, parent))
+    // A subagent gets the read-and-run subset: it may look and run things to answer the worker, but not edit files behind
+    // it (the worker owns the write scope) and not open further team members, which would multiply the ticket's parallelism
+    // past what the operator allowed.
+    const pool = subagent ? SUBAGENT_TOOLS : WORK_TOOLS
+    const known = pool.filter(name => agent.ctx.tools.get(name, parent))
     return [agent.ctx.tools.restrict({ allow: known }), agent.ctx.tools.guard(() => {
       const current = store.tickets.get(ticketId)
       return !current || !liveTicket(current) ? 'Ticket ended; new work needs a new authorized ticket' : undefined
@@ -344,7 +406,7 @@ export class Sessions {
     }
     const ticketId = parent === undefined ? undefined : ticketOfSession(parent)
     if (ticketId === undefined || !this.host.store.tickets.get(ticketId)) return
-    this.bindings.set(agent, { disposers: this.workOnly(agent, ticketId), subagent: true })
+    this.bindings.set(agent, { disposers: this.workOnly(agent, ticketId, true), subagent: true })
   }
   /** Register the skills of a prompt version in the agent's skill scope, in place of an earlier version's. */
   private bindSkills(binding: SessionBinding, version: PromptVersion): void {
