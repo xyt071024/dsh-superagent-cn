@@ -143,10 +143,6 @@ export async function startRuntime(seed?: (store: Store) => void) {
   const scoped = 'git config -z --show-scope --get-regexp ^(credential\\..*|http\\..*extraheader)$'
   const answers: Record<string, string> = {
     [`${AGENT} api user`]: '{"login":"agent-bot","id":7}',
-    // Windows binds the `gh` account through an isolated GH_CONFIG_DIR, so setup reads the CLI's own token once and then
-    // proves the worker's own `gh` answers as the configured login.
-    [`${AGENT} auth token`]: 'gho_testtoken\n',
-    ['gh api user --jq .login']: 'agent-bot\n',
     [`${AGENT} api repos/acme/widgets --jq {name: .full_name, push: .permissions.push}`]: '{"name":"acme/widgets","push":true}\n',
     [`${BOT} auth status`]: JSON.stringify({ appId: 'cli_bot', brand: 'feishu', identities: { bot: { status: 'ready' } } }),
     [`${BOT} config strict-mode`]: 'strict-mode: bot (source: profile)',
