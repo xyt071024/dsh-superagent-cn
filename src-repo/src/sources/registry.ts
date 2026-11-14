@@ -40,61 +40,48 @@ export class SourceRegistry implements SourceScope {
   healthEntries(names: readonly string[]): Map<string, HealthEntry> {
     return new Map(names.flatMap(name => { const entry = this.health.get(name); return entry ? [[name, entry] as const] : [] }))
   }
-  kind(id: string): SourceKind | undefined { return this.kinds.get(id) }
   /**
-   * The kind an instance id names. An instance id is either a kind id (`qq`) or that kind with a suffix (`qq-work`), so one
-   * kind can carry several accounts — two QQ numbers, a mailbox per address — each with its own configuration and its own
-   * Policy list.
+   * The kind an instance id belongs to.
    *
-   * Every `-` is tried from the right: a kind may itself contain a dash (`wechat-native`), so splitting on the last one
-   * alone would read `wechat-native-work` as kind `wechat-native-work` rather than `wechat-native`.
+   * A second account is stored as `<kind>-<suffix>` (`qq-work`, `qq-wx`), so an id is looked up whole first and then by its
+   * longest registered prefix: `qq-work-wx` is still `qq`. The prefix has to be one that is actually registered, which is
+   * what keeps `ghost-work` from inventing a kind that does not exist.
    */
-  kindOf(instance: string): SourceKind | undefined {
-    if (this.kinds.has(instance)) return this.kinds.get(instance)
-    let at = instance.lastIndexOf('-')
-    while (at > 0) {
-      const candidate = this.kinds.get(instance.slice(0, at))
-      if (candidate) return candidate
-      at = instance.lastIndexOf('-', at - 1)
-    }
-    return undefined
+  kind(id: string): SourceKind | undefined {
+    const exact = this.kinds.get(id)
+    if (exact) return exact
+    const candidate = [...this.kinds.keys()].filter(kind => id.startsWith(`${kind}-`))
+      .sort((a, b) => b.length - a.length)[0]
+    return candidate === undefined ? undefined : this.kinds.get(candidate)
   }
   /**
-   * Every registered kind's instance ordered by ID, followed by stored instances whose kind is not installed (with their
-   * config kept as stored).
-   * For each kind with a suffix in use, one instance per stored suffix is listed; a kind with none keeps its single
-   * instance under the bare kind id, which is what an install that never added a second account has.
+   * Every instance, ordered by ID: the stored ones first when a kind has any, otherwise that kind's bare instance.
+   *
+   * A stored key is either a bare kind (`qq`) or a kind with an account suffix (`qq-work`). When suffixes exist the bare
+   * one is *not* listed as well — it has no configuration of its own, so showing it would offer a second QQ account nobody
+   * set up. A kind with no stored key at all still appears, bare, so a fresh install can configure it.
    */
   instances(settings = this.settings()): (SourceInstance & { installed: boolean })[] {
-    const stored = settings.sources
-    // A suffix belongs to a kind only when that kind is installed: `qq-work` is a QQ instance, `ghost-work` is orphaned.
-    const suffixes = new Map<string, string[]>()
-    for (const id of Object.keys(stored)) {
-      const kind = this.kindOf(id)
-      if (!kind || kind.kind === id) continue
-      suffixes.set(kind.kind, [...suffixes.get(kind.kind) ?? [], id])
-    }
-    const installed = [...this.kinds.values()]
-      .sort((a, b) => a.kind.localeCompare(b.kind))
-      .flatMap(kind => {
-        const extra = suffixes.get(kind.kind) ?? []
-        // The bare instance is listed only when no suffixed one exists, so a kind never appears twice without the operator
-        // having asked for a second account.
-        return extra.length
-          ? extra.sort().map(id => ({ ...this.resolve(kind, stored[id], id), installed: true }))
-          : [{ ...this.resolve(kind, stored[kind.kind], kind.kind), installed: true }]
-      })
-    const orphaned = Object.entries(stored)
-      .filter(([id]) => !this.kindOf(id))
-      .map(([id, entry]) => ({ id, kind: id, enabled: entry.enabled, config: entry.config, installed: false }))
-    return [...installed, ...orphaned]
+    const stored = Object.entries(settings.sources)
+    const resolved = stored.map(([id, saved]) => {
+      const kind = this.kind(id)
+      return kind
+        ? { ...this.resolve(kind, saved, id), installed: true }
+        : { id, kind: id, enabled: saved.enabled, config: saved.config, installed: false }
+    })
+    // A kind that has no stored key yet is offered once, bare.
+    const configured = new Set(resolved.filter(instance => instance.installed).map(instance => instance.kind))
+    const bare = [...this.kinds.values()].filter(kind => !configured.has(kind.kind))
+      .map(kind => ({ ...this.resolve(kind, settings.sources[kind.kind]), installed: true }))
+    return [...resolved, ...bare].sort((a, b) => a.id.localeCompare(b.id))
   }
   instance<C extends Record<string, unknown>>(id: string, settings = this.settings()): SourceInstance<C> | undefined {
-    const kind = this.kindOf(id)
-    return kind ? this.resolve(kind, settings.sources[id], id) as SourceInstance<C> : undefined
+    const kind = this.kinds.get(id)
+    return kind ? this.resolve(kind, settings.sources[id]) as SourceInstance<C> : undefined
   }
   validate(id: string, value: { enabled: boolean; config: unknown }): { enabled: boolean; config: Record<string, unknown> } {
-    const kind = this.kindOf(id)
+    // `this.kind` rather than the map, so a second account (`qq-work`) is validated against the `qq` schema.
+    const kind = this.kind(id)
     if (!kind) throw new Error(`Source kind not installed: ${id}`)
     return { enabled: value.enabled, config: kind.schema.parse(value.config) }
   }
@@ -133,14 +120,14 @@ export class SourceRegistry implements SourceScope {
   /**
    * Sends a message idempotently through its Channel's kind; returns `'waiting'` while the kind is not installed, or
    * `'gone'` when the target (or a kind without channels) can never receive it.
-   * The kind's own configuration is passed too: a channel such as QQ replies through its own endpoint and token, which no
-   * deployment account describes.
    */
   async send(message: OutboundMessage, commands: Commands): Promise<'sent' | 'gone' | 'waiting'> {
     const kind = this.kinds.get(message.channel.source)
     if (!kind) return 'waiting'
-    const instance = this.resolve(kind, this.settings().sources[kind.kind])
-    return kind.channel ? kind.channel.send({ commands, config: instance.config }, message) : 'gone'
+    // The channel needs its own instance's configuration, not just the shell: a OneBot source has to reach the endpoint and
+    // token of the account it is answering for, and reading them from anywhere else answered as the wrong account.
+    const config = this.instance(message.channel.source)?.config ?? {}
+    return kind.channel ? kind.channel.send({ commands, config }, message) : 'gone'
   }
   link(channel: ChannelRef, links: ChannelLinks): ChannelLink {
     const link = this.kinds.get(channel.source)?.channel?.link(channel.address, links)
@@ -176,7 +163,14 @@ export class SourceRegistry implements SourceScope {
     return kind.scope ? kind.scope({ meta: input.meta }, instance.config) : { listened: true, observed: false }
   }
   /** Falls back to schema defaults and disables the instance when stored configuration fails validation. */
-  private resolve(kind: SourceKind, stored: { enabled: boolean; config: Record<string, unknown> } | undefined, id = kind.kind): SourceInstance {
+  /**
+   * Builds one instance from a kind and its stored configuration.
+   *
+   * `id` defaults to the kind name. It differs only for a second account of the same kind, stored under `qq-work` — the id
+   * is what the operator sees and what every per-instance cursor is keyed by, so it has to be the stored key, not the kind.
+   */
+  private resolve(kind: SourceKind, stored: { enabled: boolean; config: Record<string, unknown> } | undefined,
+    id: string = kind.kind): SourceInstance {
     const parsed = kind.schema.safeParse(stored?.config ?? {})
     return { id, kind: kind.kind, enabled: parsed.success && (stored?.enabled ?? true), config: parsed.success ? parsed.data : kind.schema.parse({}) }
   }
