@@ -36,13 +36,8 @@ interface Skill { name: string; description: string; content: string }
 /**
  * Maximum combined character count of system prompt and tool definitions per role (~5% above baseline).
  * Lower this limit when shrinking model-facing text; raise it only intentionally and explain why in the commit message.
- *
- * The orchestrator budget moved 59 000 → 59 500 when the worker preset gained an ordinary agent's tools. The main
- * Session's own text did not grow: what grew is the JSON schema of `plugin_manager`, `ask_user_question`, `present` and
- * `schedule_*`, which the orchestrator must still name because it validates tool arguments against them. Dropping those
- * would mean a worker that cannot install the capability it needs, which is the point of the change.
  */
-const BUDGET: Record<Role, number> = { orchestrator: 59_500, worker: 40_500 }
+const BUDGET: Record<Role, number> = { orchestrator: 59_000, worker: 40_500 }
 const PROMPTS = 'prompts/, skills/', TOOLS = 'src/app/tools/', SESSIONS = 'src/app/sessions.ts'
 const NOTICES = 'src/app/notices.ts', LINKS = 'src/app/links.ts', ASSESSMENT = 'src/app/assessment.ts'
 const EXECUTOR = 'src/executor/dsh.ts', ERRORS = 'src/core/errors.ts'
@@ -86,9 +81,6 @@ async function start() {
     [`git -C ${directory} remote get-url --push origin`]: 'https://github.com/acme/widgets.git\n',
     [`${AGENT} api user`]: '{"login":"agent-bot","id":7}',
     [`${AGENT} api repos/acme/widgets --jq {name: .full_name, push: .permissions.push}`]: '{"name":"acme/widgets","push":true}\n',
-    [`${AGENT} auth token`]: 'gho_testtoken\n',
-    // Windows proves the worker's own `gh` answers as the configured login through its isolated GH_CONFIG_DIR.
-    ['gh api user --jq .login']: 'agent-bot\n',
     [`${BOT} auth status`]: JSON.stringify({ appId: 'cli_bot', brand: 'feishu', identities: { bot: { status: 'ready' } } }),
     [`${BOT} config strict-mode`]: 'strict-mode: bot (source: profile)',
     [`${BOT} api GET /open-apis/bot/v3/info --as bot --format ndjson`]: '{"bot":{"open_id":"ou_bot"},"code":0,"msg":"ok"}',
