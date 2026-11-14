@@ -1,6 +1,6 @@
 /** Subprocess wrapper for running gh, lark-cli, and git commands under the deployment's configured accounts. */
 import { execFile } from 'node:child_process'
-import { basename, extname } from 'node:path'
+import { basename } from 'node:path'
 import { promisify } from 'node:util'
 import { z } from 'zod'
 import type { Deployment } from '../deployment.ts'
@@ -8,18 +8,19 @@ import type { Deployment } from '../deployment.ts'
 const exec = promisify(execFile)
 const TIMEOUT_MS = 90_000
 /**
- * Node refuses to spawn a `.cmd` or `.bat` directly on Windows: the interpreter is not chosen, so `spawn` fails with
- * EINVAL. A configured CLI is often a batch wrapper, so run those through `cmd.exe` and leave every real executable alone.
+ * Turns an argv into one Node can actually spawn.
+ *
+ * Node cannot spawn a `.cmd` or `.bat` directly on Windows: it is a script for the command interpreter, not an executable
+ * image, and `spawn` fails with `EINVAL`. Those have to go through `cmd.exe /d /s /c`, which is what a shell would do.
+ * `/d` skips AutoRun, `/s` keeps the quoting rules simple, and `/c` runs the command and exits.
+ *
+ * `platform` is a parameter so the Windows branch can be tested from a host that is not Windows; the behaviour itself
+ * only differs there, and every other executable is left exactly as it was.
  */
-const CMD_INTERPRETER = process.env.ComSpec ?? 'C:\\Windows\\System32\\cmd.exe'
-const WINDOWS = process.platform === 'win32'
-const BATCH = new Set(['.cmd', '.bat'])
-/** Wraps a batch file in `cmd.exe`; `execFile` quotes each argument, so no part of it is re-parsed as shell syntax. */
-export function command(argv: string[]): string[] {
-  const [program = '', ...args] = argv
-  if (!WINDOWS || !BATCH.has(extname(program).toLowerCase())) return argv
-  // `cmd /d /s /c` runs the rest verbatim; `/s` makes cmd strip only the outer quotes it adds itself.
-  return [CMD_INTERPRETER, '/d', '/s', '/c', program, ...args]
+export function command(argv: readonly string[], platform: NodeJS.Platform = process.platform): string[] {
+  const [program, ...rest] = argv
+  if (!program || platform !== 'win32') return [...argv]
+  return /\.(cmd|bat)$/i.test(program) ? [process.env.COMSPEC || 'cmd.exe', '/d', '/s', '/c', program, ...rest] : [...argv]
 }
 /**
  * Error thrown by Commands when a CLI invocation fails, capturing stderr diagnostics, API error codes, and exit status without echoing command arguments.
@@ -80,9 +81,8 @@ export class Commands {
   get repository(): string { return this.deployment.repository }
   withSignal(signal?: AbortSignal): Commands { return signal ? new Commands(this.resolved, this.environment, AbortSignal.any([this.signal, signal])) : this }
   async run(program: string, args: string[], cwd?: string): Promise<string> {
-    const argv = command([program, ...args])
     try {
-      const { stdout } = await exec(argv[0]!, argv.slice(1), { cwd, signal: this.signal, timeout: TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024,
+      const { stdout } = await exec(program, args, { cwd, signal: this.signal, timeout: TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024,
         env: { ...process.env, ...this.environment, GH_PROMPT_DISABLED: '1', LARKSUITE_CLI_NO_UPDATE_NOTIFIER: '1', LARKSUITE_CLI_NO_SKILLS_NOTIFIER: '1' } })
       return stdout
     } catch (error) { throw commandError(error, program) }
