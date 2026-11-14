@@ -3,7 +3,7 @@ import type { EngineForSources, ReceiveResult, Trigger } from '../core/index.ts'
 import type { Deployment } from '../deployment.ts'
 import type { Commands } from '../infra/commands.ts'
 import type { SetupProblem } from '../setup.ts'
-import type { SourceContext, Health } from '../sources/host.ts'
+import type { SourceContext } from '../sources/host.ts'
 import type { SourceRegistry } from '../sources/registry.ts'
 import type { Outbox } from './outbox.ts'
 import type { Store } from './store.ts'
@@ -33,38 +33,21 @@ export interface SourceContextDeps {
 export function sourceContextOf(deps: SourceContextDeps, kind: { kind: string; health: readonly string[] }): SourceContext {
   const { store } = deps
   const health = deps.sources.healthEntries(kind.health)
-  // The first declared entry is the kind's own; a suffixed instance reports under a name derived from it, so one kind can
-  // carry several accounts without claiming a second entry in the bundle's patch.
-  const baseEntry = kind.health[0] ?? kind.kind
-  // Several instances of one kind share the single entry the kind declares, so each instance's latest health is kept here
-  // and the entry carries the aggregate. Without this a second account would silently overwrite the first one's state.
-  const perInstance = new Map<string, Health>()
-  // Each declared entry keeps its own last value: a kind declares several (`feishu`, `history`), and one publishing must not
-  // overwrite another.
-  const declared = new Map<string, Health>()
-  const publish = (): void => {
-    for (const [name, value] of declared) health.get(name)?.set(value)
-    if (!perInstance.size) return
-    const values = [...perInstance.entries()]
-    // The worst state wins: one broken account must not read as healthy because another is fine.
-    const rank: Record<Health['state'], number> = { error: 3, paused: 2, starting: 1, ready: 0 }
-    const worst = values.reduce((a, b) => rank[b[1].state] > rank[a[1].state] ? b : a) as [string, Health]
-    const detail = values.length === 1 ? worst[1].detail : values.map(([id, value]) => `${id}: ${value.detail}`).join(' · ')
-    health.get(baseEntry)?.set({ ...worst[1], detail, instances: Object.fromEntries(values) })
-  }
   return {
     get deployment() { return deps.deployment },
     commands: deps.commands,
     ready: deps.ready,
     configured: () => deps.configured(),
-    instances: <C extends Record<string, unknown>>(sourceKind: string) => deps.sources.instances()
-      .filter(instance => instance.kind === sourceKind && instance.enabled)
-      .map(instance => ({ id: instance.id, config: instance.config as C })),
     get problem() { return [deps.feishuProblem, deps.setupProblem].find(problem => problem?.place === kind.kind) },
     config: <C extends Record<string, unknown>>(id: string) => {
       const instance = deps.sources.instance<C>(id)
       return instance?.enabled ? instance.config : undefined
     },
+    // `deps.sources.instances` answers for the whole registry; filtering by kind here is what keeps one Source from seeing
+    // another's accounts. Disabled instances are left out for the same reason `config` ignores them.
+    instances: <C extends Record<string, unknown>>(id: string) => deps.sources.instances()
+      .filter(instance => instance.kind === id && instance.enabled && instance.installed)
+      .map(instance => ({ id: instance.id, config: instance.config as C })),
     receive: trigger => deps.receive(trigger),
     atomic: work => store.atomic(work),
     state: {
@@ -86,21 +69,9 @@ export function sourceContextOf(deps: SourceContextDeps, kind: { kind: string; h
     },
     triggers: { get: id => store.triggers.get(id), latest: thread => store.read.threadTriggers(thread, 1)[0] },
     notify: message => { deps.outbox.send(message) },
-    /**
-     * Reports one instance's health.
-     *
-     * `entry` is either a declared entry name or an instance id. A suffixed instance (`qq-work`) reports under its kind's
-     * own entry, because the kind declares one entry and the bundle's patch cannot gain one per account; the per-instance
-     * values travel together in that entry's `instances`, and the entry itself shows the worst state of them.
-     */
     report: (entry, value) => {
-      // A suffixed instance reports under `baseEntry-<suffix>`; anything else must be an entry the kind really declares, so a
-      // typo fails loudly instead of quietly landing on the kind's own entry.
-      const named = kind.health.includes(entry) ? entry : entry.startsWith(`${baseEntry}-`) ? baseEntry : undefined
-      if (!named) throw new Error(`The ${kind.kind} Source has no health entry ${entry}`)
-      if (entry === named) { declared.set(named, value); publish(); return }
-      perInstance.set(entry, value)
-      publish()
+      if (!kind.health.includes(entry)) throw new Error(`The ${kind.kind} Source has no health entry ${entry}`)
+      health.get(entry)?.set(value)
     },
   }
 }
