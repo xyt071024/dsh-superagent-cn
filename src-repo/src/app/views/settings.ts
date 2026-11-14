@@ -1,3 +1,5 @@
+/** The sentinel a stored credential is shown as; the real value is never sent back to the form. */
+export const SECRET_SET = '••••••••'
 /** Settings view combining versioned configuration blocks, per-source forms and policy metadata, and execution environment details. */
 import { SETUP_FIELDS } from '../../deployment.ts'
 import { KV } from '../../kv.ts'
@@ -31,8 +33,15 @@ export function settingsView(store: Store, sources: SourceRegistry, health: Heal
       const kind = sources.kind(instance.kind)
       const problem = problemOf(instance.id, setup)
       const { id, title } = sourceHealth(sources, instance, health)
+      // A credential is never sent back to the form. The page only needs to know whether one is set, because the only thing
+      // an operator can do with it is replace it; echoing the value put the mailbox app password and the bot token into the
+      // JSON response, the browser's memory and any screenshot of the settings page.
+      const masked = Object.fromEntries(Object.entries(instance.config ?? {}).map(([field, value]) => {
+        const spec = kind?.fields.find(candidate => candidate.key === field)
+        return [field, spec?.type === 'password' ? (typeof value === 'string' && value !== '' ? SECRET_SET : '') : value]
+      }))
       return { id, kind: instance.kind, title, description: kind?.description ?? { zh: '', en: '' }, installed: instance.installed,
-        value: { enabled: instance.enabled, config: instance.config }, revision: store.blockRevision(`source:${instance.id}`),
+        value: { enabled: instance.enabled, config: masked }, revision: store.blockRevision(`source:${instance.id}`),
         restarts: SETUP_FIELDS[instance.id] ?? [], fields: kind?.fields ?? [], facts: kind?.facts?.(setup.deployment) ?? {},
         labels: store.get(KV.sources.labels(instance.id)) ?? {}, ...problem ? { problem } : {}, ...policyOf(sources, instance.id, health) }
     }),
