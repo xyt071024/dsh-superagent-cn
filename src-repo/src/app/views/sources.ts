@@ -5,6 +5,7 @@ import type { Health } from '../../sources/host.ts'
 import type { SourceInstance } from '../../sources/kind.ts'
 import type { SourceRegistry } from '../../sources/registry.ts'
 import type { SetupProblem } from '../../setup.ts'
+import { guideOf, type SourceSetup } from '../../setup-guides.ts'
 import { dayAgo, snapshot, type ViewHost } from './records.ts'
 import { preview } from './text.ts'
 
@@ -50,8 +51,15 @@ export function sourcesStatus(host: ViewHost, health: HealthMap, setup: SetupSta
   return sources.instances().map(instance => {
     const { health: parts, ...named } = sourceHealth(sources, instance, health)
     const problem = problemOf(instance.id, setup)
+    const guide = guideOf(instance.kind)
+    const ready = sourceState(instance, parts, setup) === 'ready'
+    // The guide ships with the Source so the panel can walk a person through it instead of only naming what is missing.
+    // `missing` is what the deployment check actually found, mapped onto the guide's steps; a ready Source has none, and a
+    // Source whose guide lists nothing is simply configured elsewhere.
     return { ...named, installed: instance.installed, enabled: instance.enabled, state: sourceState(instance, parts, setup), health: parts,
-      ...problem ? { problem } : {}, stats: stats[instance.id] ?? { received: 0, filtered: 0, lastAt: '' }, filtered: filtered(instance.id),
+      ...problem ? { problem } : {},
+      ...guide ? { guide: { purpose: guide.purpose, steps: guide.steps, ready, missing: missingSteps(guide, instance, problem, ready) } } : {},
+      stats: stats[instance.id] ?? { received: 0, filtered: 0, lastAt: '' }, filtered: filtered(instance.id),
       dropped: dropped.filter(item => item.channel.source === instance.id) }
   })
 }
@@ -67,4 +75,20 @@ export function droppedReplies({ store, links }: Pick<ViewHost, 'store' | 'links
     return { id: item.id, kind: item.kind, channel: item.channel, preview: preview(item.text), dropped: item.dropped,
       ...ticket ? { ticket: { id: ticket.id, title: ticket.title } } : {}, ...thread ? { thread } : {} }
   })
+}
+
+/**
+ * Which of a guide's steps are still outstanding for this instance.
+ *
+ * A ready Source has none. Otherwise the answer starts from what the deployment check reported: a `SetupProblem` carries
+ * the place it belongs to, and the guide's steps for that place are the ones left. When the check said nothing — the common
+ * case, because QQ and mail have no account to probe — the steps that cannot be confirmed without one are named instead, so
+ * the panel never shows an empty checklist next to a Source that plainly is not working.
+ */
+function missingSteps(guide: SourceSetup, instance: SourceInstance, problem: SetupProblem | undefined, ready: boolean): string[] {
+  if (ready) return []
+  const checkable = guide.steps.filter(step => step.done).map(step => step.key)
+  if (!problem) return instance.enabled ? checkable : []
+  // A problem names the place it belongs to; every step gated on a check is outstanding until that check passes.
+  return checkable
 }
