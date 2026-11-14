@@ -8,7 +8,21 @@ import type { SourceContext, SourceHost } from './host.ts'
 
 export interface Localized { zh: string; en: string }
 /** `advanced` folds a rarely changed field (such as a polling tunable) behind the card's Advanced section. */
-interface FieldBase { key: string; label: Localized; hint?: Localized; advanced?: true }
+interface FieldBase {
+  key: string
+  label: Localized
+  hint?: Localized
+  /**
+   * Where to get the value, shown as a link beside the field.
+   *
+   * Some credentials can only be obtained on the provider's own page — a QQ Mail app password needs IMAP/SMTP switched on
+   * first, Gmail needs an app password created — and describing that in prose leaves the operator to find the page
+   * themselves. A link takes them straight there, which is the difference between "read this and go hunt" and "click,
+   * follow the three steps, paste".
+   */
+  link?: { url: string; label: Localized }
+  advanced?: true
+}
 /**
  * Configuration field specification; `rows` edits a list of records keyed by its first column, `choose` picks from
  * resolved source labels, and `fact` displays a read-only value from `facts`.
@@ -18,6 +32,14 @@ export type FieldSpec =
   | FieldBase & { type: 'select'; options: { value: string; label: Localized }[] }
   | FieldBase & { type: 'number'; min: number; max: number }
   | FieldBase & { type: 'text'; pattern?: string; readonly?: boolean; choose?: Localized }
+  /**
+   * A credential: the value is never sent back once stored, and the form shows whether one is set rather than what it is.
+   *
+   * `text` was used for these before, which meant every load of the settings page carried the mailbox app password and the
+   * bot token through the browser, the JSON response and any window an operator happened to have open. A field that only
+   * needs to be *replaced* does not need to be *readable*.
+   */
+  | FieldBase & { type: 'password'; placeholder?: Localized }
   | FieldBase & { type: 'fact'; settings?: 'deployment' }
   | FieldBase & { type: 'rows'; columns: ({ key: string; label: Localized; type: 'text'; pattern?: string; optional?: boolean; choose?: Localized; refresh?: Localized } | { key: string; label: Localized; type: 'select'; options: { value: string; label: Localized }[] })[] }
 
