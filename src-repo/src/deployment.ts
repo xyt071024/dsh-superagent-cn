@@ -6,34 +6,46 @@ import type { Volatile } from '@deepseek-ai/cordis'
 import s from '@deepseek-ai/schemastery'
 import { z } from 'zod'
 import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
-import { runAsWorker, sameDirectory, withoutDirectory, workerBin, ghConfigDir } from './infra/environment.ts'
+import { runAsWorker, sameDirectory, withoutDirectory, workerBin } from './infra/environment.ts'
 import { SetupError } from './setup.ts'
 
 const reason = (error: unknown): string => error instanceof Error ? error.message : String(error)
-// Windows paths carry a drive letter, so accept either a leading "/" or "X:/".
-const absolute = (description: string) => s.string().pattern(/^(\/|[A-Za-z]:\/)/).description(`${description} Absolute path.`)
+/**
+ * A path that must be absolute, on whichever platform is running.
+ *
+ * This was `/^\//`, which is only absolute on POSIX: a Windows path starts with a drive letter (`D:/state`, `D:\state`) or a
+ * UNC share (`\\server\share`), so every Windows install failed its own configuration check with
+ * `expect string to match regexp /^\//`. The plugin then reported "did not activate" and the panel never appeared — the same
+ * POSIX-only assumption that was fixed in `policy.ts` for the ticket directory, and missed here.
+ */
+const absolute = (description: string) => s.string()
+  .pattern(/^(\/|[A-Za-z]:[\\/]|\\\\)/).description(`${description} Absolute path.`)
 /** Plugin configuration of the dsh-superagent entry. Volatile fields apply without a restart because dsh-superagent reads them on each use; changing `stateDir` remounts the plugin. */
 export const Config = s.object({
   stateDir: absolute('Directory for the database, locks, worker shims, the agent\'s git configuration and, by default, the ticket directories.').required(),
-  /**
-   * Writes the agent environment into `process.env` as the upstream design does. That reaches every other plugin in the
-   * same process, so a fused profile turns it off; workers then receive the same values through their own spawn instead.
-   */
-  isolateEnvironment: s.boolean().default(false).description('Keep the agent environment out of process.env, so other plugins in the same profile never see the agent PATH and git settings.'),
   promptMaxChars: s.number().min(LIMITS.promptMaxChars.min).max(LIMITS.promptMaxChars.max).step(1).default(100000)
     .description('Largest saved prompt configuration, in characters.').volatile(),
   admissionContextMaxPages: s.number().min(LIMITS.admissionContextMaxPages.min).max(LIMITS.admissionContextMaxPages.max).step(1).default(10)
     .description('Pages of thread context one assessment may read.').volatile(),
   admissionContextTimeoutMs: s.number().min(LIMITS.admissionContextTimeoutMs.min).max(LIMITS.admissionContextTimeoutMs.max).step(1)
     .default(15000).description('Time limit of one context read during an assessment, in milliseconds.').volatile(),
+  isolateEnvironment: s.boolean().default(false).volatile()
+    .description('Give worker processes their own PATH and git configuration instead of changing the ones this process runs with.'),
 })
 export type DeploymentConfig = ReturnType<typeof Config>
 export interface Machine {
   stateDir: string
-  isolateEnvironment: boolean
   promptMaxChars: Volatile<number>
   admissionContextMaxPages: Volatile<number>
   admissionContextTimeoutMs: Volatile<number>
+  /**
+   * Whether workers get their own environment rather than sharing this process's.
+   *
+   * Without it the plugin edits the process-wide `PATH` and git configuration, which on a machine already running other
+   * plugins silently replaces their `gh` and `lark-cli` with the worker shims. With it the overrides are passed to each
+   * spawn instead, so nothing outside a worker is touched.
+   */
+  isolateEnvironment: Volatile<boolean>
 }
 const MOVED: Record<string, string> = {
   repository: 'on the GitHub Source', branchPrefix: 'in the prepare command of the Execution settings', github: 'on the GitHub Source',
@@ -45,8 +57,8 @@ const MOVED: Record<string, string> = {
 export function machineOf(config: DeploymentConfig): Machine {
   const unknown = Object.keys(config).filter(key => !(key in (Config.dict ?? {})))
   if (unknown.length) throw new Error(`dsh-superagent configuration has keys it does not use: ${unknown.map(key => MOVED[key] ? `${key} (now ${MOVED[key]})` : key).join(', ')}; docs/006-deployment.md lists the keys`)
-  const { stateDir, isolateEnvironment, promptMaxChars, admissionContextMaxPages, admissionContextTimeoutMs } = config
-  return { stateDir, isolateEnvironment, promptMaxChars, admissionContextMaxPages, admissionContextTimeoutMs }
+  const { stateDir, promptMaxChars, admissionContextMaxPages, admissionContextTimeoutMs, isolateEnvironment } = config
+  return { stateDir, promptMaxChars, admissionContextMaxPages, admissionContextTimeoutMs, isolateEnvironment }
 }
 
 export const GithubAccountsSchema = z.object({
@@ -59,7 +71,7 @@ export const SETUP_FIELDS: Readonly<Record<string, readonly string[]>> = { githu
 
 export interface Deployment extends Machine {
   repository: string
-  github: { cli: string; login: string; noreply: string; token?: string }
+  github: { cli: string; login: string; noreply: string }
   feishu?: FeishuBot
 }
 export interface FeishuBot { cli: string; appId: string; brand: 'feishu' | 'lark'; botId: string; name: string }
@@ -67,29 +79,18 @@ export interface FeishuBot { cli: string; appId: string; brand: 'feishu' | 'lark
 /** Resolve a command name or absolute path to an executable file, ignoring the worker shim directory. */
 export function executable(name: string, path: string, exclude?: string): string {
   if (name.includes('/') && !isAbsolute(name)) throw new Error(`${name} must be a command name or an absolute path`)
-  // Windows: a command name may carry a PATHEXT suffix the caller omitted, and X_OK is not enforced.
-  const suffixes = process.platform === 'win32' ? ['', '.exe', '.cmd', '.bat', '.com'] : ['']
-  const candidates = (isAbsolute(name) ? [name] : path.split(delimiter).filter(dir => isAbsolute(dir) && !(exclude && sameDirectory(dir, exclude))).map(dir => join(dir, name)))
-    .flatMap(base => suffixes.map(suffix => base + suffix))
+  const candidates = isAbsolute(name) ? [name] : path.split(delimiter).filter(dir => isAbsolute(dir) && !(exclude && sameDirectory(dir, exclude))).map(dir => join(dir, name))
   for (const candidate of candidates) {
-    try { if (statSync(candidate).isFile()) { if (process.platform !== 'win32') accessSync(candidate, constants.X_OK); return candidate } }
+    try { if (statSync(candidate).isFile()) { accessSync(candidate, constants.X_OK); return candidate } }
     catch { /* Not an executable file here; try the next PATH directory. */ }
   }
   throw new Error(`${name} is not an executable file${isAbsolute(name) ? '' : ' on PATH'}`)
 }
 
 export type Probe = (argv: string[]) => Promise<string>
-/**
- * Run startup checks through DSH's worker subprocess service with worker shims removed from PATH so a `gh` wrapper script
- * reaches the real binary. Windows has no `env` utility, so there the same overrides are passed to the child directly.
- */
+/** Run startup checks through DSH's worker subprocess service with worker shims removed from PATH so a `gh` wrapper script reaches the real binary. */
 export function workerProbe(subprocess: SubprocessRuntime, stateDir: string, cwd: string, signal: AbortSignal): Probe {
   const path = withoutDirectory(process.env.PATH ?? '', workerBin(stateDir))
-  // Probing runs before `applyEnvironment`, so the Windows account binding has to be supplied here as well.
-  const env = { PATH: path, ...process.platform === 'win32' ? { GH_CONFIG_DIR: ghConfigDir(stateDir) } : {} }
-  if (process.platform === 'win32') {
-    return argv => runAsWorker(subprocess, argv, cwd, AbortSignal.any([signal, AbortSignal.timeout(60_000)]), env)
-  }
   return argv => runAsWorker(subprocess, ['env', `PATH=${path}`, ...argv], cwd, AbortSignal.any([signal, AbortSignal.timeout(60_000)]))
 }
 
@@ -120,12 +121,7 @@ export async function resolveDeployment(machine: Machine, github: unknown, probe
   if (!access) throw new SetupError('repositoryUnreported', { repository: remote })
   const repository = access.name
   if (access.push !== true) throw new SetupError('repositoryReadOnly', { account: agent.login, repository })
-  // Windows binds the account through an isolated GH_CONFIG_DIR instead of the POSIX shim, so the CLI's own token is read
-  // here once; a CLI that only answers from an ambient GH_TOKEN has no token to copy and setup reports that plainly.
-  const token = process.platform === 'win32'
-    ? await probe([cli, 'auth', 'token']).then(text => text.trim()).catch(() => '')
-    : undefined
-  return { ...machine, repository, github: { cli, login: agent.login, noreply: `${agent.id}+${agent.login}@users.noreply.github.com`, ...token ? { token } : {} } }
+  return { ...machine, repository, github: { cli, login: agent.login, noreply: `${agent.id}+${agent.login}@users.noreply.github.com` } }
 }
 
 const AuthStatus = z.object({ appId: z.string().regex(/^cli_[A-Za-z0-9]+$/), brand: z.enum(['feishu', 'lark']).default('feishu'), identities: z.object({ bot: z.object({ status: z.string() }) }) })
