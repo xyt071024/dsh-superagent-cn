@@ -10,8 +10,6 @@ export interface SetupHost {
   readonly context: Context
   readonly machine: Machine
   readonly lifetime: AbortSignal
-  /** True when the profile is shared with other plugins, so the agent environment stays out of `process.env`. */
-  readonly isolated: boolean
   restart(): void
 }
 
@@ -91,11 +89,8 @@ export class Setup {
       throw new SetupError('environmentFailed', { output: error instanceof Error ? error.message : String(error) })
     }
     await writeEnvironment(resolved, settings.executor.blockedCommands).catch(machineProblem)
-    // A fused profile shares its process with other plugins, so publishing the agent PATH and git settings to process.env
-    // would silently rebind their `gh`, `lark-cli` and git to the agent accounts. They still reach every worker through
-    // `commandEnvironment` and the spawn overrides, which is where the isolation actually happens.
-    if (!this.host.isolated) this.restoreEnvironment = applyEnvironment(this.variables, machine.stateDir, this.path)
-    await verifyEnvironment(resolved, context.subprocess, lifetime, this.variables).catch((error: unknown) => {
+    this.restoreEnvironment = applyEnvironment(this.variables, machine.stateDir, this.path)
+    await verifyEnvironment(resolved, context.subprocess, lifetime).catch((error: unknown) => {
       this.restore()
       machineProblem(error)
     })
