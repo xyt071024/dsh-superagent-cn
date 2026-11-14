@@ -11,8 +11,7 @@ import { ConfigHistory, Fields, SourceField, useBlockDraft, useSettings } from '
 import { actorName, healthText, localized, readableMarkers, reasonLabel, valueLabel, when } from './text.ts'
 import { CheckSetupButton, Hint, LabelValue, LoadState, SetupMessage, StatusHead, When } from './widgets.tsx'
 
-function SourceCard({ source }: { source: SourceView }) {
-  const { t, call } = usePanel()
+function SourceCard({ source }: { source: SourceView }) {  const { t, call } = usePanel()
   const { running } = usePanelData()
   const { reload } = useSettings()
   const [advancedOpen, setAdvancedOpen] = useState(false)
@@ -92,6 +91,38 @@ function DroppedReplies({ items }: { items: DroppedReply[] }) {
     </div>
   </DisclosureRow>
 }
+/**
+ * The steps that make this Source work, shown where the Source reports its state.
+ *
+ * A person reading "waiting for the deployment check" needs the next action, not the diagnosis, so this renders the guide
+ * as a numbered list with the outstanding steps marked and every URL clickable. A ready Source keeps the list collapsed
+ * behind a disclosure: it is reference by then, not instructions.
+ */
+function SetupGuide({ guide, source }: { guide: NonNullable<SourceStatusRow['guide']>; source: string }) {
+  const { t, navigate } = usePanel()
+  const [open, setOpen] = useState(!guide.ready)
+  const steps = guide.steps
+  const outstanding = new Set(guide.missing)
+  return <div className="dt-guide">
+    <p className="dt-hint">{localized(t, guide.purpose)}</p>
+    <button type="button" className="dt-textlink" onClick={() => setOpen(!open)}>
+      {guide.ready ? t('guideReady') : t('guideSteps', { count: steps.length, missing: outstanding.size })}
+    </button>
+    {open && <ol className="dt-guide-steps">
+      {steps.map((step, index) => <li key={step.key} data-done={!outstanding.has(step.key) || undefined}>
+        <div className="dt-guide-title">{localized(t, step.title)}</div>
+        {step.where && <div className="dt-guide-where">{localized(t, step.where)}</div>}
+        {step.done && <div className="dt-guide-done">{t('guideDone')}{localized(t, step.done)}</div>}
+        {step.url && <a className="dt-field-link" href={step.url} target="_blank" rel="noreferrer noopener">
+          {t('guideOpen')} ↗</a>}
+        <span className="dt-guide-index">{index + 1}</span>
+      </li>)}
+    </ol>}
+    {!guide.ready && <button type="button" className="dt-textlink" onClick={() => navigate(settingsRoute('source', { source }))}>
+      {t('sourceOpenSettings')}
+    </button>}
+  </div>
+}
 function SourceRow({ source }: { source: SourceStatusRow }) {
   const { t, navigate } = usePanel()
   const { setup } = usePanelData()
@@ -122,6 +153,7 @@ function SourceRow({ source }: { source: SourceStatusRow }) {
         {valueLabel(t, 'health', item.name)}{t('labelSeparator')}<span className={item.code ? undefined : 'dt-mono'}>{healthText(t,
           item)}</span>
       </p>)}
+      {source.guide && <SetupGuide guide={source.guide} source={source.id} />}
       {source.filtered.length > 0 && <DisclosureRow icon={<Icon name="filter" />} title={t('sourceFilteredTitle')} open={filteredOpen}
         onToggle={() => setFilteredOpen(!filteredOpen)}>
         <div className="dt-disclosure-body">
