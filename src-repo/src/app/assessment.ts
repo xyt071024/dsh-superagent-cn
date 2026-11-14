@@ -30,9 +30,6 @@ export const AssessmentSchema = z.object({
   intent_evidence: z.string().trim().min(1).max(700).nullish().describe('For acceptance: the quotes that establish the three facts.'),
   acknowledgement: AcknowledgementSchema.nullish().describe('For acceptance: one sentence in the source language, posted as a reply to the trigger; omit only when a matched rule asks for silence.'),
   reason: z.string().min(1).max(500),
-  // Estimated by this same assessment so routing needs no second request; omitted when the work is too unclear to size.
-  difficulty: z.number().int().min(0).max(100).nullish()
-    .describe('How large the work looks, 0-100: 0-20 one or two lines in one file, 40-60 several files in one module, 80-100 a change across modules or with design decisions. Omit when the scope is genuinely unclear.'),
 }).strict().refine(value => value.decision !== 'accept' || !directionAllowed(value.direction) || !value.rule_assessments.some(rule => rule.matched)
   || !!value.worktree_name, { message: 'Accepted work requires a short English worktree_name', path: ['worktree_name'] })
 
