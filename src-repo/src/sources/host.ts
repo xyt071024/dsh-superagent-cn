@@ -13,13 +13,12 @@ export const HEALTH_TEXT = {
   sourceOff: 'Off',
   feishuCliUnset: 'The Source is on, and its bot lark-cli is not set',
   feishuBotMissing: 'Waiting for the Feishu bot',
-  mailUnconfigured: 'Waiting for the mail address and app password',
+  /** The Source is on but has no address or app password yet, so it neither polls nor fails. */
+  mailUnconfigured: 'Waiting for an address and app password',
   pollFailures: '{count} consecutive failed polls; last: {error}',
 } as const
 export type HealthCode = keyof typeof HEALTH_TEXT
-export type Health = { state: 'starting' | 'ready' | 'paused' | 'error'; detail: string; at?: string; code?: HealthCode; values?: Record<string, string>
-  /** Per-account health when one kind serves several instances; `state` and `detail` above are the worst of them. */
-  instances?: Record<string, Health> }
+export type Health = { state: 'starting' | 'ready' | 'paused' | 'error'; detail: string; at?: string; code?: HealthCode; values?: Record<string, string> }
 export function health(state: Health['state'], code: HealthCode, values: Record<string, string> = {}): Health {
   return { state, detail: fill(HEALTH_TEXT[code], values), code, ...Object.keys(values).length ? { values } : {} }
 }
@@ -41,7 +40,12 @@ export interface SourceContext {
   readonly problem?: SetupProblem | undefined
   /** Returns a Source's configuration while enabled, or undefined while disabled or uninstalled. */
   config<C extends Record<string, unknown>>(kind: string): C | undefined
-  /** Every enabled instance of `kind`, so one kind can poll several accounts through its own loops. */
+  /**
+   * Every enabled instance of a Source kind, each with its own id.
+   *
+   * One account per kind was the original assumption; a person with two QQ numbers needs both watched from one plugin,
+   * each with its own endpoint and its own allow-list. A Source that only wants the first instance keeps calling `config`.
+   */
   instances<C extends Record<string, unknown>>(kind: string): { id: string; config: C }[]
   /** Ingests a trigger into the Engine and schedules the next evaluation pass; callers should await completion before advancing read cursors. */
   receive(trigger: Trigger): ReceiveResult | Promise<ReceiveResult>
