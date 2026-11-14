@@ -172,7 +172,7 @@ const channel: SourceChannel<MailConfig> = {
     if (!config.address || !config.secret) throw new Error('The Mail Source has no address or app password yet')
     const to = message.channel.address.to
     if (!to) throw new Error('Missing mail recipient')
-    const { writeFile, rm } = await import('node:fs/promises')
+    const { writeFile, rm, mkdtemp } = await import('node:fs/promises')
     const { join } = await import('node:path')
     const { tmpdir } = await import('node:os')
     const body = join(tmpdir(), `dsh-mail-${message.id.replace(/[^A-Za-z0-9]/g, '')}.eml`)
@@ -190,10 +190,20 @@ const channel: SourceChannel<MailConfig> = {
       '',
     ].join('\r\n'), 'utf8')
     const url = `${config.smtpSecure ? 'smtps' : 'smtp'}://${config.smtpHost}:${config.smtpPort}`
+    // The app password must not travel as a command-line argument: `--user address:secret` is visible in the process list
+    // to every process running as this user, and gets copied into crash reports, shell history and `ps` snapshots. curl
+    // reads `--config <file>` instead, so the credential stays in a file this account can read and that is deleted at once.
+    const auth = await mkdtemp(join(tmpdir(), 'dsh-superagent-smtp-'))
+    const rc = join(auth, 'curl.rc')
     try {
-      await host.commands.run('curl', ['--silent', '--show-error', '--fail', '--url', url, '--user', `${config.address}:${config.secret}`,
+      // Quoted because a password may contain `"` or `\`, which curl's config parser would otherwise treat as syntax.
+      await writeFile(rc, `user = "${`${config.address}:${config.secret}`.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"\n`, { mode: 0o600 })
+      await host.commands.run('curl', ['--silent', '--show-error', '--fail', '--url', url, '--config', rc,
         '--mail-from', config.address, '--mail-rcpt', to, '--upload-file', body])
-    } finally { await rm(body, { force: true }) }
+    } finally {
+      await rm(auth, { recursive: true, force: true })
+      await rm(body, { force: true })
+    }
     return 'sent'
   },
   link(address, links) {
@@ -225,9 +235,12 @@ export const mailKind: SourceKind<MailConfig> = {
   fields: [
     { key: 'address', type: 'text', pattern: '[^\\s@]+@[^\\s@]+', label: { zh: '邮箱地址', en: 'Mail address' },
       hint: { zh: '完整的邮箱地址，也是 IMAP/SMTP 的登录名。', en: 'The full address, which is also the IMAP and SMTP login.' } },
-    { key: 'secret', type: 'text', label: { zh: '授权码', en: 'App password' },
-      hint: { zh: '不是邮箱密码。QQ 邮箱要在「设置 → 账户 → IMAP/SMTP 服务」开启后取得授权码；Gmail 要用「应用专用密码」。',
-        en: 'Not the account password. QQ Mail issues one after enabling IMAP/SMTP under Settings → Account; Gmail needs an app password.' } },
+    { key: 'secret', type: 'password', label: { zh: '授权码', en: 'App password' },
+      // A link rather than directions: the page that issues this is not reachable from here and the steps differ per
+      // provider, so taking the operator straight there is the whole help worth giving.
+      link: { url: 'https://service.mail.qq.com/detail/0/75', label: { zh: 'QQ 邮箱怎么拿授权码', en: 'How to get one (QQ Mail)' } },
+      hint: { zh: '不是邮箱密码。QQ 邮箱要先在「设置 → 账户」开启 IMAP/SMTP 服务，再生成授权码；Gmail 用「应用专用密码」。点右边链接按提示走三步即可。',
+        en: 'Not the account password. QQ Mail needs IMAP/SMTP switched on under Settings → Account, then an app password generated; Gmail needs an app password. The link walks through it.' } },
     { key: 'imapHost', type: 'text', advanced: true, label: { zh: 'IMAP 服务器', en: 'IMAP host' },
       hint: { zh: 'QQ 邮箱是 imap.qq.com，Gmail 是 imap.gmail.com。', en: 'imap.qq.com for QQ Mail, imap.gmail.com for Gmail.' } },
     { key: 'imapPort', type: 'number', advanced: true, min: 1, max: 65535, label: { zh: 'IMAP 端口', en: 'IMAP port' } },
