@@ -2,6 +2,7 @@
  * Runtime settings schemas, assessment validation, and policy gate evaluation.
  * Who may originate work is configured per Source in that Source's own identities; the Policy never maps a person across Sources.
  */
+import { isAbsolute } from 'node:path'
 import { LIMITS } from './limits.ts'
 import { z } from 'zod'
 import { ADMISSION_DEFAULTS, type Admission, type AdmissionCell, type AdmissionRow } from './admission.ts'
@@ -98,6 +99,17 @@ export const PLAN_SCHEMA_VERSION = 'plan-v1'
 export const RoutingConfigSchema = z.object({
   /** `single` keeps every Session on the operator and executor models; `auto` may pick another Session model per difficulty. */
   multiSession: z.enum(['single', 'auto']).default('single'),
+  /**
+   * How the operator's own current model competes with the approved list.
+   *
+   * `prefer` (the default) keeps a worker on whatever the operator is using right now. That is what "use the same model I
+   * am using" means to someone who configured nothing else, and it is the behaviour that surprises nobody: open a new
+   * session, get the same model.
+   *
+   * `strict` always takes the approved route when one exists, so difficulty routing wins and the operator's current
+   * choice is ignored. Choose it deliberately, when the approved list is the whole point.
+   */
+  inheritOperatorModel: z.enum(['prefer', 'strict']).default('prefer'),
   /** Runs in a background Session by default, leaving the panel free; `ask` defers to the Trigger's own choice. */
   placement: z.enum(['background', 'foreground', 'ask']).default('background'),
   /** Reasoning effort handed to a Session; `auto` lets the difficulty estimate choose. */
@@ -138,7 +150,14 @@ const CommandNameSchema = z.string().regex(/^[A-Za-z0-9._-]+$/).refine(name => n
 export const ExecutorConfigSchema = z.object({
   model: RoleModelSchema.nullable().default(null),
   maxWorkers: z.number().int().min(LIMITS.maxWorkers.min).max(LIMITS.maxWorkers.max).default(3),
-  directory: z.string().trim().refine(path => path === '' || path.startsWith('/'), 'An absolute path, or empty for <stateDir>/work').default(''),
+  /**
+   * Where a ticket's work directory is created; empty means `<stateDir>/work`.
+   *
+   * Tested with `path.isAbsolute`, not `startsWith('/')`. The POSIX-only check was wrong on Windows, where an absolute
+   * path starts with a drive letter (`C:\work`) or a UNC share (`\\server\share`), so every Windows operator got
+   * "An absolute path" for a path that is exactly that — while `D:\...` from the settings form was silently rejected.
+   */
+  directory: z.string().trim().refine(path => path === '' || isAbsolute(path), 'An absolute path, or empty for <stateDir>/work').default(''),
   prepare: z.string().max(LIMITS.prepareCommand).default(''),
   blockedCommands: z.array(CommandNameSchema).default([]),
 }).strict()
