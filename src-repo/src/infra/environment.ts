@@ -9,26 +9,26 @@ import { delimiter, join, resolve } from 'node:path'
 import type { SubprocessOutputReader, SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import type { Deployment } from '../deployment.ts'
 import { SetupError } from '../setup.ts'
-import { CliError, command } from './commands.ts'
+import { CliError } from './commands.ts'
 
 const MARKER = '# Written by dsh-superagent on every start; edits are lost.'
 /** Markers of files written under the project's earlier names (`dsh-tag`, `dsh-go`, `dsh-freelancer`), which `dsh-superagent` owns and replaces too. */
 const LEGACY_MARKERS = ['dsh-tag', 'dsh-go', 'dsh-freelancer'].map(name => `# Written by ${name} on every start; edits are lost.`)
 /** Commands workers need, which `blockedCommands` cannot block: the shims and git. */
 export const WORKER_COMMANDS: readonly string[] = ['gh', 'git', 'lark-cli']
-/** Windows cannot execute the POSIX shims below, so the gh account is bound through an isolated config directory instead. */
-const WINDOWS = process.platform === 'win32'
 export const workerBin = (stateDir: string): string => join(stateDir, 'worker-bin')
 export const workerGitConfig = (stateDir: string): string => join(stateDir, 'worker-gitconfig')
-/** Isolated `GH_CONFIG_DIR` holding the agent account's `hosts.yml`, which replaces the shim-based account binding on Windows. */
-export const ghConfigDir = (stateDir: string): string => join(stateDir, 'gh-agent')
+/**
+ * Where a worker's `gh` keeps its account, isolated from the operator's own.
+ *
+ * On Windows the `gh` shim that points at the right account is never executed — Windows runs no POSIX wrapper — so the
+ * account is bound through this directory instead: `GH_CONFIG_DIR` makes the real `gh` read a config of its own, under the
+ * state directory, and never the operator's `~/.config/gh`. That is also why it must not be the git config path.
+ */
+export const ghConfigDir = (stateDir: string): string => join(stateDir, 'worker-gh')
 const shellQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`
 const gitQuote = (value: string): string => `"${value.replace(/[\\"]/g, char => `\\${char}`)}"`
-/**
- * Git evaluates a `!`-prefixed helper through a shell. POSIX shells take single quotes; Windows git runs it through
- * `sh` too, but the path arrives from a Windows config and is safest double-quoted there.
- */
-export const credentialHelper = (cli: string): string => `!${WINDOWS ? gitQuote(cli) : shellQuote(cli)} auth git-credential`
+export const credentialHelper = (cli: string): string => `!${shellQuote(cli)} auth git-credential`
 
 export function sameDirectory(a: string, b: string): boolean {
   const real = (path: string): string => { try { return realpathSync(path) } catch { return resolve(path) } }
@@ -53,8 +53,6 @@ export const GIT_LOCATION: readonly string[] = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT
 export function agentVariables(stateDir: string): Record<string, string | undefined> {
   return {
     GH_TOKEN: undefined, GITHUB_TOKEN: undefined,
-    // On Windows the account is bound by an isolated GH_CONFIG_DIR; elsewhere the worker `gh` shim supplies it.
-    ...WINDOWS ? { GH_CONFIG_DIR: ghConfigDir(stateDir) } : {},
     // A worker's git finds the repository from its directory, never from the host's environment.
     ...Object.fromEntries(GIT_LOCATION.map(name => [name, undefined])),
     GIT_CONFIG_GLOBAL: workerGitConfig(stateDir), GIT_CONFIG_NOSYSTEM: '1',
@@ -81,32 +79,10 @@ async function own(file: string, text: string, mode = 0o644): Promise<void> {
   await writeFile(temporary, text, { mode })
   await rename(temporary, file)
 }
-/**
- * Writes the agent account into an isolated `GH_CONFIG_DIR`, which is how a Windows `gh` learns its identity without the
- * POSIX shim. The token is copied from the configured agent CLI's own configuration, so the shim stays the single place
- * the credential is added and dsh-superagent writes nothing it was not already given.
- * `hosts.yml` takes no leading comment: `gh` parses it without skipping a prelude and calls a commented file invalid.
- * `config.yml` is written too: without it `gh` treats the directory as a migration target and refuses the first command.
- */
-async function writeGhConfig(stateDir: string, github: { cli: string; login: string; token?: string }): Promise<void> {
-  if (!github.token) throw new SetupError('agentCliTokenMissing', { cli: github.cli })
-  const dir = ghConfigDir(stateDir)
-  await mkdir(dir, { recursive: true })
-  await own(join(dir, 'hosts.yml'), [
-    MARKER,
-    'github.com:',
-    `    user: ${github.login}`,
-    `    oauth_token: ${github.token}`,
-    '    git_protocol: https',
-    '',
-  ].join('\n'), 0o600)
-  await own(join(dir, 'config.yml'), `${MARKER}\nversion: "1"\n`, 0o600)
-}
 
 /**
  * Atomically writes worker CLI shims and the isolated git configuration file into the state directory, refusing to overwrite foreign files.
  * Each shim strips the shim directory from PATH before exec so wrapper scripts resolving `gh` or `lark-cli` by name reach the real binary.
- * Windows runs no `sh` for a bare command name, so there `gh` is bound through `GH_CONFIG_DIR` instead of a shim.
  */
 export async function writeEnvironment(deployment: Pick<Deployment, 'stateDir' | 'repository' | 'github' | 'feishu'>, blockedCommands: readonly string[]): Promise<void> {
   const { stateDir, repository, github, feishu } = deployment
@@ -129,14 +105,12 @@ export async function writeEnvironment(deployment: Pick<Deployment, 'stateDir' |
   ].join('\n')
   const run = (program: string): string => `${withoutShims}\nexec ${shellQuote(program)} "$@"`
   const fail = (message: string): string => `echo ${shellQuote(message)} >&2\nexit 1`
-  // A Windows shell never executes the sh shims, so they would only shadow the real binary and mislead a reader of the state directory.
-  if (!WINDOWS) await shim('gh', run(github.cli))
+  await shim('gh', run(github.cli))
   await shim('lark-cli', feishu ? run(feishu.cli) : fail('lark-cli is unavailable: this installation has no Feishu bot.'))
   for (const name of new Set(blockedCommands.filter(name => !WORKER_COMMANDS.includes(name)))) {
     await shim(name, fail(`${name} is blocked in this installation; use gh, which acts as ${github.login}.`))
   }
   for (const name of before) if (!kept.has(name)) await unlink(join(dir, name))
-  if (WINDOWS) await writeGhConfig(stateDir, github)
   await own(workerGitConfig(stateDir), [
     MARKER,
     // Make git refuse to commit without an explicit identity set by the worker instead of guessing from the operator's OS user.
@@ -160,7 +134,7 @@ export function applyEnvironment(variables: Record<string, string | undefined>, 
 
 /** Spawns a command through the DSH subprocess runtime, which strips credential-shaped environment variables. */
 export async function runAsWorker(subprocess: SubprocessRuntime, argv: string[], cwd: string, signal: AbortSignal, env?: Record<string, string>): Promise<string> {
-  const handle = subprocess.spawn({ argv: command(argv), cwd, graceMs: 2000, signal, ...env ? { env } : {}, stdio: { stdin: 'ignore', stdout: { maxBytes: 1 << 20 }, stderr: { maxBytes: 1 << 16 } } })
+  const handle = subprocess.spawn({ argv, cwd, graceMs: 2000, signal, ...env ? { env } : {}, stdio: { stdin: 'ignore', stdout: { maxBytes: 1 << 20 }, stderr: { maxBytes: 1 << 16 } } })
   const { exitCode } = await handle.done
   const read = (reader: SubprocessOutputReader | undefined): string => reader?.readFrom(0).text ?? ''
   if (exitCode === 0) return read(handle.collected.stdout)
@@ -168,29 +142,12 @@ export async function runAsWorker(subprocess: SubprocessRuntime, argv: string[],
   throw new CliError(read(handle.collected.stderr).trim() || `${argv.join(' ')} ${ended}`, undefined, exitCode ?? undefined)
 }
 
-/**
- * Verifies that worker git invocations resolve the deployment's GitHub credential helper, and on Windows that the worker
- * `gh` really answers as the agent account through its isolated configuration directory.
- * The variables are passed explicitly: an isolated profile keeps them out of `process.env`, so a check that relied on the
- * ambient environment would fail on a correct installation.
- */
-export async function verifyEnvironment(deployment: Pick<Deployment, 'github' | 'stateDir'>, subprocess: SubprocessRuntime, signal: AbortSignal,
-  variables: Record<string, string | undefined> = agentVariables(deployment.stateDir)): Promise<void> {
+/** Verifies that worker git invocations resolve the deployment's GitHub credential helper. */
+export async function verifyEnvironment(deployment: Pick<Deployment, 'github' | 'stateDir'>, subprocess: SubprocessRuntime, signal: AbortSignal): Promise<void> {
   const { github, stateDir } = deployment
-  const env = Object.fromEntries(Object.entries(variables).filter((entry): entry is [string, string] => entry[1] !== undefined))
   // `-z` separates fields with NUL and never quotes paths.
-  const helpers = (await runAsWorker(subprocess, ['git', 'config', '-z', '--show-origin', '--get-all', 'credential.https://github.com.helper'],
-    stateDir, AbortSignal.any([signal, AbortSignal.timeout(60_000)]), env).catch(() => '')).split('\0')
-  // The scope keeps `[credential] helper =` out of this list; the pattern is the section-qualified one, so git lists only
-  // the github.com entry and the trailing empty field that `-z` appends.
+  const helpers = (await runAsWorker(subprocess, ['git', 'config', '-z', '--show-origin', '--get-all', 'credential.https://github.com.helper'], stateDir, AbortSignal.any([signal, AbortSignal.timeout(60_000)])).catch(() => '')).split('\0')
   if (helpers.join('\0') !== [`file:${workerGitConfig(stateDir)}`, credentialHelper(github.cli), ''].join('\0')) throw new SetupError('gitTooOld')
-  if (!WINDOWS) return
-  // The account binding is a directory lookup, so prove the worker's own gh reports the configured login rather than assume it.
-  const login = await runAsWorker(subprocess, ['gh', 'api', 'user', '--jq', '.login'], stateDir, AbortSignal.any([signal, AbortSignal.timeout(60_000)]),
-    { ...env, GH_CONFIG_DIR: ghConfigDir(stateDir) }).then(text => text.trim()).catch((error: unknown) => {
-    throw new SetupError('workerGhFailed', { output: error instanceof CliError ? error.message : String(error) })
-  })
-  if (login !== github.login) throw new SetupError('workerGhWrongAccount', { expected: github.login, actual: login })
 }
 
 /**
