@@ -9,13 +9,9 @@ import { AssessmentSchema, EvalReadSchema, WorktreeNameSchema, type MasterAssess
 import { ticketCard } from '../cards.ts'
 import { PromptConfigSchema, savePrompts, type Prompts } from '../prompts.ts'
 import { readResource, type MainResourceHost, type ResourceHost } from '../resources.ts'
-import { InspectSchema, hygiene, inspect } from '../self-inspect.ts'
-import type { SourceRegistry } from '../../sources/registry.ts'
-import type { HealthMap } from '../views/sources.ts'
 import type { Sessions } from '../sessions.ts'
 import type { Settings } from '../settings.ts'
 import type { Store } from '../store.ts'
-import { pluginTool } from './plugin.ts'
 import { AcknowledgementSchema, readTool, tool, type Tool } from './tool.ts'
 
 const RoutingNoteSchema = z.string().trim()
@@ -30,10 +26,6 @@ export interface MainToolsHost {
   readonly settings: Pick<Settings, 'view' | 'block' | 'save' | 'pause' | 'sync'>
   readonly assessor: Pick<MasterAssessor, 'context' | 'read' | 'decide'>
   readonly resources: ResourceHost
-  /** Source instances and their health, so the agent can report what it is missing rather than guess. */
-  readonly sources: Pick<SourceRegistry, 'instances'>
-  /** Current health by entry name, which is what the Sources page shows. */
-  readonly health: Readonly<Record<string, HealthMap[string]>>
   /** Schedules a pass to carry out work queued by an Engine command (such as an Eval or ticket resume). */
   requestPass(): void
   sendReplies(): Promise<void>
@@ -282,20 +274,6 @@ export function mainTools(host: MainToolsHost, agent: Agent): Tool[] {
           .map(item => item.name ?? item.id)
         return { source: args.source, allowed: after.length, added: names(after, before), removed: names(before, after) }
       },
-    }),
-    pluginTool(host.context),
-    tool({
-      name: 'orchestrator_self_inspect',
-      description: 'Report what this installation lacks and what it has been doing, each gap naming the one action that closes it. Use it on a request to check the setup, or before proposing a change to it.',
-      schema: InspectSchema,
-      execute: async args => inspect(host.store.settings(), host.sources as SourceRegistry, host.health, host.store as Store,
-        args.days ?? 7),
-    }),
-    tool({
-      name: 'orchestrator_self_hygiene',
-      description: 'Check the installation for stale state an agent can fix itself: open tickets whose working directory no longer exists. Fixing a missing directory is a repair, not a change to a person\'s work.',
-      schema: z.object({}).strict(),
-      execute: async () => hygiene(host.store as Store),
     }),
     tool({
       name: 'orchestrator_prompts_save',
