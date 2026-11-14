@@ -53,12 +53,23 @@ export function Fields({ disabled, children }: { disabled: boolean; children: Re
   }, [disabled])
   return <fieldset ref={set} className="dt-fieldset" disabled={disabled}>{children}</fieldset>
 }
-export function Field({ label, hint, note,
-  children }: { label: string; hint?: string | undefined; note?: ReactNode; children: ReactElement<{ id?: string }> }) {
+/**
+ * The "where to get this value" link of a field, in the interface language, or undefined when the field has none.
+ *
+ * Kept out of the switch so every field kind that can carry one renders it the same way.
+ */
+function fieldLink(field: FieldSpec, t: T): { url: string; label: string } | undefined {
+  const link = 'link' in field ? field.link : undefined
+  return link ? { url: link.url, label: localized(t, link.label) } : undefined
+}
+export function Field({ label, hint, note, link,
+  children }: { label: string; hint?: string | undefined; note?: ReactNode
+    link?: { url: string; label: string } | undefined; children: ReactElement<{ id?: string }> }) {
   const id = useId()
   return <div className="dt-field">
-    <span className="dt-field-head"><label htmlFor={id}>{label}</label>{hint && <InfoTip text={hint} />}</span>{cloneElement(children,
-      { id })}{note && <small>{note}</small>}
+    <span className="dt-field-head"><label htmlFor={id}>{label}</label>{hint && <InfoTip text={hint} />}
+      {link && <a className="dt-field-link" href={link.url} target="_blank" rel="noreferrer noopener">{link.label} ↗</a>}
+    </span>{cloneElement(children, { id })}{note && <small>{note}</small>}
   </div>
 }
 function SwitchRow({ label, hint, checked,
@@ -254,7 +265,7 @@ export function SourceField({ field, value, saved, fact, onChange, labels, refre
       <Input type="number" min={field.min} max={field.max} required value={String(value ?? '')}
         onChange={event => onChange(event.target.value === '' ? '' : Number(event.target.value))} />
     </Field>
-    case 'text': return <Field label={label} hint={hint} note={localized(t, fact)}>
+    case 'text': return <Field label={label} hint={hint} note={localized(t, fact)} link={fieldLink(field, t)}>
       {field.choose && Object.keys(labels).length
         ? <select className="dt-select" value={String(value ?? '')} onChange={event => onChange(event.target.value)}>
           <option value="">{localized(t, field.choose)}</option>
@@ -263,6 +274,12 @@ export function SourceField({ field, value, saved, fact, onChange, labels, refre
         </select>
         : <Input value={String(value ?? '')} readOnly={field.readonly} pattern={field.pattern} spellCheck={false}
           onChange={event => onChange(event.target.value)} />}
+    </Field>
+    // A credential is write-only: the page learns whether one is set, never what it is, so the box starts empty and an
+    // empty box means "keep the stored one" until the operator types something to replace it.
+    case 'password': return <Field label={label} hint={hint} link={fieldLink(field, t)}>
+      <Input type="password" value={String(value ?? '')} placeholder={localized(t, field.placeholder)}
+        autoComplete="new-password" spellCheck={false} onChange={event => onChange(event.target.value)} />
     </Field>
     case 'fact': return <div className="dt-field">
       <span className="dt-field-head">{label}{hint && <InfoTip text={hint} />}</span>
