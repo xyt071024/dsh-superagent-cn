@@ -13,6 +13,7 @@ import type { Sessions } from './sessions.ts'
 import { setupChanged, type Setup } from './setup.ts'
 import type { Store } from './store.ts'
 import { KV } from '../kv.ts'
+import { SECRET_SET } from './views/settings.ts'
 
 /**
  * Indicates an optimistic concurrency conflict when saving or syncing a settings block against a stale revision.
@@ -140,7 +141,7 @@ export class Settings {
     const instance = id === undefined ? undefined : sources.instances(settings).find(item => item.id === id)
     const value = block === 'pause' ? { paused: settings.paused } : block === 'policy' || block === 'eval' || block === 'executor'
       || block === 'routing' || block === 'budget' ? settings[block]
-      : instance ? { enabled: instance.enabled, config: instance.config } : undefined
+      : instance ? { enabled: instance.enabled, config: maskedConfig(sources, instance) } : undefined
     if (value === undefined) throw new UserError('unknownBlock', { block })
     return { block, revision: store.blockRevision(block as SettingsSave), value }
   }
@@ -162,7 +163,11 @@ export class Settings {
     if (!(kind in BLOCKS)) throw new UserError('unknownBlock', { block })
     const rules = BLOCKS[kind as keyof typeof BLOCKS]
     if (kind === 'source' && !sources.kind(id)) throw new UserError('sourceNotInstalled', { source: id })
-    const parsed = rules.parse(value, sources, id)
+    // A credential field comes back from the form as the marker when the operator did not touch it, because the real value
+    // is never sent there. Writing the marker would destroy the credential, so the stored value is carried over instead.
+    // An empty string is the one way to clear it, which is why the marker is not simply dropped from the payload.
+    const restored = kind === 'source' ? keepCredentials(value, sources, id, store.settings()) : value
+    const parsed = rules.parse(restored, sources, id)
     const current = store.settings()
     const candidate = rules.merge(current, parsed, id)
     const model = block === 'eval' ? candidate.eval.model : block === 'executor' ? candidate.executor.model : null
@@ -272,4 +277,40 @@ export class Settings {
     const after = await kind.refreshLabels(this.host.sourceHost)
     return { added: Object.entries(after).filter(([key]) => !(key in before)).map(([, name]) => name).sort((a, b) => a.localeCompare(b)) }
   }
+}
+
+/**
+ * One Source's configuration with every `password` field replaced by a marker.
+ *
+ * Shared by the settings view and `block()` so both the page and a single-block read agree: the real value never leaves the
+ * process. The form still has to be able to clear a credential, which it does by sending an empty string — see `save`.
+ */
+export function maskedConfig(sources: SourceRegistry, instance: { kind: string; config: Record<string, unknown> }): Record<string, unknown> {
+  const kind = sources.kind(instance.kind)
+  return Object.fromEntries(Object.entries(instance.config ?? {}).map(([field, value]) => {
+    const spec = kind?.fields.find(candidate => candidate.key === field)
+    if (spec?.type !== 'password') return [field, value]
+    return [field, typeof value === 'string' && value !== '' ? SECRET_SET : '']
+  }))
+}
+
+/**
+ * Puts each stored credential back when the form sent the marker instead of a new value.
+ *
+ * The settings page never receives a credential, so a save that does not touch the field sends the marker back unchanged;
+ * writing that would replace a working app password with eight dots. An empty string clears the credential on purpose,
+ * which is the only way a person can remove one from the form.
+ */
+function keepCredentials(value: unknown, sources: SourceRegistry, id: string,
+  current: { sources: Record<string, { enabled: boolean; config: Record<string, unknown> }> }): unknown {
+  const payload = value as { enabled?: unknown; config?: Record<string, unknown> } | null
+  if (!payload || typeof payload !== 'object' || !payload.config) return value
+  const fields = sources.kind(id)?.fields ?? []
+  const existing = current.sources[id]?.config ?? {}
+  const config = { ...payload.config }
+  for (const field of fields) {
+    if (field.type !== 'password') continue
+    if (config[field.key] === SECRET_SET) config[field.key] = existing[field.key] ?? ''
+  }
+  return { ...payload, config }
 }
