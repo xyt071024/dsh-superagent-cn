@@ -24,20 +24,20 @@ function registry(sources: Record<string, { enabled?: boolean; config?: Record<s
 describe('instance identity', () => {
   it('treats a bare kind id as that kind', () => {
     const list = registry({ qq: { config: { endpoint: 'http://a:1' } } })
-    expect(list.kindOf('qq')?.kind).toBe('qq')
+    expect(list.kind('qq')?.kind).toBe('qq')
   })
 
   it('treats a suffixed id as the same kind', () => {
     const list = registry({})
     // `qq-work` is a second QQ account, not an unknown Source.
-    expect(list.kindOf('qq-work')?.kind).toBe('qq')
-    expect(list.kindOf('qq-work-wx')?.kind).toBe('qq')
+    expect(list.kind('qq-work')?.kind).toBe('qq')
+    expect(list.kind('qq-work-wx')?.kind).toBe('qq')
   })
 
   it('does not invent a kind from an unknown prefix', () => {
     const list = registry({})
-    expect(list.kindOf('ghost-work')).toBeUndefined()
-    expect(list.kindOf('missingsuffix')).toBeUndefined()
+    expect(list.kind('ghost-work')).toBeUndefined()
+    expect(list.kind('missingsuffix')).toBeUndefined()
   })
 })
 
