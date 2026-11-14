@@ -55,8 +55,8 @@ export const KV = {
   feishu: { chats: record<Record<string, boolean>>('feishu-chats'), history: family<string, [chat: string]>('feishu-history:'),
     topics: family<Record<string, string>, [chat: string]>('feishu-history-threads:'),
     seen: family<string[], [thread: string]>('thread-seen:'), initialized: family<boolean, [thread: string]>('thread-initialized:') },
-  /** QQ Source: message ids already delivered, keyed by endpoint, which is the cursor OneBot does not provide. */
-  qq: { seen: family<string[], [endpoint: string]>('qq-seen:') },
-  /** Mail Source: Message-ID values already delivered, keyed by the mail address being read. */
-  mail: { seen: family<string[], [address: string]>('mail-seen:') },
+  /** Message ids already turned into triggers, per mailbox, so a re-read of the same mail does not open a second ticket. */
+  mail: { seen: family<string[], [mailbox: string]>('mail-seen:') },
+  /** Message ids already seen, per OneBot instance: two bridges on the same endpoint must not share a cursor. */
+  qq: { seen: family<string[], [instance: string]>('qq-seen:') },
 }
