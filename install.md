@@ -1,188 +1,129 @@
-# 安装
+﻿# 安装 Super Agent
 
-12 个包，按两件事选：**你的系统**和**要不要装 Node**。
-
-名字读一遍就够，不用打开看：
-
-```
-Super-Agent-Bundled-Windows-x64-Stable-v0.3.0.zip
-          ↑形态     ↑系统  ↑架构  ↑构建
-```
+两种装法，看你的情况选。
 
 ---
 
-## 先决定一件事：内置版还是纯净版
+## 方式一：内置包（不需要预装 Node 或 DSH）
 
-| | 内置版 Bundled | 纯净版 Clean |
-|---|---|---|
-| 大小 | 约 200 MB（下载）/ 解压后约 655 MB | 0.3 MB |
-| 要先装 Node 吗 | **不用** | 要（22.19+ 或 24+） |
-| 要先装 DSH 吗 | **不用** | 要 |
-| 怎么跑 | 解压，双击 `start.cmd` | `dsh plugin --profile superagent add` |
+下载对应你系统的包，解压，运行启动脚本。
 
-**想省事就选内置版。** 它把 Node 运行时和 DeepSeek Harness 本体都装进包里了，解压双击就能跑，不需要事先装任何东西。
-代价就是那个 655 MB —— 换来的是「不用折腾环境」。
-
-**已经有 DSH 在跑、只想加这个插件**，就选纯净版，0.3 MB。
-
----
-
-## 内置版：按系统选一个
-
-| 系统 | 稳定版 | 破甲版 |
-|---|---|---|
-| **Windows x64** | [Bundled-Windows-x64-Stable](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Bundled-Windows-x64-Stable-v0.3.0.zip) | [Bundled-Windows-x64-Purge](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Bundled-Windows-x64-Purge-v0.3.0.zip) |
-| **macOS Apple Silicon**（M1/M2/M3/M4） | [Bundled-macOS-arm64-Stable](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Bundled-macOS-arm64-Stable-v0.3.0.zip) | [Bundled-macOS-arm64-Purge](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Bundled-macOS-arm64-Purge-v0.3.0.zip) |
-| **macOS Intel** | [Bundled-macOS-x64-Stable](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Bundled-macOS-x64-Stable-v0.3.0.zip) | [Bundled-macOS-x64-Purge](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Bundled-macOS-x64-Purge-v0.3.0.zip) |
-| **Linux x64** | [Bundled-Linux-x64-Stable](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Bundled-Linux-x64-Stable-v0.3.0.zip) | [Bundled-Linux-x64-Purge](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Bundled-Linux-x64-Purge-v0.3.0.zip) |
-
-不确定 Mac 是哪种芯片：左上角苹果菜单 → 关于本机 → 看「芯片」一栏。写 Apple M 几就是 arm64，写 Intel 就是 x64。
-
-### 解压并启动
-
-解压到任意目录（解压目录放哪都行，启动后不再依赖它）。
-
-| 系统 | 启动 |
+| 系统 | 下载 |
 |---|---|
-| Windows | 双击 `start.cmd` |
-| macOS / Linux | `chmod +x start.sh && ./start.sh` |
+| **Windows x64** | [Super-Agent-Bundled-Windows-x64-v0.3.6.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.6/Super-Agent-Bundled-Windows-x64-v0.3.6.zip) |
+| **macOS Apple Silicon**（M1/M2/M3/M4） | [Super-Agent-Bundled-macOS-arm64-v0.3.6.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.6/Super-Agent-Bundled-macOS-arm64-v0.3.6.zip) |
+| **macOS Intel** | [Super-Agent-Bundled-macOS-x64-v0.3.6.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.6/Super-Agent-Bundled-macOS-x64-v0.3.6.zip) |
+| **Linux x64** | [Super-Agent-Bundled-Linux-x64-v0.3.6.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.6/Super-Agent-Bundled-Linux-x64-v0.3.6.zip) |
 
-第一次启动会自动做完这些，不需要你干预：
+### 步骤
 
-```
-1. 把 profile 装到 ~/.dsh/profiles/superagent
-2. 用包里自带的 Node 挑一个空闲端口（3082–3182）
-3. 启动，打印一个带 token 的地址
-```
+1. **解压**到任意目录
 
-然后终端会打印：
+   > 不要放 `C:\Program Files` 或需要管理员权限的位置。
 
-```
-dsh web: http://127.0.0.1:3118/?token=xxxxxxxx
-```
+2. **运行启动脚本**
 
-**端口是你自己机器上挑的，读你那行输出**，不要照着上面的例子点。
+   | 系统 | 运行 |
+   |---|---|
+   | Windows | 双击 `start.cmd` |
+   | macOS / Linux | `./start.sh` |
 
-> 端口不设公共默认值：所有人都用同一个端口，等于给扫描器一个写好的号码，两台机器也没法并存。
+3. **它会自动做三件事**
 
-> 如果之前装过 superagent，启动器会**拒绝覆盖**并提示你先移走旧的 `~/.dsh/profiles/superagent`。这是故意的：那个目录里有你的工单和设置。
+   - 把 profile 装到 `~/.dsh/profiles/superagent`
+   - 选一个空闲端口（3082–3182）
+   - 启动面板
+
+4. **打开面板**
+
+   终端会打印地址，形如 `http://127.0.0.1:3087`。
+
+> **如果提示 profile 已存在**，说明之前装过。先把 `~/.dsh/profiles/superagent` 移走再运行。
 
 ---
 
-## 纯净版：已经有 DSH 的话
-
-只有插件本体，不含 Node 和 DSH。
-
-| 构建 | 下载 |
-|---|---|
-| 稳定版 | [Super-Agent-Clean-Any-Platform-Stable-v0.3.0.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Clean-Any-Platform-Stable-v0.3.0.zip) |
-| 破甲版 | [Super-Agent-Clean-Any-Platform-Purge-v0.3.0.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.0/Super-Agent-Clean-Any-Platform-Purge-v0.3.0.zip) |
-
-解压后里面是一个 tgz，直接装：
+## 方式二：插件包（已装 DSH）
 
 ```bash
-dsh plugin --profile superagent add ./Super-Agent-Plugin-Stable-v0.3.0.tgz
+dsh plugin add ./Super-Agent-Plugin-v0.3.6.tgz
 ```
 
-包内已带全部运行时依赖（proper-lockfile、zod、graceful-fs、retry、signal-exit），**不需要联网装依赖**。
-
-### 然后建 profile
+或指定 profile：
 
 ```bash
-dsh superagent --from-default-profile web --dump-config > /dev/null
+dsh plugin --profile superagent add ./Super-Agent-Plugin-v0.3.6.tgz
 ```
 
-在 `~/.dsh/profiles/superagent/cordis.patch.yml` 里加：
+下载：[Super-Agent-Plugin-v0.3.6.tgz](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.6/Super-Agent-Plugin-v0.3.6.tgz)
 
-```yaml
-- id: dsh-superagent
-  config:
-    stateDir: C:/Users/你的用户名/.dsh/state/superagent
-    isolateEnvironment: true      # 必须为 true，见下方说明
-- id: dsh-superagent-qq
-  disabled: false
-- id: dsh-superagent-mail
-  disabled: false
-```
-
-启动：
-
-```bash
-dsh --profile superagent
-```
+> 插件需要 Node.js 22.19+ 与已安装的 DSH（0.2.2）。
 
 ---
 
-## 稳定版和破甲版的区别
+## 装完之后
 
-| | Stable | Purge |
-|---|---|---|
-| 改 DSH 本体吗 | 不改 | 改（86 处补丁） |
-| 装完还要做什么 | 没了 | 额外两步：`dsh plugin --profile superagent add dsh-purge-community` 然后 `dsh purge apply` |
-| 出问题怎么退 | — | `dsh purge revert` |
+### 1. 配置来源
 
-破甲版让模型对指令的服从更彻底。它**不改变**网关白名单：谁能派活仍然由配置决定。
-用它之前请先读 [破甲说明](purge.html)。
+打开 设置 → 来源，配置你要用的通道：
 
----
+- **QQ** —— 填 OneBot 网关地址与 token，点「检查」会实际连接网关
+- **邮箱** —— 填地址与密码，IMAP 与 SMTP 分别检查
+- **GitHub** —— 填 token 与仓库
+- **飞书** —— 填 App ID / Secret
 
-## 配一个来源
+配错时会明确告诉你缺什么，不会只显示「等待部署检查」。
 
-打开面板 → 左侧 **Superagent** → **设置** → **来源**，挑一个配：
+### 2. 可选：开启多人协作
 
-| 来源 | 要准备什么 | 状态会变成 |
-|---|---|---|
-| **QQ** | 一个 OneBot v11 端点地址 + 访问令牌（如 SnowLuma、NapCat） | 运行中 |
-| **邮箱** | QQ 邮箱/Gmail 地址 + **授权码**（不是登录密码） | 运行中 |
-| **GitHub** | 一个能推送到目标仓库的 `gh` 登录 | 运行中 |
-| **飞书** | 一个机器人 app id / secret | 运行中 |
+默认是单人执行。想要一个工单拆多人：
 
-配好一个就能用。没配的会显示「待处理」并写清缺什么。
+设置 → 执行 → 多会话 → 选 `auto`
 
----
+> 拆分会显著增加 token 消耗。
 
-## `isolateEnvironment: true` 为什么是必须的
+### 3. 可选：开启独立复查
 
-superagent 会往**进程级** `PATH` 里插入一个目录，里面放着 `gh` 和 `lark-cli` 的包装脚本，让执行器的命令走智能体自己的账号。
+设置 → 执行 → 独立复查 → 打开
 
-如果你的 profile 里还有别的插件（多数人的都有），它们调 `gh` 时会**静默拿到智能体的账号**，而不是你自己的。
-
-打开 `isolateEnvironment` 后，这些变量只传给 superagent 自己起的子进程，不污染同进程的其他插件。
-
-**独立 profile 里可以不开；融合进你的日常 profile 时必须开。**
+复杂工单完成后会另开一个只读审查员，看不到执行过程。最多复审 3 轮。
 
 ---
 
-## 版本要求
+## 已知限制
 
-| | 内置版 | 纯净版 |
-|---|---|---|
-| Node.js | 自带，无需安装 | 22.19+ 或 24+ |
-| DSH | 自带 0.2.2 | 0.2.1 或 0.2.2 系列 |
-| 磁盘 | 约 655 MB | 约 10 MB + 工单目录 |
+**上下文达阈值时是压缩，不是开新会话。**
 
----
+设置中的百分比为「归档阈值」，实际行为是压缩当前会话并在同一会话内继续。跨会话移交尚未实现。
 
-## 装不上时
+**多会话与独立复查默认关闭。**
 
-| 现象 | 原因 | 怎么办 |
-|---|---|---|
-| `EADDRINUSE` | 端口被占 | 重新跑安装器让它挑一个空闲端口，或改 `cordis.patch.yml` 里的 `port` |
-| `The bundled Node runtime is missing` | 内置版没解压完整 | 重新解压；压缩包有 200 MB，确认下全了 |
-| `Lock file is already being held` | 上一个实例没退干净 | 杀掉占用端口的 node 进程再启动 |
-| `Cannot find module 'graceful-fs'` | 用的是早期发布的、没带依赖的包 | 重新下载本期包 |
-| macOS 提示「无法验证开发者」 | 系统签名检查 | 右键点 `start.sh` → 打开，或 `xattr -d com.apple.quarantine start.sh` |
-| 来源一直「待处理」 | 缺凭据 | 看状态下写的那句话，它说的是缺哪一项 |
-| 面板侧边栏没有 Superagent | 插件没加载 | 看启动输出里有没有 `dsh-superagent` 的报错，把它贴到 issue |
+**各通道未做真实收发验收。** 已验证协议行为与错误映射；真实账号的登录、收发、断线恢复未验证。
+
+**macOS / Linux 未在真机启动验证。** 包结构与原生模块正确，但未实际运行过。
+
+**Windows 上约 35 项测试失败。** 测试脚本依赖 POSIX 命令、符号链接、权限位，非功能故障。
 
 ---
 
 ## 卸载
 
-| 形态 | 怎么卸 |
-|---|---|
-| 内置版 | 删掉 `~/.dsh/profiles/superagent` 和 `~/.dsh/state/superagent`，再删解压目录 |
-| 纯净版 | `dsh plugin --profile superagent remove dsh-superagent`，再删上面两个目录 |
-| 破甲版 | 先 `dsh purge revert`，再按上面两步删 |
+```bash
+dsh plugin remove dsh-superagent
+```
 
-不会留别的东西——除了你自己配的来源凭据，那些在 `~/.dsh/state/superagent/orchestrator.sqlite` 里。
+内置包装的还要删掉 profile：
+
+```bash
+rm -rf ~/.dsh/profiles/superagent
+```
+
+Windows：`rmdir /s %USERPROFILE%\.dsh\profiles\superagent`
+
+---
+
+## 遇到问题
+
+- **启动脚本一闪就关** —— 在终端里跑，看报错
+- **端口被占** —— 它会自动换，实在不行看终端打印的地址
+- **面板打不开** —— 确认 `127.0.0.1` 后面的端口和终端打印的一致
+- 提 issue：https://github.com/xyt071024/dsh-superagent-cn/issues
