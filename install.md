@@ -1,4 +1,4 @@
-﻿# 安装 Super Agent
+# 安装 Super Agent
 
 两种装法，看你的情况选。
 
@@ -10,10 +10,10 @@
 
 | 系统 | 下载 |
 |---|---|
-| **Windows x64** | [Super-Agent-Bundled-Windows-x64-v0.3.6.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.6/Super-Agent-Bundled-Windows-x64-v0.3.6.zip) |
-| **macOS Apple Silicon**（M1/M2/M3/M4） | [Super-Agent-Bundled-macOS-arm64-v0.3.6.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.6/Super-Agent-Bundled-macOS-arm64-v0.3.6.zip) |
-| **macOS Intel** | [Super-Agent-Bundled-macOS-x64-v0.3.6.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.6/Super-Agent-Bundled-macOS-x64-v0.3.6.zip) |
-| **Linux x64** | [Super-Agent-Bundled-Linux-x64-v0.3.6.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.6/Super-Agent-Bundled-Linux-x64-v0.3.6.zip) |
+| **Windows x64** | [Super-Agent-Bundled-Windows-x64-v0.3.7.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.7/Super-Agent-Bundled-Windows-x64-v0.3.7.zip) |
+| **macOS Apple Silicon**（M1/M2/M3/M4） | [Super-Agent-Bundled-macOS-arm64-v0.3.7.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.7/Super-Agent-Bundled-macOS-arm64-v0.3.7.zip) |
+| **macOS Intel** | [Super-Agent-Bundled-macOS-x64-v0.3.7.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.7/Super-Agent-Bundled-macOS-x64-v0.3.7.zip) |
+| **Linux x64** | [Super-Agent-Bundled-Linux-x64-v0.3.7.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.7/Super-Agent-Bundled-Linux-x64-v0.3.7.zip) |
 
 ### 步骤
 
@@ -45,16 +45,16 @@
 ## 方式二：插件包（已装 DSH）
 
 ```bash
-dsh plugin add ./Super-Agent-Plugin-v0.3.6.tgz
+dsh plugin add ./Super-Agent-Plugin-v0.3.7.tgz
 ```
 
 或指定 profile：
 
 ```bash
-dsh plugin --profile superagent add ./Super-Agent-Plugin-v0.3.6.tgz
+dsh plugin --profile superagent add ./Super-Agent-Plugin-v0.3.7.tgz
 ```
 
-下载：[Super-Agent-Plugin-v0.3.6.tgz](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.6/Super-Agent-Plugin-v0.3.6.tgz)
+下载：[Super-Agent-Plugin-v0.3.7.tgz](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.7/Super-Agent-Plugin-v0.3.7.tgz)
 
 > 插件需要 Node.js 22.19+ 与已安装的 DSH（0.2.2）。
 
