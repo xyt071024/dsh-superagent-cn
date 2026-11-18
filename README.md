@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/xyt071024/dsh-superagent-cn/releases"><img src="https://img.shields.io/badge/release-v0.3.6-2ea44f" alt="release"></a>
+  <a href="https://github.com/xyt071024/dsh-superagent-cn/releases"><img src="https://img.shields.io/badge/release-v0.3.7-2ea44f" alt="release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="license"></a>
   <a href="https://xyt071024.github.io/dsh-superagent-cn/"><img src="https://img.shields.io/badge/docs-中文%20%7C%20EN%20%7C%20日本語-6f42c1" alt="docs"></a>
   <img src="https://img.shields.io/badge/Node-22.19%2B%20%7C%2024%2B-339933" alt="node">
@@ -46,28 +46,26 @@
 
 ---
 
-## v0.3.6 更新内容
+## v0.3.7 更新内容
 
 ### 修复
 
-**1. 发行包与源码不一致**
-此前构建产物与最后一轮源码改动存在时间差，包内可能是改动前的版本。本版改为：源码冻结 → 记录哈希 → 构建 → 逐文件比对，8 个内置包内嵌插件全部与源码一致。
+**1. 上下文占满时真正交接给新会话**
 
-**2. Agent Teams 服务取不到**
-`isolate` 作用域导致服务在插件根上下文不可见，`ctx.get('agentTeams')` 恒为 `undefined`，硬工单拆分与独立复查静默失效。改为优先从执行会话自身上下文取值，根上下文作兜底。
+此前这个阈值只做压缩，把当前会话摘要后在同一会话里继续——名字叫「归档」，行为只是缩短。现在改成真正的跨会话移交：
 
-**3. 来源配置的检查不准确**
-配置 QQ / 邮箱时误走 GitHub 校验路径。本版按来源类型分别检查；IMAP 与 SMTP 独立报告——SMTP 受限的邮箱仍可正常收信。
+- 工单记录当前会话、迁移阶段、新旧会话 ID；切换是幂等的，进程中断后可从中间阶段接着做
+- 输入、停止、复查、资源、健康状态全部改为跟随迁移记录（此前写死 `worker-<ticketId>`，迁移后仍指向旧会话）
+- 迁移前检查未投递输入与活跃 Team：不满足就明确报告原因并回退压缩，不静默丢状态
+- 迁移失败会回滚记录，工单继续在原会话上工作
 
-### 新增
+**2. 文档测试不再因备份文件失败**
 
-**4. macOS / Linux 内置包**
-装配各平台预编译原生模块（sharp / libvips / koffi / sherpa-onnx / node-addon），四个平台零错平台。
+`.bak-*` 文件曾留在 `src/` 内，被模块表比对判为「文档未列出的模块」。备份已移出源码树。
 
-### 变更
+**3. 发布预检与实际资产对齐**
 
-**5. 发行形态简化**
-本版仅提供插件形态与四系统内置包。
+预检脚本此前仍按旧的 12 个资产（Stable/Purge 两套）校验，而实际发行是 4 个系统包 + 1 个插件包。现已同步。
 
 ---
 
@@ -75,17 +73,17 @@
 
 | 你的情况 | 选这个 |
 |---|---|
-| 已装 DSH | `Super-Agent-Plugin-v0.3.6.tgz` |
-| 未装 Node / 未装 DSH（Windows） | `Super-Agent-Bundled-Windows-x64-v0.3.6.zip` |
-| 未装 Node / 未装 DSH（macOS Apple 芯片） | `Super-Agent-Bundled-macOS-arm64-v0.3.6.zip` |
-| 未装 Node / 未装 DSH（macOS Intel） | `Super-Agent-Bundled-macOS-x64-v0.3.6.zip` |
-| 未装 Node / 未装 DSH（Linux） | `Super-Agent-Bundled-Linux-x64-v0.3.6.zip` |
+| 已装 DSH | `Super-Agent-Plugin-v0.3.7.tgz` |
+| 未装 Node / 未装 DSH（Windows） | `Super-Agent-Bundled-Windows-x64-v0.3.7.zip` |
+| 未装 Node / 未装 DSH（macOS Apple 芯片） | `Super-Agent-Bundled-macOS-arm64-v0.3.7.zip` |
+| 未装 Node / 未装 DSH（macOS Intel） | `Super-Agent-Bundled-macOS-x64-v0.3.7.zip` |
+| 未装 Node / 未装 DSH（Linux） | `Super-Agent-Bundled-Linux-x64-v0.3.7.zip` |
 
 内置包解压后双击 `start.cmd`（Windows）或 `./start.sh`，自动把 profile 装到 `~/.dsh/profiles/superagent` 并选空闲端口启动。
 
 ```bash
 # 插件版安装
-dsh plugin add ./Super-Agent-Plugin-v0.3.6.tgz
+dsh plugin add ./Super-Agent-Plugin-v0.3.7.tgz
 ```
 
 ---
