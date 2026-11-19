@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/xyt071024/dsh-superagent-cn/releases"><img src="https://img.shields.io/badge/release-v0.3.9-2ea44f" alt="release"></a>
+  <a href="https://github.com/xyt071024/dsh-superagent-cn/releases"><img src="https://img.shields.io/badge/release-v0.3.10-2ea44f" alt="release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="license"></a>
   <a href="https://xyt071024.github.io/dsh-superagent-cn/"><img src="https://img.shields.io/badge/docs-中文%20%7C%20EN%20%7C%20日本語-6f42c1" alt="docs"></a>
   <img src="https://img.shields.io/badge/Node-22.19%2B%20%7C%2024%2B-339933" alt="node">
@@ -59,14 +59,14 @@ QQ — it decides whether the work should be taken, how far it can go, then does
 ### Option 1 — plugin (DSH already installed)
 
 ```bash
-dsh plugin --profile superagent add https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.9/Super-Agent-Plugin-v0.3.9.tgz
+dsh plugin --profile superagent add https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.10/Super-Agent-Plugin-v0.3.10.tgz
 ```
 
 Restart DSH; a **Superagent** entry appears in the sidebar.
 
 ### Option 2 — standalone (runs from a zip)
 
-Download `Super-Agent-Bundled-<os>-<arch>-v0.3.9.zip` for your system from [Releases](https://github.com/xyt071024/dsh-superagent-cn/releases) — it bundles Node and DSH, about 200 MB — then unzip and run `start.cmd` (Windows) or `./start.sh` (macOS / Linux).
+Download `Super-Agent-Bundled-<os>-<arch>-v0.3.10.zip` for your system from [Releases](https://github.com/xyt071024/dsh-superagent-cn/releases) — it bundles Node and DSH, about 200 MB — then unzip and run `start.cmd` (Windows) or `./start.sh` (macOS / Linux).
 
 The first run installs the profile into `~/.dsh/profiles/superagent` and picks a free port (3082–3182). **Read the panel address it prints** — that is your port, not a documented default.
 
