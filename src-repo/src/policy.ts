@@ -99,6 +99,10 @@ export const PLAN_SCHEMA_VERSION = 'plan-v1'
 export const RoutingConfigSchema = z.object({
   /** `single` keeps every Session on the operator and executor models; `auto` may pick another Session model per difficulty. */
   multiSession: z.enum(['single', 'auto']).default('single'),
+  /** Per-task child session capacity, independent of concurrent tickets. */
+  maxSessions: z.number().int().min(1).max(16).default(3),
+  /** Per-child model; null inherits the task-start model. */
+  sessionModels: z.array(RoleModelSchema.nullable()).max(16).default([]),
   /**
    * How the operator's own current model competes with the approved list.
    *
@@ -124,13 +128,13 @@ export type RoutingConfig = z.infer<typeof RoutingConfigSchema>
  * 上下文与预算：什么时候把一轮会话归档交接、长任务要不要打断你、一天最多花多少 token。
  *
  * 归档按**窗口占比**触发（不是绝对 token 数），因为同一个百分比在不同模型上意味着「还剩多少余量」，
- * 而绝对数在换模型后就说不清了。`percent` 是用户可调的：他觉得 65% 该归档就是 65%。
+ * 而绝对数在换模型后就说不清了。`percent` 可由用户调整。
  */
 export const BudgetConfigSchema = z.object({
-  /** 按窗口占比自动归档并交接给新的上下文。 */
+  /** 按窗口占比自动压缩当前会话的上下文。 */
   archiveEnabled: z.boolean().default(true),
   /** 到了窗口的百分之多少就归档；下限 20，避免刚开个头就归档。 */
-  archivePercent: z.number().int().min(LIMITS.archivePercent.min).max(LIMITS.archivePercent.max).default(65),
+  archivePercent: z.number().int().min(LIMITS.archivePercent.min).max(LIMITS.archivePercent.max).default(60),
   /** 长任务要不要告诉用户；关掉就只在结束时说一次。 */
   notifyLongTask: z.boolean().default(true),
   /** 一个工单跑超过多少分钟算长任务。 */
@@ -149,6 +153,7 @@ const CommandNameSchema = z.string().regex(/^[A-Za-z0-9._-]+$/).refine(name => n
 /** Executor settings: worker model, concurrency, ticket directory root (empty defaults to `<stateDir>/work`), `prepare` command, and blocked commands. */
 export const ExecutorConfigSchema = z.object({
   model: RoleModelSchema.nullable().default(null),
+  reviewEnabled: z.boolean().default(false),
   maxWorkers: z.number().int().min(LIMITS.maxWorkers.min).max(LIMITS.maxWorkers.max).default(3),
   /**
    * Where a ticket's work directory is created; empty means `<stateDir>/work`.

@@ -8,6 +8,8 @@
  * may originate work. Only mail from a listed sender becomes an explicit request.
  */
 import { z } from 'zod'
+import PostalMime, { type Email } from 'postal-mime'
+import nodemailer from 'nodemailer'
 import { key } from '../core/index.ts'
 import type { Context } from '@deepseek-ai/cordis'
 import type { OutboundMessage, ScopeResult, Trigger } from '../core/index.ts'
@@ -46,7 +48,24 @@ export function pollFailure(failures: number, threshold: number, error: unknown)
   return failures >= threshold ? health('error', 'pollFailures', { count: String(failures), error: String(error) }) : undefined
 }
 
-const list = (text: string): string[] => text.split(/[\s,]+/).map(entry => entry.trim()).filter(Boolean)
+export const mailboxesOf = (text: string): string[] => {
+  const names = text.split(/[\s,]+/).map(entry => entry.trim()).filter(Boolean)
+  return names.length ? names : ['INBOX']
+}
+
+/** Report incomplete inbound settings before attempting a network connection. */
+export function mailConfigProblem(config: MailConfig): Health | undefined {
+  if (!config.address) return health('paused', 'mailMissingAddress')
+  if (!config.secret) return health('paused', 'mailMissingSecret')
+  if (!config.imapHost) return health('paused', 'mailMissingImapHost')
+  return undefined
+}
+
+/** A successful IMAP read does not verify the outbound SMTP service. */
+export function mailReadHealth(config: MailConfig, received: number): Health {
+  return config.smtpHost ? health('ready', 'mailImapReady', { count: String(received) })
+    : health('error', 'mailMissingSmtpHost')
+}
 
 /** Decodes the RFC 2047 encoded words a mail header uses for a non-ASCII sender or subject. */
 export function decodeHeader(text: string): string {
@@ -107,22 +126,54 @@ export function triggerOf(raw: string, config: MailConfig, mailbox: string, seq:
   }
 }
 
+/** Extracts readable text from HTML-only mail without executing any of its content. */
+export function htmlText(html: string): string {
+  const entities: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' }
+  return html.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, '')
+    .replace(/<(?:br\s*\/?|\/p|\/div|\/li|\/tr)\s*>/gi, '\n')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (whole, entity: string) => {
+      if (entity[0] !== '#') return entities[entity.toLowerCase()] ?? whole
+      const hex = entity[1]?.toLowerCase() === 'x'
+      const value = Number.parseInt(entity.slice(hex ? 2 : 1), hex ? 16 : 10)
+      return Number.isFinite(value) && value >= 0 && value <= 0x10ffff ? String.fromCodePoint(value) : whole
+    }).trim()
+}
+
+/** Builds the inbound trigger from a parsed MIME message; attachments are not treated as the message body. */
+export function mimeTrigger(mail: Email, config: MailConfig, mailbox: string, seq: number): Trigger | undefined {
+  const sender = mail.from?.address?.trim().toLowerCase() ?? ''
+  if (!sender || sender === config.address.toLowerCase()) return undefined
+  const messageId = mail.messageId || `${mailbox}:${seq}`
+  const subject = mail.subject || ''
+  const at = mail.date && Number.isFinite(Date.parse(mail.date)) ? new Date(mail.date).toISOString() : new Date().toISOString()
+  const body = (mail.text || (mail.html ? htmlText(mail.html) : '')).slice(0, 8000).trim()
+  const text = [...subject ? [`主题：${subject}`] : [], body].filter(Boolean).join('\n\n')
+  if (!text.trim()) return undefined
+  return {
+    id: `mail:${messageId}`, source: SOURCE, threads: [{ source: SOURCE, id: `mail:${messageId}` }],
+    actor: { source: SOURCE, id: sender, name: mail.from?.name || sender }, human: true, addressed: 'direct', at, text,
+    channel: { source: SOURCE, thread: `mail:${messageId}`, address: { to: sender, subject: `Re: ${subject}` } },
+    meta: { messageId, mailbox, seq, subject },
+  }
+}
+
 async function poll(ctx: SourceContext, config: MailConfig): Promise<number> {
   const client = new ImapClient({ host: config.imapHost, port: config.imapPort, secure: config.imapSecure,
     user: config.address, password: config.secret })
   let received = 0
   try {
     await client.open()
-    for (const mailbox of list(config.mailboxes)) {
+    for (const mailbox of mailboxesOf(config.mailboxes)) {
       const total = await client.select(mailbox)
       const messages = await client.newest(total, 'BODY.PEEK[]', config.window)
       for (const message of messages) {
-        const raw = message.body
+        const mail = await PostalMime.parse(message.raw)
         // The dedupe key is the server's identity for the message, which is stable across polls.
-        const stamp = header(raw, 'Message-ID') || `${mailbox}:${message.seq}`
+        const stamp = mail.messageId || `${mailbox}:${message.seq}`
         const seen = new Set<string>(ctx.state.get(KV.mail.seen(config.address)) ?? [])
         if (seen.has(stamp)) continue
-        const trigger = triggerOf(raw, config, mailbox, message.seq)
+        const trigger = mimeTrigger(mail, config, mailbox, message.seq)
         if (trigger) { await ctx.receive(trigger); received += 1 }
         seen.add(stamp)
         ctx.state.set(KV.mail.seen(config.address), seen.size > 2000 ? [...seen].slice(-2000) : [...seen])
@@ -143,16 +194,16 @@ async function watch(ctx: SourceContext, signal: AbortSignal): Promise<void> {
       await pause(5_000, signal)
       continue
     }
-    if (!config.address || !config.secret) {
-      // Reported as paused rather than as a failure: nothing is wrong with the connection, it is not set up yet.
-      ctx.report(SOURCE, health('paused', 'mailUnconfigured'))
+    const problem = mailConfigProblem(config)
+    if (problem) {
+      ctx.report(SOURCE, problem)
       await pause(10_000, signal)
       continue
     }
     try {
       const received = await poll(ctx, config)
       failures = 0
-      ctx.report(SOURCE, { state: 'ready', detail: `${received} new message(s); next poll ≥ ${config.pollSeconds}s`, at: new Date().toISOString() })
+      ctx.report(SOURCE, { ...mailReadHealth(config, received), at: new Date().toISOString() })
     } catch (error) {
       failures += 1
       const failed = pollFailure(failures, config.failuresBeforeError, error)
@@ -162,48 +213,33 @@ async function watch(ctx: SourceContext, signal: AbortSignal): Promise<void> {
   }
 }
 
-/**
- * Sends a reply over SMTP using curl, which ships with this host and already speaks the protocol.
- * The body is passed as a file so a long or non-ASCII message never becomes one argument of a shell command.
- */
+/** Send in-process; keep the existing SMTP host, port, TLS and app-password settings. */
+export async function sendMail(config: MailConfig, to: string, subject: string, text: string): Promise<void> {
+  const transport = nodemailer.createTransport({
+    host: config.smtpHost,
+    port: config.smtpPort,
+    secure: config.smtpSecure,
+    requireTLS: !config.smtpSecure,
+    auth: { user: config.address, pass: config.secret },
+    connectionTimeout: 90_000,
+    greetingTimeout: 90_000,
+    socketTimeout: 90_000,
+  })
+  try {
+    await transport.sendMail({ from: config.address, to, subject, text })
+  } finally {
+    transport.close()
+  }
+}
+
 const channel: SourceChannel<MailConfig> = {
   async send(host, message: OutboundMessage): Promise<'sent'> {
     const config = host.config
     if (!config.address || !config.secret) throw new Error('The Mail Source has no address or app password yet')
     const to = message.channel.address.to
     if (!to) throw new Error('Missing mail recipient')
-    const { writeFile, rm, mkdtemp } = await import('node:fs/promises')
-    const { join } = await import('node:path')
-    const { tmpdir } = await import('node:os')
-    const body = join(tmpdir(), `dsh-mail-${message.id.replace(/[^A-Za-z0-9]/g, '')}.eml`)
-    // The headers curl does not build are written here, so the message keeps its subject and threading hints.
     const subject = message.channel.address.subject ?? 'Reply'
-    await writeFile(body, [
-      `To: ${to}`,
-      `From: ${config.address}`,
-      `Subject: ${subject}`,
-      'MIME-Version: 1.0',
-      'Content-Type: text/plain; charset=UTF-8',
-      'Content-Transfer-Encoding: 8bit',
-      '',
-      message.text,
-      '',
-    ].join('\r\n'), 'utf8')
-    const url = `${config.smtpSecure ? 'smtps' : 'smtp'}://${config.smtpHost}:${config.smtpPort}`
-    // The app password must not travel as a command-line argument: `--user address:secret` is visible in the process list
-    // to every process running as this user, and gets copied into crash reports, shell history and `ps` snapshots. curl
-    // reads `--config <file>` instead, so the credential stays in a file this account can read and that is deleted at once.
-    const auth = await mkdtemp(join(tmpdir(), 'dsh-superagent-smtp-'))
-    const rc = join(auth, 'curl.rc')
-    try {
-      // Quoted because a password may contain `"` or `\`, which curl's config parser would otherwise treat as syntax.
-      await writeFile(rc, `user = "${`${config.address}:${config.secret}`.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"\n`, { mode: 0o600 })
-      await host.commands.run('curl', ['--silent', '--show-error', '--fail', '--url', url, '--config', rc,
-        '--mail-from', config.address, '--mail-rcpt', to, '--upload-file', body])
-    } finally {
-      await rm(auth, { recursive: true, force: true })
-      await rm(body, { force: true })
-    }
+    await sendMail(config, to, subject, message.text)
     return 'sent'
   },
   link(address, links) {

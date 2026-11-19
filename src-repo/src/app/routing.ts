@@ -68,6 +68,17 @@ export function modelFor(config: RoutingConfig | undefined, operatorModel: RoleM
  */
 export const multiSession = (config: RoutingConfig | undefined): boolean => config?.multiSession === 'auto'
 
+/** Reserve a stable per-task slot. Never reassign an existing session on restart. */
+export function reserveSessionSlot(slots: Record<string, number>, id: string, max: number): number {
+  const existing = slots[id]
+  if (existing !== undefined) return existing
+  const used = new Set(Object.values(slots))
+  const slot = Array.from({ length: max }, (_, index) => index).find(index => !used.has(index))
+  if (slot === undefined) throw new Error(`This task has reached its ${max} child-session limit`)
+  slots[id] = slot
+  return slot
+}
+
 /**
  * Whether a ticket counts as hard, by the operator's threshold.
  *

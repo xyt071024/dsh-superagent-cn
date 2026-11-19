@@ -5,6 +5,9 @@
 export class Later extends Error {}
 /** Consecutive failures before an effect kind reports an error, matching the Sources poll failure threshold. */
 export const FAILURES_BEFORE_ERROR = 3
+/** Preserve repeatedly failing effects until an operator explicitly retries them. */
+export const HELD_DUE = Number.MAX_SAFE_INTEGER
+const MAX_ATTEMPTS = 12
 import type { HealthBoard, HealthEntry } from '../infra/health.ts'
 import type { Store } from './store.ts'
 
@@ -15,6 +18,8 @@ export interface EffectPayloads {
   launch: { ticketId: string; assignmentId: string }
   /** Hand a ticket's waiting Inputs to its running Assignment; the key is the Ticket ID. */
   delivery: { ticketId: string }
+  /** Review an immutable candidate snapshot independently; keyed by ticket and round. */
+  review: { ticketId: string; round: number }
   /** Steer a report or a candidate into the main Session; the key is the request ID. */
   relay: { text: string }
   /** Inject a notice into the main Session without waking it; the key names what it reports, such as `prompts`. */
@@ -29,12 +34,13 @@ interface Handler<K extends EffectKind> {
   limit: () => number
   /** Initial and maximum retry backoff delays, in milliseconds. */
   retry: readonly [number, number]
+  maxAttempts: number
   /** Effects run one at a time in queue order, and a failed one holds back later rows of the same kind. */
   ordered: boolean
   /** When true, repeated failures do not mark the effect kind's health entry as `error` (used when failures are already surfaced on a ticket). */
   quiet: boolean
 }
-type Options<K extends EffectKind> = Partial<Pick<Handler<K>, 'limit' | 'retry' | 'ordered' | 'quiet'>>
+type Options<K extends EffectKind> = Partial<Pick<Handler<K>, 'limit' | 'retry' | 'maxAttempts' | 'ordered' | 'quiet'>>
 /** `seq` preserves the row's queue position; `generation` increments on payload updates so a running attempt does not delete a newer payload. */
 interface Row { key: string; value: string; seq: number; generation: number; attempts: number; due: number }
 type Task = { kind: EffectKind; key: string; done: Promise<void> }
@@ -67,13 +73,27 @@ export class Effects {
   handle<K extends EffectKind>(kind: K, run: Handler<K>['run'], options: Options<K> = {}): void {
     if (this.handlers.has(kind)) throw new Error(`The ${kind} effects already have a handler`)
     this.health.set(kind, this.board.claim(kind))
-    const { limit = () => 1, retry = [2000, 60_000], ordered = false, quiet = false } = options
-    this.handlers.set(kind, { run, limit: ordered ? () => Math.min(1, limit()) : limit, retry, ordered, quiet } as unknown as Handler<never>)
+    const { limit = () => 1, retry = [2000, 60_000], maxAttempts = MAX_ATTEMPTS, ordered = false, quiet = false } = options
+    if (!Number.isSafeInteger(maxAttempts) || maxAttempts < 1) throw new Error('Invalid effect retry limit')
+    this.handlers.set(kind, { run, limit: ordered ? () => Math.min(1, limit()) : limit, retry, maxAttempts, ordered, quiet } as unknown as Handler<never>)
     this.report(kind)
     this.kick()
   }
   pending(kind: EffectKind, key?: string): boolean {
     return key === undefined ? !!this.store.db.prepare('SELECT 1 FROM effect WHERE kind = ? LIMIT 1').get(kind) : !!this.store.db.prepare('SELECT 1 FROM effect WHERE kind = ? AND key = ?').get(kind, key)
+  }
+  /** Expose counts only: queued payloads and upstream error text may contain private data. */
+  held(): { kind: EffectKind; count: number }[] {
+    return (this.store.db.prepare('SELECT kind, COUNT(*) AS count FROM effect WHERE due = ? GROUP BY kind ORDER BY kind').all(HELD_DUE) as unknown as { kind: EffectKind; count: number }[])
+      .map(row => ({ kind: row.kind, count: Number(row.count) }))
+  }
+  /** Resume only held rows, preserving their original order and payload. */
+  retryHeld(kind: EffectKind): number {
+    if (!this.handlers.has(kind)) throw new Error('Unknown effect kind')
+    const result = this.store.db.prepare('UPDATE effect SET attempts = 0, error = ?, due = ? WHERE kind = ? AND due = ?').run('', this.now(), kind, HELD_DUE)
+    const count = Number(result.changes)
+    if (count) { this.report(kind); this.kick() }
+    return count
   }
   /** Drops a queued row by kind and key; if it is already running, that attempt finishes normally. */
   cancel(kind: EffectKind, key: string): void {
@@ -139,8 +159,9 @@ export class Effects {
       this.store.db.prepare(`UPDATE effect SET due = ? WHERE ${own}`).run(this.now() + handler.retry[0], ...ownRow)
     } else {
       const delay = Math.min(handler.retry[1], handler.retry[0] * 2 ** Math.min(row.attempts, 16))
+      const due = row.attempts + 1 >= handler.maxAttempts ? HELD_DUE : this.now() + delay
       this.store.db.prepare(`UPDATE effect SET attempts = attempts + 1, error = ?, due = ? WHERE ${own}`)
-        .run(String(failure.error).slice(0, 1000), this.now() + delay, ...ownRow)
+        .run(String(failure.error).slice(0, 1000), due, ...ownRow)
     }
     if (!this.stopped) this.report(kind)
   }
@@ -149,12 +170,13 @@ export class Effects {
     this.health.get(kind)?.set({ state: 'error', detail: `The effect queue failed: ${String(error)}`, at: new Date(this.now()).toISOString() })
   }
   private report(kind: EffectKind): void {
-    const row = this.store.db.prepare(`SELECT COUNT(*) AS waiting, MIN(since) AS since, MAX(attempts) AS attempts,
+    const row = this.store.db.prepare(`SELECT COUNT(*) AS waiting, MIN(since) AS since, MAX(attempts) AS attempts, SUM(CASE WHEN due = ${HELD_DUE} THEN 1 ELSE 0 END) AS held,
       (SELECT error FROM effect WHERE kind = ? AND attempts > 0 ORDER BY seq DESC LIMIT 1) AS error FROM effect WHERE kind = ?`).get(kind, kind)
     const waiting = Number(row?.waiting ?? 0)
+    const held = Number(row?.held ?? 0)
     const failing = Number(row?.attempts ?? 0) >= FAILURES_BEFORE_ERROR && !this.handlers.get(kind)?.quiet
     const detail = waiting ? `${waiting} waiting since ${String(row?.since)}` : 'Nothing waiting'
-    this.health.get(kind)?.set(failing
+    this.health.get(kind)?.set(held ? { state: 'error', detail: `${held} item(s) stopped after repeated failures; retry from the overview`, at: new Date(this.now()).toISOString() } : failing
       ? { state: 'error', detail: `${detail}; the last failure: ${String(row?.error)}`, at: new Date(this.now()).toISOString() }
       : { state: 'ready', detail, at: new Date(this.now()).toISOString() })
   }

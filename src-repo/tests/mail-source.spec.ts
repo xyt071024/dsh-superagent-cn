@@ -1,6 +1,7 @@
 /** Checks mail parsing: the header decoding, the body split, and the trigger rules an inbox depends on. */
 import { describe, expect, it } from 'vitest'
-import { MailConfigSchema, bodyOf, decodeHeader, triggerOf } from '../src/sources/mail.ts'
+import PostalMime from 'postal-mime'
+import { MailConfigSchema, bodyOf, decodeHeader, htmlText, mailboxesOf, mailConfigProblem, mailReadHealth, mimeTrigger, triggerOf } from '../src/sources/mail.ts'
 
 const config = MailConfigSchema.parse({ address: 'agent@example.com', secret: 'x' })
 
@@ -62,5 +63,45 @@ describe('triggerOf', () => {
   it('falls back to the mailbox position when a message has no Message-ID', () => {
     const bare = mail.replace(/Message-ID:.*\r\n/, '')
     expect(triggerOf(bare, config, 'INBOX', 7)?.id).toBe('mail:INBOX:7')
+  })
+})
+
+
+describe('mail setup and health', () => {
+  it('reads INBOX when the mailbox list is blank', () => {
+    expect(mailboxesOf(' , ')).toEqual(['INBOX'])
+    expect(mailboxesOf('INBOX,Archive')).toEqual(['INBOX', 'Archive'])
+  })
+  it('identifies the missing inbound setting', () => {
+    expect(mailConfigProblem({ ...config, address: '' })?.code).toBe('mailMissingAddress')
+    expect(mailConfigProblem({ ...config, secret: '' })?.code).toBe('mailMissingSecret')
+    expect(mailConfigProblem({ ...config, imapHost: '' })?.code).toBe('mailMissingImapHost')
+    expect(mailConfigProblem(config)).toBeUndefined()
+  })
+  it('does not claim SMTP was verified by an IMAP read', () => {
+    expect(mailReadHealth(config, 2)).toMatchObject({ code: 'mailImapReady', values: { count: '2' } })
+    expect(mailReadHealth({ ...config, smtpHost: '' }, 0)).toMatchObject({ state: 'error', code: 'mailMissingSmtpHost' })
+  })
+})
+
+
+describe('MIME mail parsing', () => {
+  it('decodes a base64 text part and ignores an attachment', async () => {
+    const raw = [
+      'From: a@example.com', 'Subject: test', 'MIME-Version: 1.0',
+      'Content-Type: multipart/mixed; boundary="b"', '', '--b',
+      'Content-Type: text/plain; charset=utf-8', 'Content-Transfer-Encoding: base64', '', '5L2g5aW9',
+      '--b', 'Content-Type: text/plain', 'Content-Disposition: attachment; filename="x.txt"', '', 'secret attachment', '--b--', '',
+    ].join('\r\n')
+    const result = mimeTrigger(await PostalMime.parse(raw), config, 'INBOX', 1)
+    expect(result?.text).toBe('主题：test\n\n你好')
+    expect(result?.text).not.toContain('secret attachment')
+  })
+  it('decodes quoted-printable HTML-only messages to readable text', async () => {
+    const raw = ['From: a@example.com', 'Content-Type: text/html; charset=utf-8',
+      'Content-Transfer-Encoding: quoted-printable', '', '<p>=E4=BD=A0=E5=A5=BD &amp; hello</p>'].join('\r\n')
+    const result = mimeTrigger(await PostalMime.parse(raw), config, 'INBOX', 1)
+    expect(result?.text).toBe('你好 & hello')
+    expect(htmlText('<script>bad()</script><p>ok<br>next</p>')).toBe('ok\nnext')
   })
 })

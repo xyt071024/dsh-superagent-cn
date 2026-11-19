@@ -1,4 +1,4 @@
-# dsh-superagent bundle layer: inserts the plugins without configuration, and the agent presets its Sessions run under. The
+﻿# dsh-superagent bundle layer: inserts the plugins without configuration, and the agent presets its Sessions run under. The
 # profile supplies the `dsh-superagent` entry's stateDir (see docs/006-deployment.md and examples/profile.cordis.patch.yml); the plugin
 # refuses to start without stateDir.
 - insert:
@@ -6,17 +6,19 @@
       name: dsh-superagent
     - id: dsh-superagent-github
       name: dsh-superagent/github-watch
+    # One factory serves all three OneBot platforms: QQ, WeChat and WeCom each become their own instance from it, so a
+    # person with a QQ number and a WeChat account configures both here without a second plugin.
+    - id: dsh-superagent-qq
+      name: dsh-superagent/qq-watch
+    - id: dsh-superagent-qqbot
+      name: dsh-superagent/qqbot-watch
+    # IMAP in, SMTP out. No account is configured by default; the instance waits, paused, until an address and app
+    # password are entered.
+    - id: dsh-superagent-mail
+      name: dsh-superagent/mail-watch
     # Optional Feishu Source; requires configuring a bot CLI after enabling.
     - id: dsh-superagent-feishu
       name: dsh-superagent/feishu-watch
-      disabled: true
-    # QQ Source over a OneBot endpoint; carries no default account, so it stays off until an endpoint is configured.
-    - id: dsh-superagent-qq
-      name: dsh-superagent/qq-watch
-      disabled: true
-    # Mail Source over IMAP and SMTP; needs an address and an app password before it can read anything.
-    - id: dsh-superagent-mail
-      name: dsh-superagent/mail-watch
       disabled: true
     # The agent preset of every Executor Session (WORKER_PRESET in src/app/sessions.ts); the main Session has its own, below.
     # It is DSH's `standard` preset with only what a worker needs, and a shell whose foreground command moves to a background job
@@ -29,8 +31,8 @@
       name: '@deepseek-ai/dsh-agent-preset'
       config:
         id: dsh-superagent-worker
-        name: Super Agent 执行器
-        description: dsh-superagent 的执行器 Session 专用，不供手动选择。前台命令超 5 秒转入后台，只含执行工作所需的工具。
+        name: dsh-superagent 鎵ц鍣?
+        description: dsh-superagent 鐨勬墽琛屽櫒 Session 涓撶敤锛屼笉渚涙墜鍔ㄩ€夋嫨銆傚墠鍙板懡浠よ秴 5 绉掕浆鍏ュ悗鍙帮紝鍙惈鎵ц宸ヤ綔鎵€闇€鐨勫伐鍏枫€?
         order: 90
         plugins:
           - id: persona
@@ -117,20 +119,25 @@
                   modelSelection: true
                   modelDiscovery: true
                   agentPreset: standard
-              # Fan-out inside one ticket: a worker that can only spawn one child at a time serializes work the
-              # operator asked to run in parallel. `fork` shares the conversation, which is what a reviewer or an
-              # explorer of the same context needs; `workflow-ptc` is how several children are driven as one unit.
-              - id: tool-subagent-fork
-                name: '@deepseek-ai/dsh-tool-subagent'
-                config:
-                  provider: fork
-                  toolName: subagent_fork
-              - id: workflow-ptc
-                name: '@deepseek-ai/dsh-workflow-ptc'
-                config:
-                  provider: spawn
-              - id: tool-workflow
-                name: '@deepseek-ai/dsh-tool-workflow'
+          # Agent Teams. `WORK_TOOLS` names `spawn_teammate`, `wait_agent` and `team_task_*`, and the executor reads
+          # `ctx.get('agentTeams')` in three places to spawn an independent reviewer and to split a hard ticket. Neither
+          # worked: this preset never mounted the Team packages, so `agentTeams` was always undefined, the allow list named
+          # tools the host had not loaded, and every independent review failed with "Agent Teams is unavailable" while a hard
+          # ticket never split. Mounting the service is what makes those call sites reachable. The Team service requires
+          # durable session storage, so `session-persistence-jsonl` is mounted here too: a teammate roster lives with the
+          # worker session it belongs to and survives a restart of this Executor.
+          - id: teams
+            name: cordis:group
+            group: true
+            isolate:
+              agentTeams: true
+            config:
+              - id: session-persistence-jsonl
+                name: '@deepseek-ai/dsh-session-persistence-jsonl'
+              - id: agent-team
+                name: '@deepseek-ai/dsh-experimental-agent-team'
+              - id: tool-agent-team
+                name: '@deepseek-ai/dsh-experimental-tool-agent-team'
           - id: tool-todo
             name: '@deepseek-ai/dsh-tool-todo'
             config:
@@ -138,22 +145,8 @@
           - id: tool-web
             name: '@deepseek-ai/dsh-tool-web'
             config:
-              fetch: true
+              fetch: false
               searchTimeoutMs: 60000
-          # A worker is a general agent, not a code-only one: it may install the capability it needs. The plugin
-          # manager is what the panel uses, so a worker changes the profile exactly as an operator would, with the
-          # same refusals (management-required, unaddressable, not-bundle) and the same restart reporting.
-          - id: tool-plugin-manager
-            name: '@deepseek-ai/dsh-plugin-manager/tools'
-          # Asking a person, presenting a result and scheduling follow-up work are ordinary parts of doing a job.
-          # A worker's question reaches the operator through its report's human_action; these tools are for the
-          # cases where the person is already in the Session.
-          - id: tool-ask-user
-            name: '@deepseek-ai/dsh-tool-ask-user'
-          - id: present
-            name: '@deepseek-ai/dsh-tool-present'
-          - id: tool-schedule
-            name: '@deepseek-ai/dsh-tool-schedule'
     # The agent preset of the main Session (ROUTER_PRESET in src/app/sessions.ts). The worker's 5-second shell and job waits, so a command or a wait does not hold back the next candidates, and
     # only what the main Session uses: no subagents, web, file search or writes, todo list, questions to a person, presenting,
     # plan mode, plugin manager, scheduling, goals or workflows. No persona: the main Session's prompt is complete, so it has
@@ -162,8 +155,8 @@
       name: '@deepseek-ai/dsh-agent-preset'
       config:
         id: dsh-superagent-router
-        name: Super Agent 主 Session
-        description: dsh-superagent 的主 Session 专用，不供手动选择。前台命令和任务等待超 5 秒转入后台，只含路由所需的工具。
+        name: dsh-superagent 涓?Session
+        description: dsh-superagent 鐨勪富 Session 涓撶敤锛屼笉渚涙墜鍔ㄩ€夋嫨銆傚墠鍙板懡浠ゅ拰浠诲姟绛夊緟瓒?5 绉掕浆鍏ュ悗鍙帮紝鍙惈璺敱鎵€闇€鐨勫伐鍏枫€?
         order: 91
         plugins:
           - id: agent-instructions

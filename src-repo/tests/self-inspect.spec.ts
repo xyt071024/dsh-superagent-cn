@@ -28,8 +28,8 @@ const ready = { qq: { state: 'ready', detail: 'ok' } } as never
 /** The settings of an installation an operator would call finished. */
 const working = settings({
   eval: { mode: 'auto', timeoutSeconds: 120, model: null },
-  executor: { model: null, maxWorkers: 3, directory: '', prepare: 'git clone x', blockedCommands: [] },
-  routing: { multiSession: 'auto', placement: 'background', thinking: 'auto', allow: ['a/1'], difficultyThreshold: 60 },
+  executor: { model: null, reviewEnabled: false, maxWorkers: 3, directory: '', prepare: 'git clone x', blockedCommands: [] },
+  routing: { multiSession: 'auto', maxSessions: 3, sessionModels: [], inheritOperatorModel: 'prefer', placement: 'background', thinking: 'auto', allow: ['a/1'], difficultyThreshold: 60 },
   policy: { rules: [], sources: { qq: { allowed: [{ id: '1' }], admission: {} } } },
 } as Partial<Settings>)
 

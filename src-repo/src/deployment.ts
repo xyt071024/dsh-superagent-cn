@@ -1,13 +1,14 @@
 /** Plugin configuration and startup verification for repository access and agent CLI identities. */
 import { LIMITS } from './limits.ts'
 import { accessSync, constants, statSync } from 'node:fs'
-import { delimiter, isAbsolute, join } from 'node:path'
+import { delimiter, extname, isAbsolute, join } from 'node:path'
 import type { Volatile } from '@deepseek-ai/cordis'
 import s from '@deepseek-ai/schemastery'
 import { z } from 'zod'
 import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import { runAsWorker, sameDirectory, withoutDirectory, workerBin } from './infra/environment.ts'
 import { SetupError } from './setup.ts'
+import { probeSource } from './app/source-probe.ts'
 
 const reason = (error: unknown): string => error instanceof Error ? error.message : String(error)
 /**
@@ -78,8 +79,9 @@ export interface FeishuBot { cli: string; appId: string; brand: 'feishu' | 'lark
 
 /** Resolve a command name or absolute path to an executable file, ignoring the worker shim directory. */
 export function executable(name: string, path: string, exclude?: string): string {
-  if (name.includes('/') && !isAbsolute(name)) throw new Error(`${name} must be a command name or an absolute path`)
-  const candidates = isAbsolute(name) ? [name] : path.split(delimiter).filter(dir => isAbsolute(dir) && !(exclude && sameDirectory(dir, exclude))).map(dir => join(dir, name))
+  if ((name.includes('/') || name.includes('\\')) && !isAbsolute(name)) throw new Error(`${name} must be a command name or an absolute path`)
+  const names = process.platform === 'win32' && !extname(name) ? [`${name}.exe`, `${name}.cmd`, `${name}.bat`, name] : [name]
+  const candidates = isAbsolute(name) ? names : path.split(delimiter).filter(dir => isAbsolute(dir) && !(exclude && sameDirectory(dir, exclude))).flatMap(dir => names.map(candidate => join(dir, candidate)))
   for (const candidate of candidates) {
     try { if (statSync(candidate).isFile()) { accessSync(candidate, constants.X_OK); return candidate } }
     catch { /* Not an executable file here; try the next PATH directory. */ }
@@ -87,11 +89,11 @@ export function executable(name: string, path: string, exclude?: string): string
   throw new Error(`${name} is not an executable file${isAbsolute(name) ? '' : ' on PATH'}`)
 }
 
-export type Probe = (argv: string[]) => Promise<string>
+export type Probe = (argv: string[], env?: Record<string, string>) => Promise<string>
 /** Run startup checks through DSH's worker subprocess service with worker shims removed from PATH so a `gh` wrapper script reaches the real binary. */
 export function workerProbe(subprocess: SubprocessRuntime, stateDir: string, cwd: string, signal: AbortSignal): Probe {
   const path = withoutDirectory(process.env.PATH ?? '', workerBin(stateDir))
-  return argv => runAsWorker(subprocess, ['env', `PATH=${path}`, ...argv], cwd, AbortSignal.any([signal, AbortSignal.timeout(60_000)]))
+  return (argv, env) => runAsWorker(subprocess, argv, cwd, AbortSignal.any([signal, AbortSignal.timeout(60_000)]), { ...env, PATH: path })
 }
 
 const GithubUser = z.object({ login: z.string().regex(/^[A-Za-z0-9-]+$/), id: z.number().int().positive() })
@@ -136,7 +138,9 @@ export async function resolveFeishuBot(machine: Machine, feishu: unknown, probe:
   const fail = (error: unknown): never => { throw error instanceof SetupError ? error : new SetupError('feishuCliFailed', { output: reason(error) }) }
   let cli = ''
   try { cli = executable(name, path, workerBin(machine.stateDir)) } catch (error) { fail(error) }
-  const run = (...args: string[]): Promise<string> => probe(['env', 'LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1', 'LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1', cli, ...args]).catch(fail)
+  const run = (...args: string[]): Promise<string> => probe([cli, ...args], {
+    LARKSUITE_CLI_NO_UPDATE_NOTIFIER: '1', LARKSUITE_CLI_NO_SKILLS_NOTIFIER: '1',
+  }).catch(fail)
   const text = await run('auth', 'status')
   const status = parsed(AuthStatus, text.slice(text.indexOf('{')))
   if (!status) return fail(new SetupError('feishuNoApp'))
@@ -147,4 +151,85 @@ export async function resolveFeishuBot(machine: Machine, feishu: unknown, probe:
   const info = parsed(BotInfo, (await run('api', 'GET', '/open-apis/bot/v3/info', '--as', 'bot', '--format', 'ndjson')).split('\n')[0] ?? '')
   if (!info) return fail(new SetupError('feishuNoBot'))
   return { cli, appId: status.appId, brand: status.brand, botId: info.bot.open_id, name: info.bot.app_name }
+}
+
+/**
+ * Verify one OneBot gateway (QQ, WeChat or WeCom) names an endpoint and answers the identity check.
+ *
+ * Why this exists: until these checks, a gateway that was simply not running produced only "waiting" or "error" in the
+ * panel, with nothing said about what to fix. That silence is the complaint this project kept receiving ("他这也没有提示，
+ * 让我怎么弄"). The check reuses `probeSource`, so it sends no message, reads no history and returns no token.
+ *
+ * The platform name is in the message because one factory serves all three; without it a person running QQ and WeCom
+ * cannot tell which gateway the problem is about.
+ */
+/** Whether a value parses as an http(s) URL with no embedded credentials, query or fragment. */
+function isHttpEndpoint(value: string): boolean {
+  // `new URL` accepts a bare string as a relative path only with a base; without one it throws for "not-a-url", but a
+  // value such as "localhost:3000" parses as a custom scheme. Both are wrong for a gateway, so the scheme is checked.
+  try {
+    const url = new URL(value)
+    return ['http:', 'https:'].includes(url.protocol) && Boolean(url.host) && !url.username && !url.password
+      && !url.search && !url.hash
+  } catch { return false }
+}
+
+/**
+ * The part of an endpoint that is safe to show: scheme and host only.
+ *
+ * A gateway address can carry a query string with a token, or userinfo with a password. Neither belongs in a message
+ * that the panel renders and the problem record keeps, but the host does: without it a person cannot tell which of two
+ * gateways is failing.
+ */
+function shownEndpoint(value: string): string {
+  try {
+    const url = new URL(value)
+    return url.host ? `${url.protocol}//${url.host}` : 'the configured address'
+  } catch { return 'the configured address' }
+}
+
+export async function resolveOneBot(instance: { kind: string; config: Record<string, unknown> }): Promise<void> {
+  const platform = instance.kind === 'wechat' ? 'WeChat' : instance.kind === 'wecom' ? 'WeCom' : 'QQ'
+  const endpoint = instance.config.endpoint
+  if (typeof endpoint !== 'string' || !endpoint.trim()) throw new SetupError('onebotEndpointUnset', { platform })
+  const usable = isHttpEndpoint(endpoint)
+  const result = await probeSource(instance as Parameters<typeof probeSource>[0])
+  const state = result.checks.find(check => check.name === 'onebot')?.state
+  if (state === 'ok' || state === 'unsupported') return
+  if (state === 'missing') throw new SetupError('onebotEndpointUnset', { platform })
+  // A filled-in but unusable address is reported as one, before any verdict about the gateway: nothing was reached, so
+  // nothing can be said about it. The value itself is never echoed — an endpoint can carry a query string or userinfo,
+  // and this message is shown in the panel and kept in the problem record.
+  if (!usable) throw new SetupError('onebotUnreachable', { platform, endpoint: shownEndpoint(endpoint) })
+  if (state === 'auth_failed') throw new SetupError('onebotAuthFailed', { platform })
+  if (state === 'unreachable') throw new SetupError('onebotUnreachable', { platform, endpoint: shownEndpoint(endpoint) })
+  throw new SetupError('onebotFailed', { platform })
+}
+
+/**
+ * Verify a mailbox names an address and an app password, and that both servers answer.
+ *
+ * Reading and sending are checked separately because they fail separately: a mailbox whose SMTP is blocked can still be
+ * read, and saying "the mailbox is unavailable" would be wrong. The address is quoted, never the password.
+ */
+export async function resolveMail(instance: { kind: string; config: Record<string, unknown> }): Promise<void> {
+  const address = instance.config.address
+  const password = instance.config.password
+  if (typeof address !== 'string' || !address.trim()) throw new SetupError('mailAddressUnset')
+  if (typeof password !== 'string' || !password) throw new SetupError('mailPasswordUnset')
+  const server = ((): string => { const at = address.lastIndexOf('@'); return at > 0 ? address.slice(at + 1) : address })()
+  const result = await probeSource(instance as Parameters<typeof probeSource>[0])
+  for (const check of result.checks) {
+    if (check.state === 'ok' || check.state === 'unsupported' || check.state === 'missing') continue
+    if (check.name === 'imap') {
+      if (check.state === 'unreachable') throw new SetupError('mailImapUnreachable', { server })
+      if (check.state === 'auth_failed') throw new SetupError('mailImapAuthFailed', { server })
+      throw new SetupError('mailImapUnreachable', { server })
+    }
+    if (check.name === 'smtp') {
+      if (check.state === 'unreachable') throw new SetupError('mailSmtpUnreachable', { server })
+      if (check.state === 'auth_failed') throw new SetupError('mailSmtpAuthFailed', { server })
+      throw new SetupError('mailSmtpUnreachable', { server })
+    }
+  }
 }

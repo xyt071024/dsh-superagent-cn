@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Super Agent",
+    "title": "Superagent",
     "description": "Watch one GitHub repository, turn authorized requests into Tickets, and execute each in its own DSH Session."
   }
 }

@@ -11,7 +11,7 @@
  * 4. 归档完把「上一个上下文已归档，接着干」作为一条 steer 交给同一个 Session，这就是交接。
  *
  * 不做的：不替宿主决定保留多少尾部（那是它的策略），不新建 Session（那是 routing 的事）。
- * 缺 `tokenMeter` 或 `compaction` 时**整体不启用**，而不是半跑着悄悄不归档 —— 静默失败比不做更糟。
+ * 会话缺少 `tokenMeter` 或 `compaction` 时不归档该会话，并在健康状态中报告缺少的服务。
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -34,30 +34,48 @@ export interface ArchiverHost {
   budget(): { percent: number; enabled: boolean }  /** 归档完成后把交接文本交给该 Session，以 steer 投递。 */
   steer(id: string, requestId: string, text: string): Promise<void>
   /** 归档结果写进健康面板，让人在界面上看得到。 */
-  report(detail: string): void
+  report(detail: string, state?: 'ready' | 'error'): void
+  /**
+   * Move a ticket's work from its current Session to a fresh one.
+   *
+   * Called instead of compaction when the Session belongs to a ticket and the operator asked for a handover rather
+   * than an in-place shrink. Returns the Session the ticket is committed to afterwards, or the reason it stayed put —
+   * a running Team, undelivered input, an unreadable transcript, or a ticket whose Session is not the one this
+   * archiver measured. A refusal is not an error: the caller keeps the old Session alive and reports the reason, and
+   * this archiver then compacts in place, which creates no Session.
+   */
+  relay?(ticketId: string, fromSession: string, percent: number): Promise<{ moved: string } | { refused: string }>
+  /** Map a managed Session back to its ticket, or `undefined` for the main Session. */
+  ticketOf(session: string): string | undefined
 }
 
 const TICK_MS = 15_000
+const STOP_TIMEOUT_MS = 10_000
+const ARCHIVE_TIMEOUT_MS = 120_000
 /** 同一个 Session 两次归档之间至少隔这么久，避免刚压下去又被量上来时反复触发。 */
 const COOLDOWN_MS = 120_000
 
 /**
  * 周期检查每个受管 Session 的上下文占比，超过配置值就归档并交接。
- * `start()` 挂 `setInterval`；`stop()` 清掉并等待在跑的那次结束。
+ * `start()` 挂 `setInterval`；`stop()` 取消正在运行的操作，最多等待 10 秒。
  */
 export class ContextArchiver {
   private timer?: ReturnType<typeof setInterval>
-  private running = false
+  private running?: Promise<void>
+  private readonly stopping = new AbortController()
   private stopped = false
   /** 每个 Session 上次归档的时刻，用于冷却。 */
   private readonly last = new Map<string, number>()
   /** 正在归档的 Session，避免同一轮重复进入。 */
   private readonly busy = new Set<string>()
+  private readonly pending = new Set<Promise<void>>()
+  /** A compaction that did not reduce pressure must not repeatedly wake an idle worker. */
+  private readonly unchanged = new Map<string, number>()
 
   constructor(private readonly host: ArchiverHost) {}
 
   start(): void {
-    if (this.stopped) return
+    if (this.stopped || this.timer) return
     this.timer = setInterval(() => { void this.tick() }, TICK_MS)
     // 不因为一个定时器把宿主进程撑住不退出。
     this.timer.unref?.()
@@ -66,29 +84,45 @@ export class ContextArchiver {
   async stop(): Promise<void> {
     this.stopped = true
     clearInterval(this.timer)
-    // 等在跑的那次结束，避免关停时留下半个归档。
-    for (let guard = 0; this.running && guard < 100; guard++) await new Promise(done => setTimeout(done, 100))
+    this.stopping.abort()
+    const running = Promise.allSettled([...(this.running ? [this.running] : []), ...this.pending])
+    if (!this.running && this.pending.size === 0) return
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const settled = await Promise.race([
+      running.then(() => true),
+      new Promise<false>(resolve => { timer = setTimeout(() => resolve(false), STOP_TIMEOUT_MS) }),
+    ]).finally(() => { clearTimeout(timer) })
+    if (!settled) this.host.report('Archive did not stop after cancellation; host compaction is still running', 'error')
   }
 
-  /** 一次检查：逐个受管 Session 量占比，够线的归档。串行执行，一个卡住不拖累全部。 */
-  async tick(): Promise<void> {
+  /** Serializes checks and waits for any active compaction to settle before stopping. */
+  tick(): Promise<void> {
     const config = this.host.budget()
-    if (!config.enabled || this.running || this.stopped) return
-    const meter = this.host.context.get('tokenMeter') as Meter | undefined
-    const compaction = this.host.context.get('compaction') as Compaction | undefined
-    if (!meter || !compaction) return
-    this.running = true
-    try {
-      for (const { id, agent } of this.host.managed()) {
-        if (this.stopped) break
-        // 归档要求空闲会话；忙的时候进去只会拿到 busy，白跑一次还占着锁。
-        if (agent.status !== 'idle' || this.busy.has(id)) continue
-        if (Date.now() - (this.last.get(id) ?? 0) < COOLDOWN_MS) continue
-        const share = this.share(meter, agent)
-        if (share === undefined || share * 100 < config.percent) continue
-        await this.archive(id, agent, compaction, meter, share)
+    if (!config.enabled || this.running || this.stopped) return Promise.resolve()
+    const running = this.check(config.percent)
+    this.running = running
+    return running.finally(() => { if (this.running === running) this.running = undefined })
+  }
+
+  private async check(percent: number): Promise<void> {
+    for (const { id, agent } of this.host.managed()) {
+      if (this.stopped) break
+      if (agent.status !== 'idle' || this.busy.has(id)) continue
+      if (Date.now() - (this.last.get(id) ?? 0) < COOLDOWN_MS) continue
+      // Compaction is normally isolated in the agent preset, not in the host's root context.
+      const meter = (agent.ctx.get('tokenMeter') ?? this.host.context.get('tokenMeter')) as Meter | undefined
+      const compaction = (agent.ctx.get('compaction') ?? this.host.context.get('compaction')) as Compaction | undefined
+      if (!meter || !compaction) {
+        this.host.report(`${id}: archive unavailable — missing ${!meter ? 'tokenMeter' : 'compaction'}`, 'error')
+        continue
       }
-    } finally { this.running = false }
+      const share = this.share(meter, agent)
+      if (share === undefined) continue
+      if (share * 100 < percent) { this.unchanged.delete(id); continue }
+      const previous = this.unchanged.get(id)
+      if (previous !== undefined && Math.abs(share - previous) < 0.05) continue
+      await this.archive(id, agent, compaction, meter, share)
+    }
   }
 
   /** 当前上下文占窗口的比例；取不到窗口或压力时返回 undefined（不猜）。 */
@@ -104,21 +138,67 @@ export class ContextArchiver {
 
   private async archive(id: string, agent: Agent, compaction: Compaction, meter: Meter, before: number): Promise<void> {
     this.busy.add(id)
-    // 手动归档需要一个空闲会话，`runMaintenance` 是宿主给的那把锁。
     const controller = new AbortController()
-    try {
-      await compaction.compactNow({ session: agent.session, runMaintenance: agent.runMaintenance.bind(agent) }, controller.signal)
-      const archivedAt = Date.now()
-      this.last.set(id, archivedAt)
-      const after = this.share(meter, agent) ?? 0
-      this.host.report(`${id}: archived at ${Math.round(before * 100)}%, now ${Math.round(after * 100)}%`)
-      await this.host.steer(id, `archived:${id}:${archivedAt}`,
-        `The earlier part of this Session was archived at ${Math.round(before * 100)}% of its context window `
-        + `(now ${Math.round(after * 100)}%). It is summarised in this history. Carry on with the work in progress: `
-        + `do not restart from the beginning or redo steps that already finished.`)
-    } catch (error) {
-      // 定时器里抛错会掀掉整个宿主进程，所以这里只记录。
-      this.host.report(`${id}: archive failed — ${error instanceof Error ? error.message : String(error)}`)
-    } finally { this.busy.delete(id) }
+    const signal = AbortSignal.any([controller.signal, this.stopping.signal])
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let stopWait!: () => void
+    const interrupted = new Promise<void>(resolve => {
+      stopWait = resolve
+      signal.addEventListener('abort', stopWait, { once: true })
+      if (signal.aborted) resolve()
+      timer = setTimeout(() => {
+        this.host.report(`${id}: archive timed out; cancellation requested`, 'error')
+        controller.abort()
+      }, ARCHIVE_TIMEOUT_MS)
+    })
+    // Keep the session busy until the host actually settles, including if it ignores cancellation.
+    const task = (async () => {
+      try {
+        // A ticket with a live Team or undelivered input cannot be moved without losing state, so the host answers
+        // `undefined` and this falls through to compaction — the old behaviour, still correct, just not a handover.
+        const ticketId = this.host.ticketOf(id)
+        if (ticketId !== undefined && this.host.relay) {
+          // The handover text is built from the old Session's own transcript and ticket, not from a fixed sentence: a
+          // claim that history is attached is only true if something actually read that history.
+          const answer = await this.host.relay(ticketId, id, before)
+          const moved = 'moved' in answer ? answer.moved : undefined
+          if (moved !== undefined) {
+            this.last.set(id, Date.now())
+            this.unchanged.delete(id)
+            this.host.report(`${id}: relayed to ${moved} at ${Math.round(before * 100)}%`)
+            return
+          }
+          // Saying why keeps the operator from reading a compaction as a handover: no new Session was created.
+          this.host.report(`${id}: no handover (${'refused' in answer ? answer.refused : 'unavailable'}); compacting this Session instead, so no new Session was created`, 'ready')
+        }
+        const result = await compaction.compactNow({ session: agent.session, runMaintenance: agent.runMaintenance.bind(agent) }, signal)
+        if (signal.aborted) return
+        if (result === null) {
+          this.unchanged.set(id, before)
+          this.host.report(`${id}: archive was unavailable; waiting for a meaningful change before retrying`, 'error')
+          return
+        }
+        const archivedAt = Date.now()
+        this.last.set(id, archivedAt)
+        const measured = this.share(meter, agent)
+        const after = measured ?? 0
+        if (measured !== undefined && measured >= before - 0.01) {
+          this.unchanged.set(id, measured)
+          this.host.report(`${id}: archive did not reduce context pressure; waiting for a meaningful change before retrying`, 'error')
+          return
+        } else this.unchanged.delete(id)
+        this.host.report(`${id}: archived at ${Math.round(before * 100)}%, now ${Math.round(after * 100)}%`)
+        await this.host.steer(id, `archived:${id}:${archivedAt}`,
+          `The earlier part of this Session was archived at ${Math.round(before * 100)}% of its context window `
+          + `(now ${Math.round(after * 100)}%). It is summarised in this history. Carry on with the work in progress: `
+          + `do not restart from the beginning or redo steps that already finished.`)
+      } catch (error) {
+        if (!signal.aborted) this.host.report(`${id}: archive failed — ${error instanceof Error ? error.message : String(error)}`, 'error')
+      } finally { this.busy.delete(id) }
+    })()
+    this.pending.add(task)
+    void task.finally(() => { this.pending.delete(task) })
+    try { await Promise.race([task, interrupted]) }
+    finally { clearTimeout(timer); signal.removeEventListener('abort', stopWait) }
   }
 }

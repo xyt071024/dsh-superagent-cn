@@ -42,7 +42,7 @@ export type AssessmentOutcome =
   | { kind: 'unavailable'; reason: string | Reason; audit?: Record<string, unknown> }
   /** An accept: `rules` the assessment matched, `name` the ticket's requested short name, and `note` a routing note for its worker. */
   | { kind: 'accept'; title: string; scope: string; reason: string | Reason; acknowledgement?: string; rules?: string[]; audit?: Record<string, unknown>;
-    name?: string; note?: string }
+    name?: string; note?: string; difficulty?: number }
   | { kind: 'stop'; ticketId: string; reason: string | Reason; audit?: Record<string, unknown> }
 
 /** Semantic judgement. `request` queues the assessment, idempotently per `evalId`; the outcome returns through `Engine.decide`. */
@@ -57,6 +57,8 @@ export interface Assessor {
  * commands, so each method only queues work, which reports back through the Engine's callbacks.
  */
 export interface Executor {
+  /** Queue independent review of a completion candidate, when supported by the host. */
+  review?(ticket: Ticket): void
   /** Queue a pending assignment for launch; reports back through `Engine.assignmentStarted` or a `failed` report. */
   start(ticket: Ticket, assignment: Assignment): void
   /**

@@ -10,7 +10,8 @@ import { githubKind } from '../src/sources/github.ts'
 import { snapshot, threadSummary, ticketSummary, triggerView } from '../src/app/views/records.ts'
 import { basisFacts, ticketDetail } from '../src/app/views/tickets.ts'
 import { threadDetail } from '../src/app/views/threads.ts'
-import { droppedReplies, sourcesStatus } from '../src/app/views/sources.ts'
+import { droppedReplies, setupStepStatus, sourcesStatus } from '../src/app/views/sources.ts'
+import type { SourceInstance } from '../src/sources/kind.ts'
 import { overview } from '../src/app/views/overview.ts'
 import { markdown, plain } from '../src/app/views/text.ts'
 import { policyHistory } from '../src/app/settings-history.ts'
@@ -318,4 +319,12 @@ it('reads each ticket a page\'s follow-ups reached once, and nothing for a messa
   const records = { tickets: { get: vi.fn() }, threads: { get: vi.fn() }, triggers: store.triggers }
   expect(followupOwners(store.triggers.get('f3')!, records)).toEqual([])
   expect([records.tickets.get, records.threads.get].map(read => read.mock.calls.length)).toEqual([0, 0])
+})
+it('only marks setup facts the application actually knows, without revealing credentials', () => {
+  const source = (kind: string, config: Record<string, unknown>): SourceInstance => ({ id: kind, kind, config, enabled: true })
+  expect(setupStepStatus(source('mail', { address: 'a@b.com', secret: 'private' }), 'secret', {})).toBe('configured')
+  expect(setupStepStatus(source('mail', { secret: '' }), 'secret', {})).toBe('needs_input')
+  expect(setupStepStatus(source('mail', { secret: 'private' }), 'check', {})).toBe('not_checked')
+  expect(setupStepStatus(source('qq', { endpoint: 'http://localhost:3000' }), 'login', {})).toBe('not_checked')
+  expect(setupStepStatus(source('qqbot', { appId: 'id', appSecret: '' }), 'credentials', {})).toBe('needs_input')
 })

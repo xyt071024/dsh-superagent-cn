@@ -78,6 +78,8 @@ export interface SettingsHost {
   readonly setup: Pick<Setup, 'configured' | 'checkAccounts' | 'blockCommands' | 'restart'>
   /** Triggers an immediate pass so work newly allowed by a settings save runs right away. */
   requestPass(): void
+  /** Request review for an already-ready open ticket when the operator enables independent review. */
+  requestReview?(ticket: import('../core/index.ts').Ticket): void
 }
 
 /**
@@ -176,6 +178,13 @@ export class Settings {
       try { await resolveRoleModel(this.host.context, model) }
       catch (error) { throw new UserError('modelUnavailable', { block, error: error instanceof Error ? error.message : String(error) }) }
     }
+    if (block === 'routing') {
+      for (const [index, selected] of candidate.routing.sessionModels.entries()) {
+        if (!selected || JSON.stringify(selected) === JSON.stringify(current.routing.sessionModels[index])) continue
+        try { await resolveRoleModel(this.host.context, selected) }
+        catch (error) { throw new UserError('modelUnavailable', { block: `routing ${index + 1}`, error: error instanceof Error ? error.message : String(error) }) }
+      }
+    }
     rules.guard?.(current, candidate, origin)
     if (setupChanged(current, candidate)) await this.host.setup.checkAccounts(block, candidate)
     if (stale()) throw new SettingsConflict('Settings changed during the checks. Reload before saving.')
@@ -194,6 +203,12 @@ export class Settings {
     const notified = [...effects.keys()]
     store.atomic(() => {
       store.saveSettings(SettingsSchema.parse(settings), { source: origin, block, policyVersion: after, policyChanged: before !== after, notified })
+      if (!old.executor.reviewEnabled && settings.executor.reviewEnabled) for (const ticket of store.tickets.open()) {
+        if (ticket.review) continue
+        ticket.review = { state: 'pending', round: 0, fingerprint: '', reviewer: '' }
+        store.tickets.save(ticket)
+        if (ticket.assignments.at(-1)?.report?.state === 'ready') this.host.requestReview?.(ticket)
+      }
       if (origin !== 'tool') sessions.notify(...settingsNotice(block, changedPaths(old, settings)))
       if (before !== after) engine.policyChanged(before, after, effects)
     })

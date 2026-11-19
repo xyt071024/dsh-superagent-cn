@@ -17,11 +17,15 @@ import type { DshExecutor } from '../executor/dsh.ts'
 import type { Health } from '../sources/host.ts'
 import type { SourceRegistry } from '../sources/registry.ts'
 import type { Sessions } from './sessions.ts'
+import type { Effects } from './effects.ts'
 import type { Store } from './store.ts'
 import type { TextCache } from './cache.ts'
 import type { LinkTarget, ViewHost } from './views/records.ts'
 import type { Variable } from './execution-environment.ts'
 import { policyHistory } from './settings-history.ts'
+import { inspect, hygiene } from './self-inspect.ts'
+import { probeSource } from './source-probe.ts'
+import { checkForUpdate, currentVersion } from './update-check.ts'
 import { overview } from './views/overview.ts'
 import { settingsView } from './views/settings.ts'
 import { sourcesStatus, type SetupState } from './views/sources.ts'
@@ -38,6 +42,7 @@ export interface HttpHost {
   readonly settings: Pick<Settings, 'view' | 'save' | 'pause' | 'sync' | 'refreshLabels'>
   readonly engine: EngineForPeople
   readonly executor: Pick<DshExecutor, 'activeCount'>
+  readonly effects: Pick<Effects, 'held' | 'retryHeld'>
   readonly health: Record<string, Health>
   readonly machine: Machine
   readonly masterId: string
@@ -154,10 +159,23 @@ function routes(runtime: HttpHost): Routes {
   const promptBody = (input: { body: (maxBytes?: number) => Promise<unknown> }) => input.body(4 * runtime.machine.promptMaxChars.get() + 4096)
   return {
     'GET state': () => stateView(runtime),
+    'GET effects/held': () => ({ items: runtime.effects.held() }),
+    'POST effects/:kind/retry-held': ({ params }) => {
+      const allowed = ['assessment', 'launch', 'delivery', 'review', 'relay', 'notice', 'reply'] as const
+      if (!allowed.includes(params.kind as typeof allowed[number])) throw new RouteError(404, 'Effect kind not found')
+      return { retried: runtime.effects.retryHeld(params.kind as typeof allowed[number]) }
+    },
+    'GET self-inspect': () => ({ inspection: inspect(store.settings(), runtime.sources, runtime.health, store), hygiene: hygiene(store) }),
+    'GET update-check': async () => checkForUpdate(await currentVersion()),
     'GET overview': () => overview(views(runtime), runtime.health, policyVersion(store.settings()),
       executorLoad(store, runtime.executor.activeCount()), runtime.setupProblem ?? runtime.feishuProblem),
     'GET search': ({ query }) => search(views(runtime), query.q ?? '', runtime.sourceLinks),
     'GET sources': () => sourcesStatus(views(runtime), runtime.health, setupState(runtime)),
+    'POST sources/:id/probe': ({ params }) => {
+      const instance = runtime.sources.instances().find(item => item.id === params.id && item.installed)
+      if (!instance) throw new RouteError(404, 'Source not found')
+      return probeSource(instance)
+    },
     'GET settings': () => settingsView(store, runtime.sources, runtime.health, setupState(runtime), runtime.machine.stateDir),
     'POST sources/:id/labels': ({ params }) => runtime.settings.refreshLabels(params.id),
     'GET threads': ({ query }) => {

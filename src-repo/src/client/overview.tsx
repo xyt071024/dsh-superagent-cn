@@ -1,6 +1,8 @@
 /** Overview page: pending Tickets requiring human action, active system problems, 24-hour flow counts, and Executor load. */
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { usePoll, type Problem } from './api.ts'
+import type { ApiResponse } from '../app/api.ts'
+import type { DshSuperagentKey } from './locales.ts'
 import { Button, Icon } from './controls.tsx'
 import { useAction, usePanel, usePanelData } from './provider.tsx'
 import { setupPage, settingsRoute, type Route } from './route.ts'
@@ -77,6 +79,8 @@ export function OverviewPage() {
         onChanged={reload} />)}</ul>
         : <Hint>{t('needsYouNone')}</Hint>}
     </Section>
+    <Inspection />
+    <HeldEffects />
     {data.problems.length > 0 && <Section title={t('problems')} count={data.problems.length}>
       <ul className="dt-list dt-cards">{data.problems.map((problem, index) => <ProblemLine key={index} problem={problem}
         onChanged={reload} />)}</ul>
@@ -100,4 +104,48 @@ export function OverviewPage() {
       </div>}
     </Section>
   </>
+}
+
+function HeldEffects() {
+  const { call, t } = usePanel()
+  const { data, reload } = usePoll(() => call('GET effects/held'), [])
+  const action = useAction(async (kind: string) => { await call('POST effects/:kind/retry-held', { kind }); await reload() })
+  if (!data?.items.length) return null
+  return <Section title={t('effectsHeldTitle')} count={data.items.length}>
+    <Hint>{t('effectsHeldHint')}</Hint>
+    <ul className="dt-list">{data.items.map(item => <li key={item.kind} className="dt-row">
+      <span>{valueLabel(t, 'health', item.kind)}: {item.count}</span>
+      <Button variant="outline" size="sm" disabled={action.busy} onClick={() => { void action.run(item.kind) }}>{t('effectsHeldRetry')}</Button>
+    </li>)}</ul>
+  </Section>
+}
+
+/** Read-only, user-triggered diagnostics; network checks and repairs are not implied. */
+function Inspection() {
+  const { t, call } = usePanel()
+  const [result, setResult] = useState<ApiResponse<'GET self-inspect'> | undefined>()
+  const [update, setUpdate] = useState<ApiResponse<'GET update-check'> | undefined>()
+  const action = useAction(async () => { setResult(await call('GET self-inspect')) })
+  const checkUpdate = useAction(async () => { setUpdate(await call('GET update-check')) })
+  const problems = result?.inspection.gaps ?? []
+  const missing = result?.hygiene.missing ?? []
+  const labels: Record<string, DshSuperagentKey> = { noLiveSource: 'inspect.noLiveSource', noSource: 'inspect.noSource',
+    emptyAllowList: 'inspect.emptyAllowList', observeOnly: 'inspect.observeOnly', source_paused: 'inspect.source_paused', source_error: 'inspect.source_error' }
+  return <Section title={t('inspectTitle')} action={<Button variant="outline" size="sm" disabled={action.busy}
+    onClick={() => { void action.run() }}>{t('inspectRun')}</Button>}>
+    <Hint>{t('inspectScope')}</Hint>
+    {result && (problems.length || missing.length ? <ul className="dt-list">{problems.map((gap, index) =>
+      <li className="dt-row" key={`${gap.code}-${index}`}><div className="dt-row-main">
+        <span>{labels[gap.code] ? t(labels[gap.code]!) : gap.detail}</span>{gap.code.startsWith('source_') && <p className="dt-hint">{gap.detail}</p>}
+      </div></li>)}{missing.map(item => <li key={item} className="dt-row"><span>{t('inspectMissingDirectory')}: {item}</span></li>)}</ul>
+      : <Hint>{t('inspectClear')}</Hint>)}
+    <div className="dt-row-meta dt-row-buttons">
+      <Button variant="outline" size="sm" disabled={checkUpdate.busy} onClick={() => { void checkUpdate.run() }}>
+        {t(checkUpdate.busy ? 'updateChecking' : 'updateCheck')}
+      </Button>
+      {update && <span>{t('updateCurrent')}: {update.current ?? '—'} · {t('updateLatest')}: {update.latest ?? '—'} · {t(
+        update.status === 'available' ? 'updateAvailable' : update.status === 'up-to-date' ? 'updateCurrentLatest' : update.status === 'newer-local' ? 'updateNewerLocal' : 'updateUnknown'
+      )} · <a className="dt-field-link" href={update.releases} target="_blank" rel="noreferrer noopener">{t('updateReleases')}</a></span>}
+    </div>
+  </Section>
 }

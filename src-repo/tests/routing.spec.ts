@@ -1,10 +1,18 @@
 /** Checks the routing decisions: which approved model a Session gets, and never one the operator did not approve. */
 import { describe, expect, it } from 'vitest'
-import { effortFor, modelFor, multiSession, narrated, parseRoute, placementFor, routes } from '../src/app/routing.ts'
+import { effortFor, isHard, modelFor, multiSession, narrated, parseRoute, placementFor, reserveSessionSlot, routes } from '../src/app/routing.ts'
 import { RoutingConfigSchema } from '../src/policy.ts'
 
 const defaults = RoutingConfigSchema.parse({})
 const two = RoutingConfigSchema.parse({ multiSession: 'auto', allow: ['cheap/fast', 'strong/deep'] })
+
+it('assigns stable child session slots and enforces the per-task maximum', () => {
+  const slots: Record<string, number> = {}
+  expect(reserveSessionSlot(slots, 'first', 2)).toBe(0)
+  expect(reserveSessionSlot(slots, 'second', 2)).toBe(1)
+  expect(reserveSessionSlot(slots, 'first', 2)).toBe(0)
+  expect(() => reserveSessionSlot(slots, 'third', 2)).toThrow('2 child-session limit')
+})
 
 describe('parseRoute', () => {
   it('splits the provider from the model', () => {
@@ -90,5 +98,19 @@ describe('narrated', () => {
     // DSH cannot bring a Session to the front, so foreground means telling the person as it happens.
     expect(narrated('foreground')).toBe(true)
     expect(narrated('background')).toBe(false)
+  })
+})
+
+describe('isHard', () => {
+  const config = { ...defaults, difficultyThreshold: 60 }
+  it('calls a short brief easy and a long one hard, at the operator threshold', () => {
+    // The threshold is a percentage of `HARD_BRIEF_CHARS`; 60% of it is the line.
+    expect(isHard(config, 'fix the typo')).toBe(false)
+    expect(isHard(config, 'x'.repeat(720))).toBe(true)
+    expect(isHard({ ...config, difficultyThreshold: 10 }, 'x'.repeat(150))).toBe(true)
+  })
+  it('treats a ticket with no brief as easy, so nothing spends the strongest model by default', () => {
+    expect(isHard(config, undefined)).toBe(false)
+    expect(isHard(config, '')).toBe(false)
   })
 })

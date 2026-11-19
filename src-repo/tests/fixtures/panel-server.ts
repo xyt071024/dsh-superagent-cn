@@ -85,6 +85,7 @@ export const MACHINE = { stateDir: '/srv/dsh-superagent', promptMaxChars: 100000
 
 type Settings = ReturnType<typeof SettingsSchema.parse>
 export interface PanelServer {
+  held?: { kind: string; count: number }[]
   joined?: Record<string, string>; joining?: Record<string, string>
   joinError?: string
   settings: Settings; revisions: Record<string, number>
@@ -295,12 +296,22 @@ const SourceSave = z.object({ enabled: z.boolean(), config: z.unknown() })
 const ROUTES: { [K in keyof Api]: Route<K> } = {
   'GET state': { answer: stateView },
   'GET overview': { answer: overviewView },
+  'GET effects/held': { answer: () => ({ items: server.held ?? [] }) },
+  'POST effects/:kind/retry-held': { answer: ({ params }) => {
+    const retried = server.held?.find(item => item.kind === params.kind)?.count ?? 0
+    server.held = server.held?.filter(item => item.kind !== params.kind)
+    return { retried }
+  } },
+  'GET self-inspect': { answer: () => ({ inspection: { gaps: [{ code: 'noLiveSource', detail: 'No source is ready', fix: 'Check sources' }],
+    activity: { days: 7, tickets: 0, open: 0, ended: 0, waiting: 0 }, sources: [] }, hygiene: { open: 0, missing: [] } }) },
+  'GET update-check': { answer: () => ({ current: '0.3.5', latest: '0.3.5', status: 'up-to-date', releases: 'https://github.com/xyt071024/dsh-superagent-cn/releases' }) },
   'GET search': { query: ['q'], answer: async ({ query }) => {
     const q = query.q ?? ''
     await server.searching?.(q)
     return { tickets: [], threads: server.search.threads, items: server.search.items.filter(item => item.preview.includes(q)) }
   } },
   'GET sources': { answer: sourceStatuses },
+  'POST sources/:id/probe': { answer: () => ({ checks: [{ name: 'onebot', state: 'ok' }] }) },
   'GET settings': { answer: settingsView },
   'POST sources/:id/labels': { answer: () => {
     // Label refresh failures come from the bot CLI and are returned verbatim.

@@ -3,7 +3,7 @@ import { bindScopeParent } from '@deepseek-ai/dsh-scope'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { DatabaseSync } from 'node:sqlite'
-import { join } from 'node:path'
+import { delimiter, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
 import type { UserMessage } from '@deepseek-ai/dsh-llm'
 import { renderPrompt } from '@deepseek-ai/dsh-system-prompt'
@@ -89,6 +89,7 @@ const subprocess = { spawn: vi.fn((spec: { argv: readonly string[] }) => {
   // Strip leading `env` and `KEY=VALUE` arguments before looking up the command response.
   const argv = [...spec.argv]
   while (argv[0] === 'env' || /^[A-Z_]+=/.test(argv[0] ?? '')) argv.shift()
+  if (/[\\/]sh\.exe$/i.test(argv[0] ?? '')) argv[0] = 'sh'
   const answer = answers[argv.join(' ')] ?? ''
   const reader = (text: string) => ({ readFrom: () => ({ text, nextOffset: text.length, lossy: false }) })
   return { done: Promise.resolve({ exitCode: answer instanceof Error ? 1 : 0, signal: null }), collected: { stdout: reader(answer instanceof Error ? '' : answer), stderr: reader(answer instanceof Error ? answer.message : '') } }
@@ -146,10 +147,6 @@ beforeEach(async () => {
     [`git -C ${directory} remote get-url --push origin`]: 'https://github.com/acme/widgets.git\n',
     [`${AGENT()} api user`]: '{"login":"agent-bot","id":7}', [`${AGENT()} api repos/acme/widgets --jq {name: .full_name, push: .permissions.push}`]: '{"name":"acme/widgets","push":true}\n',
     [`${OTHER()} api user`]: '{"login":"agent-bot","id":7}', [`${OTHER()} api repos/acme/widgets --jq {name: .full_name, push: .permissions.push}`]: '{"name":"acme/widgets","push":true}\n',
-    // Windows binds the `gh` account through an isolated GH_CONFIG_DIR, so setup reads the CLI's own token once and then
-    // proves the worker's own `gh` answers as the configured login.
-    [`${AGENT()} auth token`]: 'gho_testtoken\n', [`${OTHER()} auth token`]: 'gho_testtoken\n',
-    ['gh api user --jq .login']: 'agent-bot\n',
     [`${BOT()} auth status`]: JSON.stringify({ appId: 'cli_bot', brand: 'feishu', identities: { bot: { status: 'ready' } } }),
     [`${BOT()} config strict-mode`]: 'strict-mode: bot (source: profile)',
     [`${BOT()} api GET /open-apis/bot/v3/info --as bot --format ndjson`]: '{"bot":{"open_id":"ou_bot"},"code":0,"msg":"ok"}',
@@ -853,15 +850,10 @@ it('reports each setup problem where the operator fixes it, and checks the agent
   answers[`${AGENT()} api repos/acme/widgets --jq {name: .full_name, push: .permissions.push}`] = '{"name":"acme/widgets","push":false}\n'
   await needs('github', 'repositoryReadOnly', { account: 'agent-bot', repository: 'acme/widgets' })
   answers[`${AGENT()} api repos/acme/widgets --jq {name: .full_name, push: .permissions.push}`] = '{"name":"acme/widgets","push":true}\n'
-  // The agent CLI runs in the workers' environment: without the shims on PATH. Windows has no `env` utility, so there the
-  // overrides are passed to the child directly instead.
-  const check = subprocess.spawn.mock.calls.map(([spec]) => spec.argv).find(argv => argv.includes(AGENT()))!
-  if (process.platform === 'win32') expect(check[0]).toBe(AGENT())
-  else {
-    expect(check[0]).toBe('env')
-    expect(check[1]!.startsWith('PATH=')).toBe(true)
-    expect(check[1]!.slice('PATH='.length).split(':')).not.toContain(join(directory, 'worker-bin'))
-  }
+  // The agent CLI runs in the workers' environment: without the shims on PATH.
+  const check = subprocess.spawn.mock.calls.map(([spec]) => spec as { argv: string[]; env?: Record<string, string> }).find(spec => spec.argv.includes(AGENT()))!
+  expect(check.argv[0]).toBe(AGENT())
+  expect(check.env?.PATH?.split(delimiter)).not.toContain(join(directory, 'worker-bin'))
   const valid = { ...answers }
   // git older than 2.32 ignores GIT_CONFIG_GLOBAL and reads the operator's configuration.
   answers = { ...valid, [HELPERS]: 'file:/home/me/.gitconfig\0!gh auth git-credential\0' }
@@ -1012,11 +1004,9 @@ it('rewrites the blocked-command shims when the Executor settings change them, w
   const bin = join(directory, 'worker-bin')
   const save = (blockedCommands: string[]) => runtime.settings.save('executor', { ...runtime.store.settings().executor, blockedCommands }, runtime.store.blockRevision('executor'), 'panel')
   expect(await save(['personal-gh'])).toMatchObject({ saved: true, restarting: false })
-  // Windows executes no `sh` shim, so there the `gh` account is bound through an isolated GH_CONFIG_DIR instead of a shim.
-  const shims = (...extra: string[]) => (process.platform === 'win32' ? ['lark-cli', ...extra] : ['gh', 'lark-cli', ...extra]).sort()
-  expect(readdirSync(bin).sort()).toEqual(shims('personal-gh'))
+  expect(readdirSync(bin).sort()).toEqual(['gh', 'lark-cli', 'personal-gh'])
   await save([])
-  expect(readdirSync(bin).sort()).toEqual(shims())
+  expect(readdirSync(bin).sort()).toEqual(['gh', 'lark-cli'])
   // The commands workers need cannot be blocked.
   await expect(save(['gh'])).rejects.toThrow()
   expect(restarts).not.toHaveBeenCalled()
@@ -1088,10 +1078,10 @@ it('leaves auto-merge to the delivery requirements, with the agent\'s own gh and
 
 it('runs the prepare command once for a new ticket, under the execution root with the ticket\'s environment, and fails the ticket with its output', async () => {
   const prepare = (command: string) => runtime.store.saveSettings({ ...runtime.store.settings(), executor: { ...runtime.store.settings().executor, prepare: command } })
-  const runs = () => subprocess.spawn.mock.calls.map(([spec]) => spec as { argv: string[]; cwd: string; env?: Record<string, string> }).filter(spec => spec.argv[0] === 'sh')
+  const runs = () => subprocess.spawn.mock.calls.map(([spec]) => spec as { argv: string[]; cwd: string; env?: Record<string, string> }).filter(spec => (spec.argv[0] === 'sh' || /[\\/]sh\.exe$/i.test(spec.argv[0] ?? '')))
   prepare('git -C /srv/widgets worktree add "$DSH_SUPERAGENT_DIR" -b "agent/$DSH_SUPERAGENT_NAME"')
   const { ticket } = await acceptedTicket()
-  expect(runs()).toEqual([expect.objectContaining({ argv: ['sh', '-c', 'git -C /srv/widgets worktree add "$DSH_SUPERAGENT_DIR" -b "agent/$DSH_SUPERAGENT_NAME"'], cwd: join(directory, 'work'),
+  expect(runs()).toEqual([expect.objectContaining({ argv: [expect.stringMatching(/(?:^sh$|[\\/]sh\.exe$)/i), '-c', 'git -C /srv/widgets worktree add "$DSH_SUPERAGENT_DIR" -b "agent/$DSH_SUPERAGENT_NAME"'], cwd: join(directory, 'work'),
     env: expect.objectContaining({ DSH_SUPERAGENT_DIR: ticket.execution!.directory, DSH_SUPERAGENT_NAME: ticket.execution!.name, DSH_SUPERAGENT_GITHUB_REPOSITORY: 'acme/widgets', DSH_SUPERAGENT_FEISHU_CHAT: CHAT }) })])
   // A retry reuses the prepared directory.
   await runTool(`worker-${ticket.id}`, 'orchestrator_report', { state: 'failed', summary: 'offline' })
@@ -1116,7 +1106,7 @@ it('counts a ticket whose directory the host prepared before prepare commands ex
   subprocess.spawn.mockClear()
   await runtime.engine.retryTicket(ticket.id)
   await runtime.idle()
-  expect(subprocess.spawn.mock.calls.some(([spec]) => spec.argv[0] === 'sh')).toBe(false)
+  expect(subprocess.spawn.mock.calls.some(([spec]) => (spec.argv[0] === 'sh' || /[\\/]sh\.exe$/i.test(spec.argv[0] ?? '')))).toBe(false)
   expect(runtime.store.tickets.get(ticket.id)!.assignments.at(-1)!.state).toBe('running')
 })
 
@@ -1571,10 +1561,16 @@ it('refuses an ended ticket\'s worker its tools, and restricts the main Session 
   runtime.engine.stopTicket(ticket.id)
   expect(guards.get(sessionId)!()).toBe('Ticket ended; new work needs a new authorized ticket')
   expect(restricts.get(runtime.masterId)).toEqual([{ allow: ['skill', 'bash', 'read', 'read_image', 'job_output', 'job_list', 'job_kill'] }])
-  // A worker keeps only the profile's work tools: none that ask a person, change the profile, schedule or start work outside
-  // the worker slots, reach other Sessions or edit documents, whenever they were registered.
-  expect(restricts.get(sessionId)).toEqual([{ allow: ['read', 'read_image', 'grep', 'bash', 'job_output', 'job_list', 'job_kill', 'web_search', 'skill',
-    'plugin_manager', 'ask_user_question', 'schedule_create'] }])
+  // A worker keeps the profile's work tools plus the ones a general agent needs: installing a plugin it lacks, asking a
+  // person, presenting a result and scheduling follow-up work. It still cannot reach another Session's tools, and its
+  // guard refuses everything once the ticket ends.
+  //
+  // Only the tools this fake host actually registers survive the filter, so `schedule_list`, `schedule_view` and
+  // `schedule_edit` are absent here even though the allow-list names them — which is the point of filtering by what exists:
+  // a name that no plugin provides would otherwise be a promise the worker never had.
+  const allowed = (restricts.get(sessionId) as { allow: string[] }[])[0]!.allow
+  expect([...allowed].sort()).toEqual(['ask_user_question', 'bash', 'grep', 'job_kill', 'job_list', 'job_output', 'plugin_manager',
+    'read', 'read_image', 'schedule_create', 'skill', 'web_search'])
 })
 
 it('gives an explicit ticket\'s worker a prompt without the limits of an inferred Mandate', async () => {
@@ -1608,7 +1604,7 @@ it('runs a launch that fails for a passing reason again on the launch backoff th
     controller.resolveAgent.mockImplementation(original)
   }
   // A prepare command whose output names a passing failure is not run again on its own.
-  const runs = () => subprocess.spawn.mock.calls.filter(([spec]) => (spec as { argv: string[] }).argv[0] === 'sh').length
+  const runs = () => subprocess.spawn.mock.calls.filter(([spec]) => ((spec as { argv: string[] }).argv[0] === 'sh' || /[\\/]sh\.exe$/i.test((spec as { argv: string[] }).argv[0] ?? ''))).length
   runtime.store.saveSettings({ ...runtime.store.settings(), executor: { ...runtime.store.settings().executor, prepare: 'exit 3' } })
   answers['sh -c exit 3'] = new Error('fatal: unable to access: The requested URL returned error: 503')
   const before = runs()
@@ -1728,8 +1724,7 @@ it('gives a subagent of a worker only the worker\'s work tools, and none once th
   const child = agents.get('child-1')! as unknown as { session: { header: { parentSession?: string } } }
   child.session.header = { parentSession: sessionId }
   await (runtime as unknown as { ctx: Context }).ctx.parallel('agent/created', { agent: child } as never)
-  expect(restricts.get('child-1')).toEqual([{ allow: ['read', 'read_image', 'grep', 'bash', 'job_output', 'job_list', 'job_kill', 'web_search', 'skill',
-    'plugin_manager', 'ask_user_question', 'schedule_create'] }])
+  expect(restricts.get('child-1')).toEqual([{ allow: ['read', 'read_image', 'grep', 'bash', 'job_output', 'job_list', 'job_kill', 'web_search', 'skill'] }])
   expect(guards.get('child-1')!()).toBeUndefined()
   runtime.engine.stopTicket(ticket.id)
   expect(guards.get('child-1')!()).toBe('Ticket ended; new work needs a new authorized ticket')
@@ -1739,6 +1734,21 @@ it('gives a subagent of a worker only the worker\'s work tools, and none once th
   other.session.header = { parentSession: 'someone-else' }
   await (runtime as unknown as { ctx: Context }).ctx.parallel('agent/created', { agent: other } as never)
   expect(restricts.get('child-2')).toBeUndefined()
+})
+
+it('reports and clears model budget retries from a managed subagent', async () => {
+  const { sessionId } = await acceptedTicket()
+  await (controller.create as (options: { sessionId: string }) => Promise<void>)({ sessionId: 'budget-child' })
+  const child = agents.get('budget-child')! as unknown as { id: string; session: { header: { parentSession?: string } } }
+  child.session.header = { parentSession: sessionId }
+  const context = (runtime as unknown as { ctx: Context }).ctx
+  await context.parallel('agent/created', { agent: child } as never)
+  context.emit('session/event', child.session as never, { type: 'llm/retry', seq: 1, time: Date.now(), data: {
+    retryId: 'budget', turn: 1, step: 1, provider: 'model-provider', retry: 3, failure: { type: 'budget_exceeded' },
+  } } as never)
+  expect(runtime.health.models).toMatchObject({ state: 'error', detail: expect.stringContaining('budget-child') })
+  context.emit('agent/status', { agent: child, status: 'idle' } as never)
+  expect(runtime.health.models).toMatchObject({ state: 'ready' })
 })
 
 it('gives a subagent of a worker\'s subagent the same work tools and guard', async () => {
@@ -1751,8 +1761,7 @@ it('gives a subagent of a worker\'s subagent the same work tools and guard', asy
     agent.session.header = { parentSession: parent }
     await created.parallel('agent/created', { agent } as never)
   }
-  expect(restricts.get('grandchild-1')).toEqual([{ allow: ['read', 'read_image', 'grep', 'bash', 'job_output', 'job_list', 'job_kill', 'web_search', 'skill',
-    'plugin_manager', 'ask_user_question', 'schedule_create'] }])
+  expect(restricts.get('grandchild-1')).toEqual([{ allow: ['read', 'read_image', 'grep', 'bash', 'job_output', 'job_list', 'job_kill', 'web_search', 'skill'] }])
   runtime.engine.stopTicket(ticket.id)
   expect(guards.get('grandchild-1')!()).toBe('Ticket ended; new work needs a new authorized ticket')
 })

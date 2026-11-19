@@ -4,8 +4,62 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import { agentEvents, installModelSelection, type Agent, type ModelSelection, type ModelSelectionRef } from '@deepseek-ai/dsh-agent'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
-import { initializeRoleModel } from '../src/app/role-models.ts'
+import { initializeRoleModel, resolveRoleModel } from '../src/app/role-models.ts'
+import { Sessions } from '../src/app/sessions.ts'
+import { KV } from '../src/kv.ts'
 const contexts: Context[] = []
+
+it('selects only adapter-supported automatic efforts and preserves explicit choices', async () => {
+  const ctx = new Context(); contexts.push(ctx)
+  const capabilities = vi.fn(async () => ({ reasoning: { efforts: [{ id: 'tiny', name: 'Tiny' }, { id: 'deep', name: 'Deep' }] } }))
+  const resolve = vi.fn(async (value: unknown) => value)
+  ctx.reflect.provide('llm', { resolveModelInfo: capabilities, resolveCallConfig: resolve })
+  const model = { provider: 'p', model: 'm' }
+  expect(await resolveRoleModel(ctx, model, false)).toEqual({ ...model, reasoningEffort: 'tiny' })
+  expect(await resolveRoleModel(ctx, model, true)).toEqual({ ...model, reasoningEffort: 'deep' })
+  expect(await resolveRoleModel(ctx, { ...model, reasoningEffort: 'custom' }, true)).toEqual({ ...model, reasoningEffort: 'custom' })
+  expect(capabilities).toHaveBeenCalledTimes(2)
+})
+
+it('uses the default when capabilities are unavailable or change during automatic selection', async () => {
+  const ctx = new Context(); contexts.push(ctx)
+  const capabilities = vi.fn().mockRejectedValueOnce(new Error('no metadata')).mockResolvedValue({ reasoning: { efforts: [{ id: 'deep' }] } })
+  const resolve = vi.fn(async (value: { reasoningEffort?: string }) => {
+    if (value.reasoningEffort) throw new Error('no longer supported')
+    return value
+  })
+  ctx.reflect.provide('llm', { resolveModelInfo: capabilities, resolveCallConfig: resolve })
+  const model = { provider: 'p', model: 'm' }
+  expect(await resolveRoleModel(ctx, model, true)).toEqual(model)
+  expect(await resolveRoleModel(ctx, model, true)).toEqual(model)
+  await expect(resolveRoleModel(ctx, { ...model, reasoningEffort: 'deep' }, true)).rejects.toThrow('no longer supported')
+})
+
+it('binds configured and inherited models to distinct team child sessions and enforces the task limit', async () => {
+  const ctx = new Context(); contexts.push(ctx)
+  ctx.reflect.provide('llm', { resolveCallConfig: async (value: unknown) => value,
+    resolveModelInfo: async () => ({ reasoning: { efforts: [{ id: 'low' }, { id: 'high' }] } }) })
+  ctx.reflect.provide('sessionPersistence', { flush: async () => {} })
+  ctx.reflect.provide('agentTeams', { tryMembership: () => ({ role: 'teammate', name: 'worker', root: {} }) })
+  const state = { inherited: { provider: 'parent', model: 'at-start' }, models: [{ provider: 'chosen', model: 'one' }, null], max: 2, slots: {}, autoHard: true }
+  const data = new Map<string, unknown>([[KV.sessions.teamModels('ticket'), state]])
+  const store = { get: (key: string) => data.get(key), set: (key: string, value: unknown) => data.set(key, value), tickets: { get: () => ({}) } }
+  const host = { context: ctx, store, effects: { handle: () => {} }, usage: {} }
+  const sessions = new Sessions(host as never)
+  const make = (id: string) => {
+    const child = new Context(); contexts.push(child)
+    child.reflect.provide('tools', { get: () => undefined, restrict: () => () => {}, guard: () => () => {} })
+    const session = Session.create(SessionId(id))
+    Object.defineProperty(session, 'header', { value: { parentSession: 'worker-ticket' } })
+    return { id, ctx: child, session } as unknown as Agent
+  }
+  const first = make('child-one'), second = make('child-two'), third = make('child-three')
+  const bind = (agent: Agent) => (sessions as unknown as { limitSubagent(agent: Agent): Promise<void> }).limitSubagent(agent)
+  await bind(first); await bind(second)
+  expect(first.session.snapshotEvents().find(event => event.type === 'model/selection')?.data).toMatchObject({ provider: 'chosen', model: 'one', reasoningEffort: 'high' })
+  expect(second.session.snapshotEvents().find(event => event.type === 'model/selection')?.data).toMatchObject({ provider: 'parent', model: 'at-start', reasoningEffort: 'high' })
+  await expect(bind(third)).rejects.toThrow('2 child-session limit')
+})
 afterEach(async () => { await Promise.all(contexts.splice(0).map(ctx => ctx.fiber.dispose())); vi.restoreAllMocks() })
 async function fixture() {
   const ctx = new Context(); contexts.push(ctx); await ctx.plugin(SystemPrompt)

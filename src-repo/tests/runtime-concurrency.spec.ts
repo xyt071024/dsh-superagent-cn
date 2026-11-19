@@ -8,6 +8,9 @@ import { SettingsSchema } from '../src/policy.ts'
 import { Commands } from '../src/infra/commands.ts'
 import { deferred, waitUntil } from './fixtures/async.ts'
 import { CHAT, MEMBER, feishu, startRuntime, type Host } from './fixtures/host.ts'
+import { execFileSync } from 'node:child_process'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 let h: Host
 beforeEach(async () => { h = await startRuntime() })
@@ -27,6 +30,158 @@ const idle = (sessionId: string) => {
   agent.status = 'idle'
   h.ctx.emit('agent/status', { agent, status: 'idle' } as never)
 }
+
+it('starts a real team investigation for complex work while keeping simple work single-session', async () => {
+  const settings = h.runtime.store.settings()
+  h.runtime.store.saveSettings({ ...settings, routing: { ...settings.routing, multiSession: 'auto', difficultyThreshold: 60 } })
+  const spawn = vi.fn(async (_agent: unknown, _request: unknown) => ({ member: { id: 'helper', name: 'helper', status: 'active' } }))
+  h.ctx.reflect.provide('agentTeams', { listMembers: () => [], spawnTeammate: spawn })
+  await h.acceptedTicket(feishu('simple', '@bot fix typo'))
+  expect(spawn).not.toHaveBeenCalled()
+  await h.acceptedTicket(feishu('complex', `@bot ${'complex investigation '.repeat(50)}`))
+  await vi.waitFor(() => expect(spawn).toHaveBeenCalledTimes(1))
+  expect(spawn.mock.calls[0]![1]).toMatchObject({ context: 'fresh', provider: 'spawn', description: 'Independent investigation' })
+})
+
+it('continues the main task when the helper is slow or cannot start', async () => {
+  const settings = h.runtime.store.settings()
+  h.runtime.store.saveSettings({ ...settings, routing: { ...settings.routing, multiSession: 'auto', difficultyThreshold: 60 } })
+  const gate = deferred<void>()
+  const spawn = vi.fn(async () => { await gate.promise; throw new Error('helper unavailable') })
+  h.ctx.reflect.provide('agentTeams', { listMembers: () => [], spawnTeammate: spawn })
+  const one = await h.acceptedTicket(feishu('slow-helper', `@bot ${'complex investigation '.repeat(50)}`))
+  await vi.waitFor(() => expect(spawn).toHaveBeenCalled())
+  expect(h.agents.get(one.sessionId)?.status).toBe('running')
+  expect(h.runtime.store.tickets.get(one.ticket.id)?.ended).toBeUndefined()
+  gate.resolve()
+  const board = (h.runtime as unknown as { board: { all: Record<string, { state: string; detail?: string }> } }).board
+  await vi.waitFor(() => expect(board.all.worker).toMatchObject({ state: 'error', detail: expect.stringContaining('helper unavailable') }))
+  expect(h.runtime.store.tickets.get(one.ticket.id)?.ended).toBeUndefined()
+})
+
+it('queues an independent Git review and completes only after its bound reviewer approves', async () => {
+  const settings = h.runtime.store.settings()
+  h.runtime.store.saveSettings({ ...settings, executor: { ...settings.executor, reviewEnabled: true } })
+  const work = join(h.directory, 'review-git')
+  mkdirSync(work)
+  const git = (...args: string[]) => execFileSync('git', ['-C', work, ...args], { stdio: 'pipe', env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: process.platform === 'win32' ? 'NUL' : '/dev/null' } })
+  git('init', '-q'); git('config', 'user.name', 'Test'); git('config', 'user.email', 'test@example.invalid')
+  writeFileSync(join(work, 'file.txt'), 'before'); git('add', '.'); git('commit', '-qm', 'initial')
+  writeFileSync(join(work, 'file.txt'), 'after')
+  const one = await h.acceptedTicket(feishu('1', '@bot 修复这个特定故障并验证结果'))
+  const ticket = h.runtime.store.tickets.get(one.ticket.id)!
+  ticket.execution!.directory = work
+  h.runtime.store.tickets.save(ticket)
+  const members: { id: string; name: string; status: string; role: string }[] = []
+  const spawn = vi.fn(async (_lead: unknown, request: { name: string; prompt: { text: string }[] }) => {
+    expect(request.prompt[0]?.text).toContain('修复这个特定故障并验证结果')
+    const member = { id: 'reviewer-session', name: request.name, status: 'inactive', role: 'teammate' }
+    members.push(member)
+    h.agents.set(member.id, { id: member.id, status: 'idle', session: { snapshotEvents: () => [{ type: 'assistant/message', data: { message: { content: [{ type: 'text', text: JSON.stringify({ approved: true, issues: [] }) }] } } }] } } as never)
+    return { member }
+  })
+  h.ctx.reflect.provide('agentTeams', { listMembers: () => members, spawnTeammate: spawn })
+  const result = await h.runTool(one.sessionId, 'orchestrator_report', { state: 'ready', summary: 'Implemented' }) as { review?: string }
+  expect(result.review).toBe('pending')
+  await h.runtime.idle()
+  expect(spawn).toHaveBeenCalledOnce()
+  expect(h.runtime.store.tickets.get(one.ticket.id)?.review?.state).toBe('passed')
+  expect(h.runtime.store.tickets.get(one.ticket.id)?.ended?.outcome).toBe('completed')
+}, 20_000)
+
+it('rejects a pre-existing unbound reviewer instead of trusting its approval', async () => {
+  const settings = h.runtime.store.settings()
+  h.runtime.store.saveSettings({ ...settings, executor: { ...settings.executor, reviewEnabled: true } })
+  const work = join(h.directory, 'review-collision')
+  mkdirSync(work)
+  const git = (...args: string[]) => execFileSync('git', ['-C', work, ...args], { stdio: 'pipe', env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: process.platform === 'win32' ? 'NUL' : '/dev/null' } })
+  git('init', '-q'); git('config', 'user.name', 'Test'); git('config', 'user.email', 'test@example.invalid')
+  writeFileSync(join(work, 'file.txt'), 'initial'); git('add', '.'); git('commit', '-qm', 'initial')
+  const one = await h.acceptedTicket(feishu('1', '@bot 修复'))
+  const ticket = h.runtime.store.tickets.get(one.ticket.id)!
+  ticket.execution!.directory = work
+  h.runtime.store.tickets.save(ticket)
+  const spawn = vi.fn()
+  h.ctx.reflect.provide('agentTeams', { listMembers: () => {
+    const name = h.runtime.store.tickets.get(one.ticket.id)?.review?.reviewer
+    return name ? [{ id: 'untrusted-member', name, role: 'teammate', status: 'inactive' }] : []
+  }, spawnTeammate: spawn })
+  h.agents.set('untrusted-member', { session: { snapshotEvents: () => [{ type: 'assistant/message', data: { message: { content: [{ type: 'text', text: '{"approved":true,"issues":[]}' }] } } }] } } as never)
+  await h.runTool(one.sessionId, 'orchestrator_report', { state: 'ready', summary: 'Implemented' })
+  await h.runtime.idle()
+  const stored = h.runtime.store.tickets.get(one.ticket.id)!
+  expect(stored.review).toMatchObject({ state: 'failed', summary: 'Independent reviewer identity could not be verified' })
+  expect(stored.ended).toBeUndefined()
+  expect(spawn).not.toHaveBeenCalled()
+}, 20_000)
+
+it('recovers a queued review after Runtime restart only for its persisted reviewer identity', async () => {
+  const settings = h.runtime.store.settings()
+  h.runtime.store.saveSettings({ ...settings, executor: { ...settings.executor, reviewEnabled: true } })
+  const work = join(h.directory, 'review-restart')
+  mkdirSync(work)
+  const git = (...args: string[]) => execFileSync('git', ['-C', work, ...args], { stdio: 'pipe', env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: process.platform === 'win32' ? 'NUL' : '/dev/null' } })
+  git('init', '-q'); git('config', 'user.name', 'Test'); git('config', 'user.email', 'test@example.invalid')
+  writeFileSync(join(work, 'file.txt'), 'initial'); git('add', '.'); git('commit', '-qm', 'initial')
+  const one = await h.acceptedTicket(feishu('1', '@bot 修复'))
+  await h.runtime.settings.pause(true, 'panel')
+  const ticket = h.runtime.store.tickets.get(one.ticket.id)!
+  ticket.execution!.directory = work
+  ticket.review = { state: 'pending', round: 1, fingerprint: '', reviewer: 'review-resume', reviewerId: 'trusted-reviewer' }
+  h.runtime.store.tickets.save(ticket)
+  h.runtime.effects.enqueue('review', ticket.id, { ticketId: ticket.id, round: 1 })
+  expect(h.runtime.effects.pending('review', ticket.id)).toBe(true)
+  const lead = h.agents.get(one.sessionId)!
+  const directory = h.directory
+  await h.runtime.stop()
+  vi.restoreAllMocks()
+  h = await startRuntime(store => {
+    const persisted = store.settings()
+    store.saveSettings({ ...persisted, paused: true, executor: { ...persisted.executor, reviewEnabled: true } })
+  }, directory)
+  h.agents.set(one.sessionId, lead)
+  const member = { id: 'trusted-reviewer', name: 'review-resume', role: 'teammate', status: 'inactive' }
+  const spawn = vi.fn()
+  h.ctx.reflect.provide('agentTeams', { listMembers: () => [member], spawnTeammate: spawn })
+  h.agents.set(member.id, { session: { snapshotEvents: () => [{ type: 'assistant/message', data: { message: { content: [{ type: 'text', text: '{"approved":true,"issues":[]}' }] } } }] } } as never)
+  expect(h.runtime.effects.pending('review', ticket.id)).toBe(true)
+  await h.runtime.settings.pause(false, 'panel')
+  await h.runtime.idle()
+  expect(spawn).not.toHaveBeenCalled()
+  expect(h.runtime.store.tickets.get(ticket.id)?.review?.state).toBe('passed')
+  expect(h.runtime.store.tickets.get(ticket.id)?.ended?.outcome).toBe('completed')
+}, 30_000)
+
+it('stops after three rejected reviews without marking the ticket complete', async () => {
+  const settings = h.runtime.store.settings()
+  h.runtime.store.saveSettings({ ...settings, executor: { ...settings.executor, reviewEnabled: true } })
+  const work = join(h.directory, 'review-three-rounds')
+  mkdirSync(work)
+  const git = (...args: string[]) => execFileSync('git', ['-C', work, ...args], { stdio: 'pipe', env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: process.platform === 'win32' ? 'NUL' : '/dev/null' } })
+  git('init', '-q'); git('config', 'user.name', 'Test'); git('config', 'user.email', 'test@example.invalid')
+  writeFileSync(join(work, 'file.txt'), 'initial'); git('add', '.'); git('commit', '-qm', 'initial')
+  const one = await h.acceptedTicket(feishu('1', '@bot 修复'))
+  const ticket = h.runtime.store.tickets.get(one.ticket.id)!
+  ticket.execution!.directory = work
+  h.runtime.store.tickets.save(ticket)
+  const members: { id: string; name: string; status: string; role: string }[] = []
+  const spawn = vi.fn(async (_lead: unknown, request: { name: string }) => {
+    const member = { id: `reviewer-${members.length + 1}`, name: request.name, status: 'inactive', role: 'teammate' }
+    members.push(member)
+    h.agents.set(member.id, { session: { snapshotEvents: () => [{ type: 'assistant/message', data: { message: { content: [{ type: 'text', text: '{"approved":false,"issues":["missing test"]}' }] } } }] } } as never)
+    return { member }
+  })
+  h.ctx.reflect.provide('agentTeams', { listMembers: () => members, spawnTeammate: spawn })
+  for (let round = 1; round <= 3; round++) {
+    await h.runTool(one.sessionId, 'orchestrator_report', { state: 'ready', summary: `Attempt ${round}` })
+    await h.runtime.idle()
+    const stored = h.runtime.store.tickets.get(one.ticket.id)!
+    expect(stored.review).toMatchObject({ state: 'failed', round })
+    expect(stored.ended).toBeUndefined()
+  }
+  expect(spawn).toHaveBeenCalledTimes(3)
+  expect(h.runtime.store.tickets.get(one.ticket.id)?.review?.summary).toContain('round limit')
+}, 30_000)
 
 it('evaluates a message that arrives on a thread while an earlier candidate\'s card waits for its link, in the thread\'s next Eval', async () => {
   const gate = deferred()
@@ -86,7 +241,7 @@ it('runs prepare commands in the background, side by side, while accepts, intake
   h.runtime.store.saveSettings({ ...settings, executor: { ...settings.executor, prepare: 'git -C /srv/widgets worktree add "$DSH_SUPERAGENT_DIR"' } })
   const prepare = deferred()
   h.hooks.prepare = prepare.promise
-  const prepares = () => h.subprocess.spawn.mock.calls.filter(([spec]) => spec.argv[0] === 'sh').length
+  const prepares = () => h.subprocess.spawn.mock.calls.filter(([spec]) => (spec.argv[0] === 'sh' || /[\\/]sh\.exe$/i.test(spec.argv[0] ?? ''))).length
   const first = [feishu('1', '@bot 修一'), feishu('2', '@bot 修二')]
   for (const trigger of first) h.runtime.receive(trigger)
   await h.runtime.idle()
@@ -105,6 +260,27 @@ it('runs prepare commands in the background, side by side, while accepts, intake
   expect(h.runtime.store.tickets.list().map(ticket => ticket.assignments.at(-1)!.state)).toEqual(['running', 'running'])
 })
 
+it('holds a real queued assignment at the daily token limit and starts it when the limit is raised', async () => {
+  const settings = h.runtime.store.settings()
+  h.runtime.store.saveSettings({ ...settings, budget: { ...settings.budget, dailyTokens: 10 } })
+  h.runtime.usage.observe({ type: 'assistant/message', data: { usage: { outputTokens: 10 } } } as never)
+  const trigger = feishu('1', '@bot 修复问题')
+  h.runtime.receive(trigger); await h.runtime.idle()
+  await h.route({ kind: 'accept', trigger_id: trigger.id, title: 'fix', worktree_name: 'fix-budget', acknowledgement: '收到。' })
+  await h.runtime.idle()
+  const [ticket] = h.runtime.store.tickets.list()
+  expect(ticket!.assignments.at(-1)!.state).toBe('pending')
+  expect(h.runtime.effects.pending('launch')).toBe(true)
+  expect(h.agents.has(`worker-${ticket!.id}`)).toBe(false)
+
+  const current = h.runtime.store.settings()
+  h.runtime.store.saveSettings({ ...current, budget: { ...current.budget, dailyTokens: 20 } })
+  await h.runtime.pump(); await h.runtime.idle()
+  expect(h.runtime.store.tickets.get(ticket!.id)!.assignments.at(-1)!.state).toBe('running')
+  expect(h.runtime.effects.pending('launch')).toBe(false)
+  expect(h.agents.has(`worker-${ticket!.id}`)).toBe(true)
+})
+
 it('keeps a launch that a pause cut short queued, and finishes it once processing resumes', async () => {
   const settings = h.runtime.store.settings()
   h.runtime.store.saveSettings({ ...settings, executor: { ...settings.executor, prepare: 'make worktree' } })
@@ -113,7 +289,7 @@ it('keeps a launch that a pause cut short queued, and finishes it once processin
   const trigger = feishu('1', '@bot 修一')
   h.runtime.receive(trigger); await h.runtime.idle()
   await h.route({ kind: 'accept', trigger_id: trigger.id, title: 'fix', worktree_name: 'fix-one', acknowledgement: '收到。' })
-  await waitUntil(() => h.subprocess.spawn.mock.calls.some(([spec]) => spec.argv[0] === 'sh'))
+  await waitUntil(() => h.subprocess.spawn.mock.calls.some(([spec]) => (spec.argv[0] === 'sh' || /[\\/]sh\.exe$/i.test(spec.argv[0] ?? ''))))
   await h.runtime.settings.pause(true, 'panel')
   prepare.resolve(); await h.runtime.idle()
   const [ticket] = h.runtime.store.tickets.list()
@@ -165,7 +341,7 @@ it('counts a launch under way against maxWorkers, so a bot\'s Input for an idle 
   h.hooks.prepare = prepare.promise
   h.runtime.receive(feishu('5', '@bot 修二')); await h.runtime.idle()
   await h.route({ kind: 'accept', trigger_id: feishu('5', '').id, title: 'two', worktree_name: 'fix-two', acknowledgement: '收到。' })
-  await waitUntil(() => h.subprocess.spawn.mock.calls.filter(([spec]) => spec.argv[0] === 'sh').length === 2)
+  await waitUntil(() => h.subprocess.spawn.mock.calls.filter(([spec]) => (spec.argv[0] === 'sh' || /[\\/]sh\.exe$/i.test(spec.argv[0] ?? ''))).length === 2)
   h.runtime.receive(botMessage()); await h.runtime.pump()
   expect(h.runtime.store.tickets.get(one.ticket.id)!.undelivered).toHaveLength(1)
   expect(h.agents.get(one.sessionId)!.status).toBe('idle')

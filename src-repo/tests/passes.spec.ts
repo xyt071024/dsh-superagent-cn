@@ -54,3 +54,18 @@ it('starts no timer once stopped, as a start-up that ends after a stop asks', as
     expect(h.engine.evaluateDue).not.toHaveBeenCalled()
   } finally { vi.useRealTimers() }
 })
+
+it('starts only one timer and leaves no periodic passes after repeated starts and stop', async () => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+  try {
+    const h = passes()
+    h.passes.start()
+    h.passes.start()
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(h.engine.evaluateDue).toHaveBeenCalledTimes(1)
+    await h.passes.stop()
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(h.engine.evaluateDue).toHaveBeenCalledTimes(1)
+    expect(vi.getTimerCount()).toBe(0)
+  } finally { vi.useRealTimers() }
+})

@@ -94,10 +94,13 @@ export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
             ...(args.question_for_trigger_id ? { askedBy: args.question_for_trigger_id } : {}),
             ...(args.reply_to_trigger_id ? { answers: args.reply_to_trigger_id } : {}) }
           const updated = host.engine.report(ticketId, report)
-          const relay = reportRelay(updated, report)
+          // A completion candidate under independent review is not yet a finished result.
+          const relayed = report.state === 'ready' && updated.review && updated.review.state !== 'passed'
+            ? { ...report, state: 'progress' as const, summary: `Independent review pending: ${report.summary}` } : report
+          const relay = reportRelay(updated, relayed)
           if (relay) host.sessions.relay(relay.id, relay.text)
           const notification = relay ? 'orchestrator' : 'internal_only'
-          return { reported: true, notification, ...(updated.attention ? { attention: updated.attention } : {}) }
+          return { reported: true, notification, ...(updated.review && updated.review.state !== 'passed' && report.state === 'ready' ? { review: updated.review.state } : {}), ...(updated.attention ? { attention: updated.attention } : {}) }
         })
       },
     }),

@@ -81,6 +81,8 @@ export class Tickets extends EnginePart {
       if (!follow) continue
       follow.closed = { at, outcome }
       this.repo.tickets.save(ticket)
+      if (this.options.reviewEnabled?.() !== false && ticket.review?.state === 'pending' && ticket.review.round === 0 && latestAssignment(ticket)?.report?.state === 'ready')
+        this.options.executor.review?.(ticket)
       const done = this.followsDone(ticket)
       if (!done || this.unfinished(ticket, at)) continue
       // Work resumed after the close and finished ends now.
@@ -169,6 +171,7 @@ export class Tickets extends EnginePart {
     const ticket = this.require(ticketId)
     const latest = latestAssignment(ticket)
     if (!canRetry(ticket) || !latest) throw new UserError('notRetryable')
+    if (ticket.review?.state === 'failed') ticket.review = { state: 'pending', round: 0, fingerprint: '', reviewer: '' }
     this.endAssignment(ticket, latest, 'retried')
     this.requeueUntaken(ticket, latest)
     const assignment = this.newAssignment(ticket)
@@ -368,6 +371,7 @@ export class Tickets extends EnginePart {
    * change asks for no work.
    */
   private unfinished(ticket: Ticket, at: string): boolean {
+    if (this.options.reviewEnabled?.() !== false && ticket.review && ticket.review.state !== 'passed') return true
     const until = readUntil(ticket, false)
     const taken = this.triggersOf(ticket, ticket.inputs.flatMap(input => input.kind === 'trigger' && !readBefore(input, until) ? [input.id] : []))
       .some(trigger => this.owners(trigger).includes(ticket.id) && this.takenUp(ticket, trigger))

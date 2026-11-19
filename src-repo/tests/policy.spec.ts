@@ -16,6 +16,10 @@ const base = SettingsSchema.parse({
   eval: { mode: 'auto' },
   sources: { feishu: feishuSource({ chats: [{ chatId: CHAT, listen: 'mentions' }, { chatId: OBSERVED, listen: 'all' }], directMessages: true }) },
 })
+it('defaults new archive settings to 60% while preserving a saved threshold', () => {
+  expect(SettingsSchema.parse({}).budget.archivePercent).toBe(60)
+  expect(SettingsSchema.parse({ budget: { archivePercent: 65 } }).budget.archivePercent).toBe(65)
+})
 function setup(settings: Settings = base) {
   const sources = new SourceRegistry(() => settings)
   sources.register(feishuKind); sources.register(githubKind)
@@ -254,9 +258,11 @@ describe('settings migration', () => {
       sources: { feishu: feishuSource({ chats: [{ chatId: CHAT, listen: 'mentions' }, { chatId: OBSERVED, listen: 'all' }], directMessages: false }), github: { enabled: true, config: { pollSeconds: 120 } } },
       policy: { rules: [], sources: { feishu: { allowed: [{ id: MEMBER, name: 'A' }], admission: {} }, github: { allowed: [{ id: 'a' }], admission: {} } } },
       eval: { mode: 'auto', timeoutSeconds: 90, model: { provider: 'p', model: 'm' } },
-      executor: { model: null, maxWorkers: 5, directory: '', prepare: '', blockedCommands: [] },
-      routing: { multiSession: 'single', placement: 'background', thinking: 'auto', allow: [], difficultyThreshold: 60 },
-      budget: { archiveEnabled: true, archivePercent: 65, notifyLongTask: true, longTaskMinutes: 10, dailyTokens: 0 },
+      executor: { model: null, reviewEnabled: false, maxWorkers: 5, directory: '', prepare: '', blockedCommands: [] },
+      // The routing and budget blocks arrived after this migration was written; a migrated install gets their defaults, so
+      // they are part of the expected shape rather than omissions.
+      routing: { multiSession: 'single', maxSessions: 3, sessionModels: [], inheritOperatorModel: 'prefer', placement: 'background', thinking: 'auto', allow: [], difficultyThreshold: 60 },
+      budget: { archiveEnabled: true, archivePercent: 60, notifyLongTask: true, longTaskMinutes: 10, dailyTokens: 0 },
     })
     expect(migrateSettings(migrated)).toEqual(migrated)
   })

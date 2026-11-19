@@ -7,6 +7,13 @@ import { usePanel, mount, remount, settle, all, find, tab, click, type, text, fi
 import { server, problemOf, droppedReply } from './fixtures/panel-server.ts'
 
 usePanel()
+it('runs the user-requested source check and distinguishes it from message delivery', async () => {
+  await mount()
+  await click(zh['tab.source'])
+  await click(all('button').find(button => button.textContent === zh.sourceProbeRun)!)
+  expect(server.requests.some(request => request.method === 'POST' && request.path.endsWith('/probe'))).toBe(true)
+  expect(text()).toContain(zh.sourceProbeOk)
+})
 it('shows each Source\'s state on the Source status and opens its settings from a setup problem', async () => {
   await mount()
   await click(zh['tab.source'])

@@ -8,7 +8,7 @@ import { LIMITS } from '../limits.ts'
 import { usePanel } from './provider.tsx'
 import { Icon, InfoTip, Input, Pill } from './controls.tsx'
 import { SaveBar } from './draft.tsx'
-import { ConfigHistory, Field, Fields, numberOf, useBlockDraft, useSettings } from './settings-kit.tsx'
+import { ConfigHistory, Field, Fields, ModelField, numberOf, useBlockDraft, useSettings } from './settings-kit.tsx'
 import { Hint, LabelValue, Section } from './widgets.tsx'
 
 /** Ticks the exact `provider/model` ids a run may use, so no unapproved model is ever selected. */
@@ -64,9 +64,9 @@ export function RoutingSettings() {
   const { t, call } = usePanel()
   const { blocks } = useSettings().settings
   const routing = blocks.routing.value
-  const saved = { ...routing, difficultyThreshold: String(routing.difficultyThreshold) }
+  const saved = { ...routing, maxSessions: String(routing.maxSessions), difficultyThreshold: String(routing.difficultyThreshold) }
   const draft = useBlockDraft('routing', saved, blocks.routing.revision,
-    value => ({ ...value, difficultyThreshold: numberOf(value.difficultyThreshold) }))
+    value => ({ ...value, maxSessions: numberOf(value.maxSessions), difficultyThreshold: numberOf(value.difficultyThreshold) }))
   const value = draft.value
   const edit = (next: Partial<typeof value>) => draft.edit({ ...value, ...next })
   const [catalog, setCatalog] = useState<ModelCatalog>()
@@ -85,6 +85,20 @@ export function RoutingSettings() {
             </div>
           </Section>
           {multi && <>
+            <Field label={t('routingMaxSessions')} hint={t('routingMaxSessionsHint')}>
+              <Input type="number" min={1} max={16} required value={value.maxSessions}
+                onChange={event => edit({ maxSessions: event.target.value })} />
+            </Field>
+            <Hint>{t('routingSessionModelHint')}</Hint>
+            {Array.from({ length: Math.max(0, Math.min(16, Number(value.maxSessions) || 0)) }, (_, index) =>
+              <Section key={index} title={t('routingSessionModel', { number: index + 1 })}>
+                <ModelField id={`dt-session-model-${index}`} value={value.sessionModels[index] ?? null} onChange={model => {
+                  const models = [...value.sessionModels]
+                  while (models.length <= index) models.push(null)
+                  models[index] = model
+                  edit({ sessionModels: models })
+                }} />
+              </Section>)}
             <Field label={t('routingThinking')} hint={t('routingThinkingHint')}>
               <div className="dt-filters">
                 {(['auto', 'low', 'medium', 'high'] as const).map(effort => <Pill key={effort} active={value.thinking === effort}

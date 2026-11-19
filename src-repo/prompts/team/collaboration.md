@@ -1,0 +1,1 @@
+Several agents share one ticket. Claim a task on the shared board before touching its files, and never edit a file another agent claimed. Report on the board, not only to the Lead. An agent that finishes takes the next unclaimed task, or helps a blocked peer. Only the Lead delivers to the person.

@@ -52,6 +52,28 @@ it('answers each kind of failure with its own status', async () => {
   expect(await call('POST', 'executor/pause', 'not json')).toEqual({ status: 400, body: { error: 'The request body is not JSON' } })
 })
 
+it('allows only panel requests to resume a known held effect kind', async () => {
+  const calls: string[] = []
+  const call = serve({ effects: { held: () => [{ kind: 'reply', count: 2 }], retryHeld: (kind: string) => { calls.push(kind); return 2 } } })
+  expect(await call('GET', 'effects/held')).toMatchObject({ status: 200, body: { items: [{ kind: 'reply', count: 2 }] } })
+  expect(await call('POST', 'effects/reply/retry-held', undefined, { origin: 'https://evil.example' })).toMatchObject({ status: 403 })
+  expect(await call('POST', 'effects/unknown/retry-held')).toMatchObject({ status: 404 })
+  expect(await call('POST', 'effects/reply/retry-held')).toMatchObject({ status: 200, body: { retried: 2 } })
+  expect(calls).toEqual(['reply'])
+})
+
+it('returns read-only diagnostics for current source state and missing workspaces', async () => {
+  const call = serve({
+    store: { settings: () => SettingsSchema.parse({}), tickets: { list: () => [], open: () => [] } },
+    sources: { instances: () => [] }, health: {},
+  })
+  const response = await call('GET', 'self-inspect')
+  expect(response.status).toBe(200)
+  const inspection = response.body.inspection as { gaps: { code: string }[] }
+  expect(inspection.gaps.map(gap => gap.code)).toContain('noLiveSource')
+  expect(response.body.hygiene).toEqual({ open: 0, missing: [] })
+})
+
 it('decodes path parameters and parses each route\'s query', async () => {
   const seen: unknown[] = []
   const call = serve({

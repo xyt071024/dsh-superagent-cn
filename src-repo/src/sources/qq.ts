@@ -1,11 +1,10 @@
 /**
- * QQ Source: receives group and private messages through a OneBot v11 HTTP endpoint (SnowLuma / NapCat) and replies
- * through the same endpoint.
- *
- * A group message reaches the agent only when it @s it, because a busy group would otherwise drown the Orchestrator.
- * A private message always belongs to the agent: there is nobody else in that conversation to address.
+ * OneBot Source: polls group history through a compatible HTTP bridge and sends replies through the same endpoint.
+ * Optional forward WebSocket events provide private and live group messages. Group history support varies by bridge.
+ * A group message reaches the agent only when it @s it, unless observeAll is enabled.
  */
 import { z } from 'zod'
+import WebSocket from 'ws'
 import { key } from '../core/index.ts'
 import type { Context } from '@deepseek-ai/cordis'
 import type { OutboundMessage, ScopeResult, Trigger } from '../core/index.ts'
@@ -42,6 +41,7 @@ type OneBotMessage = z.infer<typeof MessageSchema>
 export const QqConfigSchema = z.object({
   endpoint: z.string().trim().regex(/^https?:\/\/\S+$/, 'http://host:port').default('http://127.0.0.1:3000'),
   token: z.string().trim().default(''),
+  eventEndpoint: z.string().trim().refine(value => !value || /^wss?:\/\/[^\s?#@]+(?:\/[^\s?#]*)?$/.test(value), 'ws://host:port/path').default(''),
   /** Group numbers to receive from; empty reads every group the account is already in. */
   groups: z.string().trim().default(''),
   privateMessages: z.boolean().default(true),
@@ -62,12 +62,14 @@ export async function call(config: Pick<QqConfig, 'endpoint' | 'token'>, action:
   if (config.token) headers.Authorization = `Bearer ${config.token}`
   const response = await fetch(`${config.endpoint.replace(/\/+$/, '')}/${action}`, { method: 'POST', headers,
     body: JSON.stringify(params), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(20_000)]) : AbortSignal.timeout(20_000) })
+  if (!response.ok) throw new Error(`${action} returned HTTP ${response.status}`)
   const text = await response.text()
   const body = ((): { status?: string; retcode?: number; wording?: string; data?: unknown } => {
     try { return JSON.parse(text) as { status?: string; retcode?: number; wording?: string; data?: unknown } }
-    catch { throw new Error(`${action} did not answer with JSON: ${text.slice(0, 200)}`) }
+    catch { throw new Error(`${action} did not answer with JSON`) }
   })()
-  if (body.status !== 'ok' && body.retcode !== 0) throw new Error(`${body.wording ?? action}${body.retcode ? ` (${body.retcode})` : ''}`)
+  if ((body.status !== undefined && body.status !== 'ok') || (body.retcode !== undefined && body.retcode !== 0) ||
+      (body.status === undefined && body.retcode === undefined)) throw new Error(`${action} was rejected${typeof body.retcode === 'number' ? ` (${body.retcode})` : ''}`)
   return body.data
 }
 
@@ -81,6 +83,16 @@ export function plainText(message: OneBotMessage): string {
     if (type === 'at') return `@${id(data?.qq)} `
     if (type === 'face') return '[表情]'
     if (type === 'image') return '[图片]'
+    // Every other segment used to return nothing, so a voice note, a video, a file or a shared card reached the agent
+    // as an empty message — indistinguishable from a person who said nothing. Each one now says what it is; a card
+    // adds its title, because that is the only part of it a policy can reason about.
+    if (type === 'record') return '[语音]'
+    if (type === 'video') return '[视频]'
+    if (type === 'file') return `[文件: ${String(data?.file ?? data?.name ?? data?.file_name ?? '未命名')}]`
+    if (type === 'json' || type === 'xml' || type === 'card') return `[卡片: ${cardTitle(data)}]`
+    if (type === 'location') return '[位置]'
+    if (type === 'contact') return '[名片]'
+    if (type === 'shake') return '[窗口抖动]'
     // `reply` and `forward` name another message; they carry no words of their own.
     return ''
   })
@@ -123,12 +135,10 @@ const addressOf = (message: OneBotMessage): Record<string, string> => {
 export function triggerOf(message: OneBotMessage, config: QqConfig, self: string, source: string = SOURCE): Trigger | undefined {
   const group = groupOf(message)
   const user = userOf(message)
-  if (!user) return undefined
+  if (!user || (self && user === self)) return undefined
   if (group) {
     const listed = list(config.groups)
     if (listed.length && !listed.includes(group)) return undefined
-    // The account's own messages are echoes of what it sent; receiving them would let it answer itself.
-    if (self && user === self) return undefined
   } else if (!config.privateMessages || !user) return undefined
   // A private message is addressed to the agent by definition: the conversation has no one else in it.
   const addressed = group ? mentions(message, self) : true
@@ -152,26 +162,41 @@ export function triggerOf(message: OneBotMessage, config: QqConfig, self: string
 }
 
 /** Reads the newest messages of every watched group; OneBot has no push cursor, so the highest seen id is the cursor. */
-async function recent(ctx: SourceContext, config: QqConfig, signal: AbortSignal): Promise<OneBotMessage[]> {
+export async function recent(config: QqConfig, signal: AbortSignal): Promise<OneBotMessage[]> {
   const listed = list(config.groups)
   // No group listed: read the account's own groups, so an install with nothing configured still receives something.
   const targets = listed.length ? listed : await call(config, 'get_group_list', {}, signal)
-    .then(data => (Array.isArray(data) ? data.map(entry => id((entry as { group_id?: unknown }).group_id)) : []))
-    .catch(() => [] as string[])
+    .then(data => {
+      if (!Array.isArray(data)) throw new Error('get_group_list did not return a group list')
+      return data.map(entry => id((entry as { group_id?: unknown }).group_id))
+    })
   const out: OneBotMessage[] = []
+  const errors: unknown[] = []
+  let succeeded = 0
   for (const group of targets.filter(Boolean)) {
     // A group the account left answers with an error; the remaining groups must still be read.
-    const history = await call(config, 'get_group_msg_history', { group_id: Number(group), count: 20 }, signal).catch(() => undefined)
-    const messages = (history as { messages?: unknown } | undefined)?.messages
-    if (!Array.isArray(messages)) continue
+    let messages: unknown
+    try {
+      const history = await call(config, 'get_group_msg_history', { group_id: Number(group), count: 20 }, signal)
+      messages = (history as { messages?: unknown } | undefined)?.messages
+      if (!Array.isArray(messages)) throw new Error('get_group_msg_history did not return messages')
+      succeeded++
+    } catch (error) {
+      if (signal.aborted) throw error
+      errors.push(error)
+      continue
+    }
     for (const entry of messages) { const parsed = MessageSchema.safeParse(entry); if (parsed.success) out.push(parsed.data) }
   }
+  if (errors.length && !succeeded) throw errors[0]
   return out
 }
 
 /** Returns an error health once `failures` consecutive polls fail, so one network interruption stays quiet. */
 export function pollFailure(failures: number, threshold: number, error: unknown): Health | undefined {
-  return failures >= threshold ? health('error', 'pollFailures', { count: String(failures), error: String(error) }) : undefined
+  void error
+  // Network errors may contain authorization headers, URLs or upstream response text.
+  return failures >= threshold ? health('error', 'pollFailures', { count: String(failures), error: 'OneBot request failed; check bridge connection and credentials' }) : undefined
 }
 
 /**
@@ -195,8 +220,11 @@ async function watch(ctx: SourceContext, source: string, signal: AbortSignal): P
       const stop = () => { controller.abort(); ids.delete(instance.id) }
       signal.addEventListener('abort', stop, { once: true })
       // Unhandled rejections terminate the DSH process, so an escape becomes that instance's health instead.
-      void poll(ctx, source, instance.id, controller.signal).catch((error: unknown) => {
-        ctx.report(instance.id, { state: 'error', detail: String(error) })
+      void poll(ctx, source, instance.id, controller.signal).catch(() => {
+        ctx.report(instance.id, { state: 'error', detail: 'OneBot source stopped unexpectedly; check the bridge and restart the source' })
+      }).finally(() => {
+        signal.removeEventListener('abort', stop)
+        if (ids.get(instance.id) === controller) ids.delete(instance.id)
       })
     }
     // An instance removed from settings stops on its own next tick, when its id no longer appears above.
@@ -206,41 +234,130 @@ async function watch(ctx: SourceContext, source: string, signal: AbortSignal): P
 }
 
 /** Polls one instance until its controller aborts. */
-async function poll(ctx: SourceContext, source: string, instanceId: string, signal: AbortSignal): Promise<void> {
+export async function poll(ctx: SourceContext, source: string, instanceId: string, signal: AbortSignal): Promise<void> {
   let failures = 0
   let self = ''
+  let socket: WebSocket | undefined
+  let socketKey = ''
+  let drainFailed = false
+  let overflow = false
+  let pending = Promise.resolve()
+  const identity = (config: QqConfig) => JSON.stringify([config.endpoint, config.eventEndpoint, config.token])
+  const drain = (expectedKey: string, expectedSelf: string) => {
+    pending = pending.then(async () => {
+      while (!signal.aborted) {
+        const config = ctx.config<QqConfig>(instanceId)
+        if (!config || identity(config) !== expectedKey || self !== expectedSelf) return
+        const queue = ctx.state.get(KV.qq.pending(instanceId)) ?? []
+        const index = queue.findIndex(entry => entry.account === expectedSelf)
+        if (index < 0) { drainFailed = false; return }
+        const item = queue[index]!
+        const message = MessageSchema.parse(item.message)
+        const stamp = id(message.message_id), scoped = `${expectedSelf}:${stamp}`
+        const seen = new Set<string>(ctx.state.get(KV.qq.seen(instanceId)) ?? [])
+        if (!seen.has(stamp) && !seen.has(scoped)) {
+          const trigger = triggerOf(message, config, expectedSelf, source)
+          if (trigger) await ctx.receive(trigger)
+          seen.add(scoped)
+          ctx.state.set(KV.qq.seen(instanceId), [...seen].slice(-2000))
+        }
+        // Re-read: other events may have arrived while receive was awaiting.
+        const current = ctx.state.get(KV.qq.pending(instanceId)) ?? []
+        const position = current.findIndex(entry => entry.account === expectedSelf && id(entry.message.message_id) === stamp)
+        if (position >= 0) { current.splice(position, 1); ctx.state.set(KV.qq.pending(instanceId), current) }
+      }
+    }).catch(() => { drainFailed = true; if (!signal.aborted) ctx.report(instanceId, { state: 'error', detail: 'OneBot message processing failed; queued messages will be retried' }) })
+    return pending
+  }
+  const accept = (message: OneBotMessage, expectedKey: string, expectedSelf: string) => {
+    const config = ctx.config<QqConfig>(instanceId)
+    if (signal.aborted || !config || identity(config) !== expectedKey || self !== expectedSelf) return pending
+    const stamp = id(message.message_id)
+    if (!stamp) return pending
+    const seen = new Set<string>(ctx.state.get(KV.qq.seen(instanceId)) ?? [])
+    if (seen.has(stamp) || seen.has(`${expectedSelf}:${stamp}`)) return pending
+    const queue = ctx.state.get(KV.qq.pending(instanceId)) ?? []
+    if (queue.some(entry => entry.account === expectedSelf && id(entry.message.message_id) === stamp)) return pending
+    if (queue.length >= 500) {
+      overflow = true
+      socket?.terminate(); socket = undefined
+      ctx.report(instanceId, { state: 'error', detail: 'OneBot message queue is full; disconnecting events. Events may be missed until the queue drains.' })
+      return pending
+    }
+    try {
+      ctx.state.set(KV.qq.pending(instanceId), [...queue, { account: expectedSelf, message }])
+    } catch {
+      overflow = true
+      socket?.terminate(); socket = undefined
+      ctx.report(instanceId, { state: 'error', detail: 'Could not persist OneBot event; disconnecting events. Messages may be missed.' })
+      return pending
+    }
+    return drain(expectedKey, expectedSelf)
+  }
   // The account's own id decides which group messages address it, so it is read once per endpoint and remembered.
   let selfFor = ''
+  let tokenFor = ''
   while (!signal.aborted) {
     // Read the configuration each tick: the operator may disable this instance or change its endpoint while it runs.
     const config = ctx.config<QqConfig>(instanceId)
     if (!config) {
+      socket?.terminate(); socket = undefined; socketKey = ''
       ctx.report(instanceId, health('paused', 'sourceOff'))
       await pause(5_000, signal)
       continue
     }
+    const nextKey = identity(config)
+    // Close an old connection before any potentially failing authentication against the new endpoint.
+    if (socket && socketKey !== nextKey) { socket.terminate(); socket = undefined; socketKey = '' }
     try {
-      if (selfFor !== config.endpoint) {
+      if (!self || selfFor !== config.endpoint || tokenFor !== config.token) {
         self = await call(config, 'get_login_info', {}, signal)
-          .then(data => id((data as { user_id?: unknown } | undefined)?.user_id)).catch(() => '')
+          .then(data => id((data as { user_id?: unknown } | undefined)?.user_id))
+        if (!self) throw new Error('get_login_info did not return the account ID')
         selfFor = config.endpoint
+        tokenFor = config.token
+      }
+      await drain(nextKey, self)
+      if ((ctx.state.get(KV.qq.pending(instanceId)) ?? []).length >= 500) {
+        socket?.terminate(); socket = undefined
+        ctx.report(instanceId, { state: 'error', detail: 'OneBot message queue is full; event connection paused. Messages may be missed.' })
+        await pause(config.pollSeconds * 1000, signal)
+        continue
+      }
+      overflow = false
+      if (socket && (socketKey !== nextKey || socket.readyState >= WebSocket.CLOSING)) { socket.terminate(); socket = undefined }
+      if (config.eventEndpoint && !socket) {
+        socketKey = nextKey
+        const current = new WebSocket(config.eventEndpoint, { headers: config.token ? { Authorization: `Bearer ${config.token}` } : {}, maxPayload: 64 * 1024, handshakeTimeout: 20_000 })
+        socket = current
+        const connectedSelf = self
+        current.on('error', () => { if (!signal.aborted && socket === current) ctx.report(instanceId, { state: 'error', detail: 'OneBot event connection failed; events may be missed while disconnected' }) })
+        current.on('message', bytes => {
+          try {
+            const raw: unknown = JSON.parse(bytes.toString())
+            const parsed = MessageSchema.safeParse(raw)
+            if (!parsed.success || parsed.data.post_type !== 'message' || !['group', 'private'].includes(parsed.data.message_type ?? '')) return
+            const latest = ctx.config<QqConfig>(instanceId)
+            if (latest && socket === current && identity(latest) === nextKey) void accept(parsed.data, nextKey, connectedSelf)
+          } catch { /* Ignore non-JSON and unsupported event frames. */ }
+        })
       }
       // The cursor is per instance as well: two bridges reaching the same endpoint must not share one.
-      const seen = new Set<string>(ctx.state.get(KV.qq.seen(instanceId)) ?? [])
-      const messages = await recent(ctx, config, signal)
+      const messages = await recent(config, signal)
       let received = 0
       // Oldest first: history arrives newest first, and the Engine should see a burst in the order it was typed.
       for (const message of [...messages].reverse()) {
-        const stamp = id(message.message_id) || `${threadOf(message)}:${atIso(message)}`
-        if (seen.has(stamp)) continue
-        seen.add(stamp)
-        const trigger = triggerOf(message, config, self, source)
-        if (trigger) { await ctx.receive(trigger); received += 1 }
+        await accept(message, nextKey, self)
+        received += 1
       }
-      // Keep the cursor bounded: the newest 2000 ids dedupe a burst, and an unbounded set would grow forever.
-      ctx.state.set(KV.qq.seen(instanceId), seen.size > 2000 ? [...seen].slice(-2000) : [...seen])
       failures = 0
-      ctx.report(instanceId, { state: 'ready', detail: `${received} new message(s); next poll ≥ ${config.pollSeconds}s`, at: new Date().toISOString() })
+      ctx.report(instanceId, overflow
+        ? { state: 'error', detail: 'OneBot event intake was interrupted; messages may have been missed' }
+        : drainFailed
+        ? { state: 'error', detail: 'OneBot message processing failed; queued messages will be retried' }
+        : config.eventEndpoint && socket?.readyState !== WebSocket.OPEN
+        ? { state: 'starting', detail: 'OneBot group polling is running; event connection is not ready' }
+        : { state: 'ready', detail: `${received} group message(s) checked; next poll ≥ ${config.pollSeconds}s`, at: new Date().toISOString() })
     } catch (error) {
       failures += 1
       const failed = pollFailure(failures, config.failuresBeforeError, error)
@@ -248,6 +365,8 @@ async function poll(ctx: SourceContext, source: string, instanceId: string, sign
     }
     await pause(config.pollSeconds * 1000, signal)
   }
+  socket?.terminate()
+  await pending
 }
 
 const channel: SourceChannel<QqConfig> = {
@@ -316,15 +435,17 @@ export function oneBotKind(kind: string, title: { zh: string; en: string }, desc
     { key: 'token', type: 'text', label: { zh: '访问令牌', en: 'Access token' },
       hint: { zh: '端点要求的令牌，留空表示没设。作为 Bearer 头发送，不写进日志。',
         en: 'The token the endpoint requires; empty when it has none. Sent as a bearer header and never logged.' } },
+    { key: 'eventEndpoint', type: 'text', label: { zh: '事件 WebSocket 地址', en: 'Event WebSocket endpoint' },
+      hint: { zh: '可选。配置网关的正向 WebSocket 地址以接收私聊和实时群消息；需在网关中启用。令牌与 HTTP 共用。', en: 'Optional forward WebSocket endpoint for private and live group events; enable it in your bridge. Uses the HTTP token.' } },
+    { key: 'privateMessages', type: 'switch', label: { zh: '接收私聊事件', en: 'Receive private events' },
+      hint: { zh: '需要配置事件 WebSocket 地址。', en: 'Requires an event WebSocket endpoint.' } },
     { key: 'groups', type: 'text', label: { zh: '接收的群号', en: 'Group numbers' },
       hint: { zh: '空格或逗号分隔。留空表示账号所在的全部群。', en: 'Spaces or commas. Empty reads every group the account is in.' } },
-    { key: 'privateMessages', type: 'switch', label: { zh: '接收私聊', en: 'Receive private messages' },
-      hint: { zh: '私聊的消息都算直接发给智能体。', en: 'Every private message counts as sent to the agent directly.' } },
     { key: 'observeAll', type: 'switch', label: { zh: '接收群里没 @ 的消息', en: 'Receive group messages that do not @ the agent' },
       hint: { zh: '打开后普通群消息也会收到，由策略的接收表决定是否成为候选。群热闹时消息很多，通常配合策略白名单收窄。',
         en: 'Ordinary group messages are received too, and the Policy\'s admission table decides. A busy group is noisy; narrow it with the Policy list.' } },
     { key: 'pollSeconds', type: 'number', advanced: true, min: 2, max: 3600, label: { zh: '轮询间隔 / 秒', en: 'Polling interval / seconds' },
-      hint: { zh: 'OneBot 没有推送游标，只能定期读取最近消息。', en: 'OneBot offers no push cursor, so recent messages are read on an interval.' } },
+      hint: { zh: '定期读取最近群消息；事件 WebSocket 配置后可实时接收消息。', en: 'Periodically reads recent group messages; the optional event WebSocket receives live events.' } },
     { key: 'failuresBeforeError', type: 'number', advanced: true, min: 1, max: 20, label: { zh: '连续失败几次后报告异常', en: 'Failed polls before reporting an error' },
       hint: { zh: '单次网络中断会在下一次轮询时自动重试。', en: 'A single network interruption is retried on the next poll.' } },
   ],
@@ -342,14 +463,14 @@ export function oneBotKind(kind: string, title: { zh: string; en: string }, desc
   policy: {
     schema: z.object({ allowed: z.array(z.object({ id: z.string().regex(/^\d+$/) }).strict()).default([]) }).strict(),
     fields: [{ key: 'allowed', type: 'rows', label: { zh: '能发起工作的 QQ 号', en: 'QQ numbers that may originate work' },
-      hint: { zh: '名单里的人 @ 智能体或私聊它，才算明确的请求。名单外的人仍会被评估，但不会直接成为工单。',
-        en: 'A listed person @ing the agent or messaging it privately makes an explicit request. Someone off the list is still assessed, but never becomes a ticket on their own.' },
+      hint: { zh: '名单里的人私聊或在群里 @ 智能体才算明确请求；私聊需要事件 WebSocket。名单外的人不会直接成为工单。',
+        en: 'A listed person can request work by private message or a group mention. Private events require WebSocket.' },
       columns: [{ key: 'id', type: 'text', label: { zh: 'QQ 号', en: 'QQ number' }, pattern: '\\d+' }] }],
-    explicit: { zh: '名单里的人 @ 智能体，或私聊它。', en: 'A listed person @s the agent, or messages it privately.' },
+    explicit: { zh: '名单里的人私聊或在群里 @ 智能体。', en: 'A listed person messages privately or mentions the agent in a group.' },
     rows: () => [
       { id: 'group', label: { zh: '群消息', en: 'Group messages' }, note: { zh: '@ 才算', en: '@ only' },
         cells: { listedUnaddressed: false, unlistedAddressed: true, unlistedUnaddressed: false } },
-      { id: 'private', label: { zh: '私聊', en: 'Private messages' }, note: { zh: '都算直接发给它', en: 'All addressed' },
+      { id: 'private', label: { zh: '私聊', en: 'Private messages' }, note: { zh: '需要事件 WebSocket', en: 'Requires event WebSocket' },
         cells: { listedUnaddressed: true, unlistedAddressed: true, unlistedUnaddressed: true } },
     ],
   },
@@ -368,18 +489,18 @@ export function oneBotKind(kind: string, title: { zh: string; en: string }, desc
 export const ONE_BOT_KINDS = [
   { kind: 'qq',
     title: { zh: 'QQ', en: 'QQ' },
-    description: { zh: '通过 OneBot 端点接收 QQ 群和私聊消息。群里只有 @ 智能体的消息才算发给它，私聊则都是。',
-      en: 'Receives QQ group and private messages through a OneBot endpoint. In a group only a message that @s the agent is for it; a private message always is.' },
+    description: { zh: '通过兼容 OneBot 网关读取 QQ 群消息；配置事件 WebSocket 后可接收私聊。需实测网关兼容性。',
+      en: 'Reads QQ group messages through a compatible OneBot bridge; an event WebSocket enables private messages. Verify bridge compatibility.' },
     variable: { key: 'DSH_SUPERAGENT_QQ_THREAD', description: { zh: '接下工单的 QQ 会话：群号或私聊的对象', en: 'The QQ conversation that started the ticket: a group number, or the person in a private chat' } } },
   { kind: 'wechat',
     title: { zh: '微信', en: 'WeChat' },
-    description: { zh: '通过微信端的 OneBot 桥接收群聊和私聊。群里只有 @ 智能体的消息才算发给它，私聊则都是。桥接要先在微信端启动。',
-      en: 'Receives WeChat group and private messages through its OneBot bridge. In a group only a message that @s the agent is for it; a private message always is. The bridge has to be started in the WeChat agent first.' },
+    description: { zh: '通过兼容 OneBot 桥读取微信群消息；私聊需要事件 WebSocket。微信桥及接口兼容性须实际验证。',
+      en: 'Reads WeChat group messages through a compatible OneBot bridge; private reception requires an event WebSocket. Verify compatibility.' },
     variable: { key: 'DSH_SUPERAGENT_WECHAT_THREAD', description: { zh: '接下工单的微信会话：群号或私聊的对象', en: 'The WeChat conversation that started the ticket: a group number, or the person in a private chat' } } },
   { kind: 'wecom',
     title: { zh: '企业微信', en: 'WeCom' },
-    description: { zh: '通过企业微信端的 OneBot 桥接收消息。群里只有 @ 智能体的消息才算发给它，私聊则都是。',
-      en: 'Receives WeCom messages through its OneBot bridge. In a group only a message that @s the agent is for it; a private message always is.' },
+    description: { zh: '通过兼容 OneBot 桥读取企业微信群消息；私聊需要事件 WebSocket。企业微信桥及接口兼容性须实际验证。',
+      en: 'Reads WeCom group messages through a compatible OneBot bridge; private reception requires an event WebSocket. Verify compatibility.' },
     variable: { key: 'DSH_SUPERAGENT_WECOM_THREAD', description: { zh: '接下工单的企业微信会话', en: 'The WeCom conversation that started the ticket' } } },
 ] as const
 
@@ -397,4 +518,15 @@ export function apply(ctx: Context): void {
       return async () => { controller.abort(); await running }
     })
   }
+}
+
+/** 卡片的标题：JSON/XML 卡片把它埋在嵌套字段里，取不到就退回一个中性的名字。 */
+function cardTitle(data: Record<string, unknown> | undefined): string {
+  const candidates = [data?.prompt, data?.title, data?.desc, data?.name, data?.summary]
+  for (const value of candidates) {
+    if (typeof value === 'string' && value.trim()) return value.trim().slice(0, 60)
+  }
+  const nested = JSON.stringify(data ?? {})
+  const match = /"(?:title|prompt|desc)"\s*:\s*"([^"]{1,60})"/.exec(nested)
+  return match?.[1] ?? '未命名'
 }

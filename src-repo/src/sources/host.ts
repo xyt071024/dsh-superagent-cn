@@ -15,6 +15,11 @@ export const HEALTH_TEXT = {
   feishuBotMissing: 'Waiting for the Feishu bot',
   /** The Source is on but has no address or app password yet, so it neither polls nor fails. */
   mailUnconfigured: 'Waiting for an address and app password',
+  mailMissingAddress: 'Enter the mail address',
+  mailMissingSecret: 'Enter the mail app password',
+  mailMissingImapHost: 'Enter the IMAP server address',
+  mailMissingSmtpHost: 'IMAP connected, but SMTP server address is missing; replies cannot be sent',
+  mailImapReady: 'IMAP connected; {count} new message(s). SMTP has not been checked',
   pollFailures: '{count} consecutive failed polls; last: {error}',
 } as const
 export type HealthCode = keyof typeof HEALTH_TEXT

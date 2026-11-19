@@ -40,7 +40,7 @@ export interface SourceSetup {
 const FEISHU_OPEN = 'https://open.feishu.cn/app'
 
 /**
- * The QQ / WeChat / WeCom family: all three speak OneBot v11, so one bridge serves any of them.
+ * The QQ / WeChat / WeCom family shares a OneBot-style adapter; each bridge needs separate compatibility verification.
  *
  * The bridge is a separate program the person installs themselves, which is why the first step is a download rather than a
  * setting: there is no endpoint to configure until something is listening on one.
@@ -52,10 +52,8 @@ const oneBot = (kind: string, title: string, purpose: Localized): SourceSetup =>
     {
       key: 'bridge',
       title: { zh: `装一个 OneBot 网关（${title} 用它收发消息）`, en: `Install a OneBot bridge (${title} sends and receives through it)` },
-      where: { zh: 'SnowLuma 或 NapCat，两个都行；装完它会告诉你监听端口和访问 token',
-        en: 'SnowLuma or NapCat — either one. When it starts it prints a port and an access token' },
-      url: 'https://github.com/SnowLuma/SnowLuma',
-      done: { zh: '浏览器打开 http://127.0.0.1:<端口> 能看到网关自己的页面', en: 'http://127.0.0.1:<port> shows the bridge\'s own page' },
+      where: { zh: '须确认网关适配该平台并支持群历史接口；接收私聊还需在网关启用正向 WebSocket，并在来源设置填写事件地址。',
+        en: 'Verify bridge and group-history support; private messages also require an enabled forward WebSocket and its event address in source settings.' },
     },
     {
       key: 'endpoint',
@@ -69,8 +67,8 @@ const oneBot = (kind: string, title: string, purpose: Localized): SourceSetup =>
     },
     {
       key: 'login',
-      title: { zh: '在网关上扫码登录，然后点下面的「检查部署」', en: 'Scan the code in the bridge, then press Check deployment below' },
-      done: { zh: '检查结果显示「已就绪」，并且能看到自己的号', en: 'The check reports ready and names your account' },
+      title: { zh: '在网关上扫码登录，然后查看来源状态', en: 'Scan the code in the bridge, then check source status' },
+      done: { zh: '查看来源状态，并分别测试群消息及私聊收发；就绪状态不能代替实际测试。', en: 'Check source status and test both group and private messages; ready status does not replace a real test.' },
       manual: true,
     },
   ],
@@ -86,7 +84,7 @@ const oneBot = (kind: string, title: string, purpose: Localized): SourceSetup =>
  */
 const mail: SourceSetup = {
   source: 'mail',
-  purpose: { zh: '收到发给你的邮件时建工单；回复直接发回那个邮件线程', en: 'Opens a ticket when mail arrives, and replies land back in that thread' },
+  purpose: { zh: '读取收件箱并发送邮件回复；接收和发送能力都需要实际验证', en: 'Reads the inbox and sends replies; verify both receiving and sending' },
   steps: [
     {
       key: 'enable',
@@ -109,9 +107,12 @@ const mail: SourceSetup = {
     },
     {
       key: 'check',
-      title: { zh: '点「检查部署」，看能不能连上收件箱', en: 'Press Check deployment to see whether the inbox opens' },
-      done: { zh: '检查结果显示「已就绪」', en: 'The check reports ready' },
+      title: { zh: '查看来源状态，并分别测试收信和发信', en: 'Check source status, then test receiving and sending separately' },
+      done: { zh: '收件箱连接成功后仍需测试发信；状态不代表 SMTP 已验证。', en: 'A connected inbox does not verify SMTP; test sending separately.' },
     },
+    { key: 'gmail', title: { zh: '使用 Gmail 时：管理 Google 应用专用密码', en: 'For Gmail: manage Google app passwords' },
+      where: { zh: '此步骤只适用于 Google 账户；应用专用密码的可用性取决于账户设置。', en: 'For Google accounts only; availability depends on account settings.' },
+      url: 'https://myaccount.google.com/apppasswords', manual: true },
   ],
   missing: [],
   ready: false,
@@ -142,6 +143,7 @@ const feishu: SourceSetup = {
       key: 'events',
       title: { zh: '在应用里订阅「接收消息」事件，把机器人拉进要监听的群', en: 'Subscribe to the receive-message event, and add the bot to the group it should watch' },
       where: { zh: '不订阅收不到消息；不拉进群就只看得到私聊', en: 'Without the subscription nothing arrives; without adding it to a group it only sees direct messages' },
+      url: FEISHU_OPEN,
     },
     {
       key: 'check',
@@ -191,9 +193,23 @@ const github: SourceSetup = {
 
 /** Every Source's setup, keyed by kind. The panel reads this; nothing here touches the network. */
 export const SETUP_GUIDES: Record<string, SourceSetup> = {
-  qq: oneBot('qq', 'QQ', { zh: 'QQ 上有消息时建工单；回复发回同一个会话', en: 'Opens a ticket when a QQ message arrives; replies go back to that conversation' }),
-  wechat: oneBot('wechat', '微信', { zh: '微信上有消息时建工单；回复发回同一个会话', en: 'Opens a ticket when a WeChat message arrives; replies go back to that conversation' }),
-  wecom: oneBot('wecom', '企业微信', { zh: '企业微信上有消息时建工单；回复发回同一个会话', en: 'Opens a ticket when a WeCom message arrives; replies go back to that conversation' }),
+  qq: oneBot('qq', 'QQ', { zh: '尝试读取 QQ 群消息和 WebSocket 私聊事件', en: 'Reads QQ group messages and private WebSocket events' }),
+  wechat: oneBot('wechat', '微信', { zh: '尝试通过兼容桥读取微信群消息和私聊事件', en: 'Reads WeChat group and private events through a compatible bridge' }),
+  wecom: oneBot('wecom', '企业微信', { zh: '尝试通过兼容桥读取企业微信群消息和私聊事件', en: 'Reads WeCom group and private events through a compatible bridge' }),
+  qqbot: {
+    source: 'qqbot',
+    purpose: { zh: '使用 QQ 开放平台官方机器人接收私聊和获授权的群消息，与个人 QQ 通道分开配置。',
+      en: 'Connect an official QQ Open Platform bot for direct and authorized group messages, separately from personal QQ.' },
+    steps: [
+      { key: 'app', title: { zh: '在 QQ 开放平台创建机器人并开通相应事件权限', en: 'Create a bot and enable the required event permissions on QQ Open Platform' },
+        url: 'https://q.qq.com/', where: { zh: '这是机器人应用，需要 AppID 和 AppSecret；不是个人 QQ 扫码登录。', en: 'This is a bot application with an AppID and AppSecret, not a personal QQ QR login.' } },
+      { key: 'credentials', title: { zh: '填写 AppID 和 AppSecret，启用来源', en: 'Enter AppID and AppSecret and enable the source' },
+        where: { zh: '在策略中填写允许发起任务的用户 openid。', en: 'Add authorized user openids in the policy.' } },
+      { key: 'test', title: { zh: '发送真实私聊及群 @ 消息，验证接收和回复', en: 'Test receiving and replying to direct and group mention messages' },
+        where: { zh: '平台被动回复有时限：群消息 5 分钟、私聊 60 分钟；超时的任务结果可能无法回复。',
+          en: 'The platform limits passive replies to 5 minutes for groups and 60 minutes for direct messages; long tasks may outlast the reply window.' } },
+    ], missing: [], ready: false,
+  },
   mail,
   feishu,
   github,

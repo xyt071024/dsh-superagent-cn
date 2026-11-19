@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { dirname, join, relative, resolve, sep } from 'node:path'
+import { basename, dirname, join, posix, relative, resolve, sep, win32, type PlatformPath } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
@@ -33,11 +33,16 @@ function listed(heading: string): string[] {
   return rows.flatMap(row => {
     let directory = ''
     return [...row.split('|')[1]!.matchAll(/`([^`]+)`/g)].map(([, name]) => {
-      if (!name!.includes('/')) return join(directory, name!)
-      directory = dirname(name!)
+      if (!name!.includes('/')) return posix.join(directory, name!)
+      directory = posix.dirname(name!)
       return name!
     })
   })
+}
+
+function earlierDocument(linked: string, current: string, docs: string, paths: Pick<PlatformPath, 'basename' | 'dirname'>): boolean {
+  const number = NUMBERED.exec(paths.basename(linked))?.[1]
+  return paths.dirname(linked) === docs && number !== undefined && number < current.slice(0, 3)
 }
 
 describe('documentation', () => {
@@ -48,10 +53,19 @@ describe('documentation', () => {
     const violations = numbered.flatMap(name => links(join(ROOT, 'docs', name)).flatMap(target => {
       const linked = resolve(ROOT, 'docs', target)
       if (!linked.endsWith('.md')) return []
-      const number = NUMBERED.exec(linked.slice(linked.lastIndexOf('/') + 1))?.[1]
-      return dirname(linked) === join(ROOT, 'docs') && number !== undefined && number < name.slice(0, 3) ? [] : [`${name} → ${target}`]
+      return earlierDocument(linked, name, join(ROOT, 'docs'), { basename, dirname }) ? [] : [`${name} → ${target}`]
     }))
     expect(violations).toEqual([])
+  })
+  it('checks numbered link ordering for Windows and POSIX paths', () => {
+    for (const [paths, docs] of [[win32, 'C:\\repo\\docs'], [posix, '/repo/docs']] as const) {
+      const current = '002-authorization.md'
+      expect(earlierDocument(paths.join(docs, '001-domain.md'), current, docs, paths)).toBe(true)
+      expect(earlierDocument(paths.join(docs, '002-authorization.md'), current, docs, paths)).toBe(false)
+      expect(earlierDocument(paths.join(docs, '003-execution.md'), current, docs, paths)).toBe(false)
+      expect(earlierDocument(paths.join(docs, 'other.md'), current, docs, paths)).toBe(false)
+      expect(earlierDocument(paths.join(docs, 'nested', '001-domain.md'), current, docs, paths)).toBe(false)
+    }
   })
   it('resolves every local link', () => {
     const files = [...entries.map(name => join(ROOT, name)), ...numbered.map(name => join(ROOT, 'docs', name))]

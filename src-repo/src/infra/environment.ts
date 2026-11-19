@@ -4,12 +4,12 @@
  * Provides default-path guardrails rather than an OS-level security boundary, as workers run under the operator's OS user.
  */
 import { lstat, mkdir, readdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
-import { realpathSync } from 'node:fs'
+import { existsSync, realpathSync } from 'node:fs'
 import { delimiter, join, resolve } from 'node:path'
 import type { SubprocessOutputReader, SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import type { Deployment } from '../deployment.ts'
 import { SetupError } from '../setup.ts'
-import { CliError } from './commands.ts'
+import { CliError, command } from './commands.ts'
 
 const MARKER = '# Written by dsh-superagent on every start; edits are lost.'
 /** Markers of files written under the project's earlier names (`dsh-tag`, `dsh-go`, `dsh-freelancer`), which `dsh-superagent` owns and replaces too. */
@@ -132,9 +132,25 @@ export function applyEnvironment(variables: Record<string, string | undefined>, 
   return () => { apply(previous) }
 }
 
+/** Find Git for Windows' POSIX shell without changing the host PATH or changing existing prepare commands. */
+export function prepareShell(): string {
+  if (process.platform !== 'win32') return 'sh'
+  const entries = (process.env.PATH ?? '').split(delimiter).filter(Boolean)
+  // Honour a shell explicitly on PATH before falling back to Git's bundled shell.
+  for (const entry of entries) if (existsSync(join(entry, 'sh.exe'))) return join(entry, 'sh.exe')
+  for (const entry of entries) {
+    if (!existsSync(join(entry, 'git.exe'))) continue
+    for (const relative of ['../bin/sh.exe', '../usr/bin/sh.exe', 'sh.exe']) {
+      const shell = resolve(entry, relative)
+      if (existsSync(shell)) return shell
+    }
+  }
+  return 'sh'
+}
+
 /** Spawns a command through the DSH subprocess runtime, which strips credential-shaped environment variables. */
 export async function runAsWorker(subprocess: SubprocessRuntime, argv: string[], cwd: string, signal: AbortSignal, env?: Record<string, string>): Promise<string> {
-  const handle = subprocess.spawn({ argv, cwd, graceMs: 2000, signal, ...env ? { env } : {}, stdio: { stdin: 'ignore', stdout: { maxBytes: 1 << 20 }, stderr: { maxBytes: 1 << 16 } } })
+  const handle = subprocess.spawn({ argv: command(argv), cwd, graceMs: 2000, signal, ...env ? { env } : {}, stdio: { stdin: 'ignore', stdout: { maxBytes: 1 << 20 }, stderr: { maxBytes: 1 << 16 } } })
   const { exitCode } = await handle.done
   const read = (reader: SubprocessOutputReader | undefined): string => reader?.readFrom(0).text ?? ''
   if (exitCode === 0) return read(handle.collected.stdout)

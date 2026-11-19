@@ -1,6 +1,7 @@
 /** Subprocess wrapper for running gh, lark-cli, and git commands under the deployment's configured accounts. */
 import { execFile } from 'node:child_process'
-import { basename } from 'node:path'
+import { existsSync, readFileSync, statSync } from 'node:fs'
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { z } from 'zod'
 import type { Deployment } from '../deployment.ts'
@@ -10,9 +11,8 @@ const TIMEOUT_MS = 90_000
 /**
  * Turns an argv into one Node can actually spawn.
  *
- * Node cannot spawn a `.cmd` or `.bat` directly on Windows: it is a script for the command interpreter, not an executable
- * image, and `spawn` fails with `EINVAL`. Those have to go through `cmd.exe /d /s /c`, which is what a shell would do.
- * `/d` skips AutoRun, `/s` keeps the quoting rules simple, and `/c` runs the command and exits.
+ * Node cannot spawn a `.cmd` directly on Windows. For standard npm command shims, resolve the installed JavaScript
+ * entry and invoke Node directly, so untrusted message text is never parsed by cmd.exe.
  *
  * `platform` is a parameter so the Windows branch can be tested from a host that is not Windows; the behaviour itself
  * only differs there, and every other executable is left exactly as it was.
@@ -20,7 +20,17 @@ const TIMEOUT_MS = 90_000
 export function command(argv: readonly string[], platform: NodeJS.Platform = process.platform): string[] {
   const [program, ...rest] = argv
   if (!program || platform !== 'win32') return [...argv]
-  return /\.(cmd|bat)$/i.test(program) ? [process.env.COMSPEC || 'cmd.exe', '/d', '/s', '/c', program, ...rest] : [...argv]
+  if (!/\.(cmd|bat)$/i.test(program)) return [...argv]
+  let text: string
+  try { text = readFileSync(program, 'utf8') } catch { throw new Error(`Cannot read Windows CLI launcher: ${basename(program)}`) }
+  const match = /"%dp0%\\(node_modules\\[^"\r\n]+\.m?js)"/i.exec(text)
+  if (!match) throw new Error(`Unsupported Windows CLI launcher: ${basename(program)}; configure an executable or npm-generated launcher`)
+  const base = dirname(program)
+  const entry = resolve(base, match[1]!)
+  const rel = relative(base, entry)
+  if (!rel || rel.startsWith('..') || isAbsolute(rel) || !statSync(entry).isFile()) throw new Error(`Invalid Windows CLI launcher: ${basename(program)}`)
+  const localNode = join(base, 'node.exe')
+  return [existsSync(localNode) && statSync(localNode).isFile() ? localNode : process.execPath, entry, ...rest]
 }
 /**
  * Error thrown by Commands when a CLI invocation fails, capturing stderr diagnostics, API error codes, and exit status without echoing command arguments.
@@ -82,7 +92,8 @@ export class Commands {
   withSignal(signal?: AbortSignal): Commands { return signal ? new Commands(this.resolved, this.environment, AbortSignal.any([this.signal, signal])) : this }
   async run(program: string, args: string[], cwd?: string): Promise<string> {
     try {
-      const { stdout } = await exec(program, args, { cwd, signal: this.signal, timeout: TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024,
+      const [actual, ...actualArgs] = command([program, ...args])
+      const { stdout } = await exec(actual!, actualArgs, { cwd, signal: this.signal, timeout: TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024,
         env: { ...process.env, ...this.environment, GH_PROMPT_DISABLED: '1', LARKSUITE_CLI_NO_UPDATE_NOTIFIER: '1', LARKSUITE_CLI_NO_SKILLS_NOTIFIER: '1' } })
       return stdout
     } catch (error) { throw commandError(error, program) }

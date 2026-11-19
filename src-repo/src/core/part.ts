@@ -13,6 +13,7 @@ export interface EngineOptions {
   executor: Executor
   outbox: Outbox
   prepareTicket?: (ticket: Ticket, outcome: Extract<AssessmentOutcome, { kind: 'accept' }>) => Ticket
+  reviewEnabled?: () => boolean
   now?: () => string
   emit?: (event: DomainEvent) => void
 }

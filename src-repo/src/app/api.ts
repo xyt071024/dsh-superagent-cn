@@ -8,6 +8,9 @@ import type { SettingsView } from './views/settings.ts'
 import type { SourceStatusView } from './views/sources.ts'
 import type { DecisionListView, SearchView, ThreadDetailView, ThreadListView } from './views/threads.ts'
 import type { TicketListView } from './views/tickets.ts'
+import type { inspect, hygiene } from './self-inspect.ts'
+import type { SourceProbeResult } from './source-probe.ts'
+import type { UpdateCheck } from './update-check.ts'
 
 export const TICKET_FILTERS = ['open', 'person', 'working', 'idle', 'ended'] as const
 export const THREAD_FILTERS = ['subscribed', 'evaluating', 'recent', 'all'] as const
@@ -20,8 +23,13 @@ type Delivery = 'injected' | 'pending'
 export interface Api {
   'GET state': { response: StateView }
   'GET overview': { response: OverviewView }
+  'GET effects/held': { response: { items: { kind: string; count: number }[] } }
+  'POST effects/:kind/retry-held': { response: { retried: number } }
+  'GET self-inspect': { response: { inspection: ReturnType<typeof inspect>; hygiene: ReturnType<typeof hygiene> } }
+  'GET update-check': { response: UpdateCheck }
   'GET search': { query: { q: string }; response: SearchView }
   'GET sources': { response: SourceStatusView[] }
+  'POST sources/:id/probe': { response: SourceProbeResult }
   'GET settings': { response: SettingsView }
   'POST sources/:id/labels': { response: { added: string[] } }
   'GET threads': { query?: Paged & { filter?: ThreadFilter }; response: ThreadListView }

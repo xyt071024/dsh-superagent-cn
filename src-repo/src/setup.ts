@@ -1,7 +1,7 @@
 /** Structured startup and configuration errors with the settings location where the operator can fix them. */
 import { fill } from './infra/text.ts'
 
-export type SetupPlace = 'deployment' | 'github' | 'feishu'
+export type SetupPlace = 'deployment' | 'github' | 'feishu' | 'qq' | 'mail'
 export const SETUP_PROBLEMS = {
   foreignFile: ['deployment', '{file} was not written by dsh-superagent; move it, or choose another state directory.'],
   gitTooOld: ['deployment', 'git does not read the github.com credential configuration dsh-superagent writes; dsh-superagent needs git 2.32 or later.'],
@@ -19,6 +19,20 @@ export const SETUP_PROBLEMS = {
   feishuBotNotReady: ['feishu', 'The bot identity of app {app} is {status}; configure the app secret with lark-cli.'],
   feishuUserIdentity: ['feishu', 'The bot lark-cli allows user identities (strict mode {mode}); give the bot its own lark-cli configuration in strict mode bot, as docs/006-deployment.md describes.'],
   feishuNoBot: ['feishu', 'The Feishu bot API did not return the bot\'s open_id.'],
+  // OneBot covers QQ, WeChat and WeCom: one factory makes all three, so one set of checks serves them. Before these codes
+  // existed a misconfigured gateway showed only 'waiting' or 'error' and never said what was missing - the complaint this
+  // project kept getting. The check behind them is probeSource in source-probe.ts, which sends no message and returns no
+  // credentials. These are *startup* checks: they name the missing setting, so the panel can point at the field to fix.
+  onebotEndpointUnset: ['qq', 'The {platform} Source names no gateway endpoint; its messages cannot arrive or be sent.'],
+  onebotUnreachable: ['qq', 'Nothing answers at the {platform} gateway endpoint {endpoint}; start the gateway, or correct the address.'],
+  onebotAuthFailed: ['qq', 'The {platform} gateway rejected the access token. Copy the token the gateway prints at startup.'],
+  onebotFailed: ['qq', 'The {platform} gateway did not answer the identity check; see its own window for the reason.'],
+  mailAddressUnset: ['mail', 'The mailbox Source names no address, so there is nothing to read.'],
+  mailPasswordUnset: ['mail', 'The mailbox Source has no app password; an ordinary account password will be rejected.'],
+  mailImapUnreachable: ['mail', 'The mail server did not answer at {server}; check the address and the network.'],
+  mailImapAuthFailed: ['mail', 'The mail server rejected the address or the app password; generate a new app password for this mailbox.'],
+  mailSmtpUnreachable: ['mail', 'The outgoing mail server did not answer at {server}; the mailbox can be read but not replied to.'],
+  mailSmtpAuthFailed: ['mail', 'The outgoing mail server rejected the address or the app password; the mailbox can be read but not replied to.'],
 } as const satisfies Record<string, readonly [SetupPlace, string]>
 export type SetupCode = keyof typeof SETUP_PROBLEMS
 export interface SetupProblem { place: SetupPlace; code: SetupCode; values: Record<string, string>; detail: string }

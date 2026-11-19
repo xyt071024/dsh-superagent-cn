@@ -6,11 +6,27 @@ import { usePanel, mount, remount, all, find, tab, click, text } from './fixture
 import { server, droppedReply, threadSummary } from './fixtures/panel-server.ts'
 
 usePanel()
+it('shows held operations and lets the user retry without discarding them', async () => {
+  server.held = [{ kind: 'reply', count: 2 }]
+  await mount()
+  expect(text()).toContain(zh.effectsHeldTitle)
+  await click(zh.effectsHeldRetry)
+  expect(server.requests.some(request => request.path === 'effects/reply/retry-held' && request.method === 'POST')).toBe(true)
+  expect(server.held).toEqual([])
+})
+it('checks the release only when requested and displays the result', async () => {
+  await mount()
+  expect(server.requests.some(request => request.path === 'update-check')).toBe(false)
+  await click(zh.updateCheck)
+  expect(server.requests.some(request => request.path === 'update-check' && request.method === 'GET')).toBe(true)
+  expect(text()).toContain(zh.updateCurrentLatest)
+  expect(document.querySelector<HTMLAnchorElement>('a[href="https://github.com/xyt071024/dsh-superagent-cn/releases"]')).not.toBeNull()
+})
 it('leads the overview with the pending Tickets, then problems, the last day and the Executor, each linking to its stage', async () => {
   await mount()
   expect(tab(zh['tab.overview']).getAttribute('aria-selected')).toBe('true')
   expect(all('[role="tab"]').map(tab => tab.textContent)).toEqual(['概览', '来源', '触发', '评估', '执行', '设置'])
-  expect(all('.dt-section-title').map(title => title.textContent)).toEqual(['待处理工单2', '系统问题2', '过去 24 小时详情 ›', '执行器详情 ›'])
+  expect(all('.dt-section-title').map(title => title.textContent)).toEqual(['待处理工单2', '检查当前状态开始检查', '系统问题2', '过去 24 小时详情 ›', '执行器详情 ›'])
   expect(all('.dt-cards .dt-ticket-stage').map(item => item.textContent)).toEqual(['待回答', '待处理失败'])
   expect(all('.dt-cards .dt-att-what').map(item => item.textContent)).toEqual(['飞书 来源异常', '评估未完成：这个文案好奇怪'])
   // Actions sit below the title and Threads, apart from the stage, each with its icon.
@@ -125,11 +141,20 @@ it('words a refused retry in the interface language by its code', async () => {
 
 it('shows the overview in English', async () => {
   await mount(en)
-  expect(all('.dt-section-title').map(title => title.textContent)).toEqual([`${en.pendingTickets}2`, `${en.problems}2`,
+  expect(all('.dt-section-title').map(title => title.textContent)).toEqual([`${en.pendingTickets}2`, `${en.inspectTitle}${en.inspectRun}`, `${en.problems}2`,
     `${en.lastDay}${en.details}`, `${en['term.executor']}${en.details}`])
   expect(all('.dt-cards .dt-ticket-stage').map(item => item.textContent)).toEqual([en['stage.answer'], en['stage.failed']])
   expect(all('.dt-stat-label').map(label => label.textContent)).toEqual([en.flowReceivedLabel, en.flowFilteredLabel, en.flowJudgedLabel,
     en.flowAcceptedLabel, en.executingLabel, en.queuedLabel, en.idleLabel])
+})
+
+it('runs a read-only inspection and shows its reported findings', async () => {
+  await mount()
+  expect(server.requests.some(request => request.path === 'self-inspect')).toBe(false)
+  await click(zh.inspectRun)
+  expect(server.requests.some(request => request.path === 'self-inspect' && request.method === 'GET')).toBe(true)
+  expect(text()).toContain(zh['inspect.noLiveSource'])
+  expect(text()).toContain(zh.inspectScope)
 })
 
 it('lists the unavailable Evals one by one, without the health entry that counts them as a failure of dsh-superagent', async () => {

@@ -1,4 +1,4 @@
-/** The bundle's patch, read with the entry-list dialect DSH reads bundle patches with, and the agent preset it defines. */
+﻿/** The bundle's patch, read with the entry-list dialect DSH reads bundle patches with, and the agent preset it defines. */
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
@@ -30,7 +30,7 @@ it('defines the worker preset Executor Sessions run under, with a shell that mov
   const rows = await patched()
   // Every Source that is its own plugin is inserted here, and each one also needs a build entry and an `exports` line.
   // `qq-watch` serves QQ, WeChat and WeCom from one factory; `mail-watch` serves IMAP/SMTP.
-  expect(rows.map(row => row.id)).toEqual(['dsh-superagent', 'dsh-superagent-github', 'dsh-superagent-qq', 'dsh-superagent-mail',
+  expect(rows.map(row => row.id)).toEqual(['dsh-superagent', 'dsh-superagent-github', 'dsh-superagent-qq', 'dsh-superagent-qqbot', 'dsh-superagent-mail',
     'dsh-superagent-feishu', 'dsh-superagent-worker-preset', 'dsh-superagent-router-preset'])
   const preset = presetOf(rows, WORKER_PRESET)
   expect(preset.id).toBe(WORKER_PRESET)
@@ -51,6 +51,20 @@ it('defines the worker preset Executor Sessions run under, with a shell that mov
   for (const name of ['@deepseek-ai/dsh-tool-ask-user', '@deepseek-ai/dsh-tool-present', '@deepseek-ai/dsh-plan-mode', '@deepseek-ai/dsh-plugin-manager/tools',
     '@deepseek-ai/dsh-plugin-market/tools', '@deepseek-ai/dsh-tool-schedule', '@deepseek-ai/dsh-tool-goal', '@deepseek-ai/dsh-command-goal',
     '@deepseek-ai/dsh-tool-workflow', '@deepseek-ai/dsh-workflow-ptc']) expect(names).not.toContain(name)
+})
+
+// The executor reads `ctx.get('agentTeams')` to split a hard ticket and to start an independent reviewer, and `WORK_TOOLS`
+// allow-lists the Team tools. An allow list naming a tool the host never loaded is this project's recurring failure: the
+// preset must mount the Team service itself, and the Team service needs durable session storage to keep a roster.
+it('mounts Agent Teams in the worker preset, with the durable session storage its roster needs', async () => {
+  const plugins = flat(presetOf(await patched(), WORKER_PRESET).plugins)
+  const names = plugins.map(row => row.name)
+  for (const name of ['@deepseek-ai/dsh-experimental-agent-team', '@deepseek-ai/dsh-experimental-tool-agent-team',
+    '@deepseek-ai/dsh-session-persistence-jsonl']) expect(names, name).toContain(name)
+  // Isolated, as every other service this preset provides is: without the isolate row the group stays inactive.
+  const group = plugins.find(row => row.id === 'teams')!
+  expect(group.name).toBe('cordis:group')
+  expect((group as unknown as { isolate?: Record<string, unknown> }).isolate).toEqual({ agentTeams: true })
 })
 
 it('defines the router preset the main Session runs under: the worker\'s 5-second shell and job waits, and only the tools it uses', async () => {

@@ -5,7 +5,8 @@ import { usePoll, type DroppedReply, type SourceStatusRow, type SourceView } fro
 import { DisclosureRow, Dot, Icon, InfoTip, Switch, Tag } from './controls.tsx'
 import { SaveBar } from './draft.tsx'
 import { sourceMark } from './marks.ts'
-import { usePanel, usePanelData } from './provider.tsx'
+import { useAction, usePanel, usePanelData } from './provider.tsx'
+import type { ApiResponse } from '../app/api.ts'
 import { setupPage, settingsRoute, type Route } from './route.ts'
 import { ConfigHistory, Fields, SourceField, useBlockDraft, useSettings } from './settings-kit.tsx'
 import { actorName, healthText, localized, readableMarkers, reasonLabel, valueLabel, when } from './text.ts'
@@ -102,15 +103,15 @@ function SetupGuide({ guide, source }: { guide: NonNullable<SourceStatusRow['gui
   const { t, navigate } = usePanel()
   const [open, setOpen] = useState(!guide.ready)
   const steps = guide.steps
-  const outstanding = new Set(guide.missing)
   return <div className="dt-guide">
     <p className="dt-hint">{localized(t, guide.purpose)}</p>
     <button type="button" className="dt-textlink" onClick={() => setOpen(!open)}>
-      {guide.ready ? t('guideReady') : t('guideSteps', { count: steps.length, missing: outstanding.size })}
+      {guide.ready ? t('guideReady') : t('guideStepsHonest', { count: steps.length })}
     </button>
     {open && <ol className="dt-guide-steps">
-      {steps.map((step, index) => <li key={step.key} data-done={!outstanding.has(step.key) || undefined}>
+      {steps.map((step, index) => <li key={step.key} data-done={step.status === 'verified' || undefined}>
         <div className="dt-guide-title">{localized(t, step.title)}</div>
+        <div className="dt-hint">{t({ configured: 'guideConfigured', needs_input: 'guideNeedsInput', verified: 'guideVerified', not_checked: 'guideNotChecked' }[step.status] as 'guideConfigured' | 'guideNeedsInput' | 'guideVerified' | 'guideNotChecked')}</div>
         {step.where && <div className="dt-guide-where">{localized(t, step.where)}</div>}
         {step.done && <div className="dt-guide-done">{t('guideDone')}{localized(t, step.done)}</div>}
         {step.url && <a className="dt-field-link" href={step.url} target="_blank" rel="noreferrer noopener">
@@ -124,7 +125,9 @@ function SetupGuide({ guide, source }: { guide: NonNullable<SourceStatusRow['gui
   </div>
 }
 function SourceRow({ source }: { source: SourceStatusRow }) {
-  const { t, navigate } = usePanel()
+  const { t, navigate, call } = usePanel()
+  const [probe, setProbe] = useState<ApiResponse<'POST sources/:id/probe'> | undefined>()
+  const check = useAction(async () => { setProbe(await call('POST sources/:id/probe', { id: source.id })) })
   const { setup } = usePanelData()
   const [filteredOpen, setFilteredOpen] = useState(false)
   const { problem, dropped } = source
@@ -154,6 +157,12 @@ function SourceRow({ source }: { source: SourceStatusRow }) {
           item)}</span>
       </p>)}
       {source.guide && <SetupGuide guide={source.guide} source={source.id} />}
+      {source.enabled && <div className="dt-row-meta"><button type="button" className="dt-textlink" disabled={check.busy}
+        onClick={() => { void check.run() }}>{t('sourceProbeRun')}</button>
+        {probe && (probe.checks.length ? probe.checks.map(item => <span key={item.name}>
+          {item.name.toUpperCase()}: {t(({ ok: 'sourceProbeOk', missing: 'sourceProbeMissing', failed: 'sourceProbeFailed', unsafe: 'sourceProbeUnsafe', unsupported: 'sourceProbeUnsupported', auth_failed: 'sourceProbeAuthFailed', unreachable: 'sourceProbeUnreachable', tls_failed: 'sourceProbeTlsFailed' } as const)[item.state])}
+        </span>) : <span>{t('sourceProbeUnsupported')}</span>)}
+      </div>}
       {source.filtered.length > 0 && <DisclosureRow icon={<Icon name="filter" />} title={t('sourceFilteredTitle')} open={filteredOpen}
         onToggle={() => setFilteredOpen(!filteredOpen)}>
         <div className="dt-disclosure-body">

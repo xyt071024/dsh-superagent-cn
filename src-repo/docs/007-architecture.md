@@ -293,6 +293,7 @@ Some generic modules still refer directly to GitHub or Feishu:
 | `src/index.ts` | The main plugin entry: reads the machine settings, starts the Runtime, and gives it the restart that a save of a Source's account uses |
 | `src/deployment.ts` | The plugin `Config` and `Machine`; `resolveDeployment` and `resolveFeishuBot` read the repository and the accounts from the Source settings, each CLI run as Executor shells run it; `SETUP_FIELDS` lists the Source fields setup reads. The code names no person, account or organization |
 | `src/setup.ts` | Setup problems: `SetupError`, with a code, the place that fixes it and the English text the log, the main Session and the panel share |
+| `src/setup-guides.ts` | What each Source needs before it can receive work, as ordered steps naming where each happens and how to know it is done; the panel walks a person through it instead of only reporting what is missing |
 | `src/policy.ts` | The Policy: the settings schemas by block, the Policy version, the gate and Mandate revalidation |
 | `src/admission.ts` | The admission table's values, each cell's options and defaults, shared with the panel |
 | `src/limits.ts` | The limits of the values a person sets, which the settings schemas check and the panel's fields offer |
@@ -396,8 +397,23 @@ Some generic modules still refer directly to GitHub or Feishu:
 | `src/client/marks.ts` | The marks of the states the views classify: a Ticket's or a Thread's stage, a Source's state and a Decision's outcome, each as a dot, an icon, a tone and a label |
 | `src/client/locales.ts` | All copy in both languages, and the glossary of [001 Domain model](001-domain.md) |
 | `src/client/client.css`, `css.d.ts` | The panel's stylesheet, loaded as text |
+| `src/app/archive.ts` | `ContextArchiver`: archives a session's context at the operator's percentage and steers the same session to carry on; the summarising and the rollback belong to the host's compaction service, not here |
+| `src/app/relay.ts` | `SessionRelay`: hands a ticket's work to a fresh Session when its own fills up — the summary is built from the old Session's own transcript and the durable ticket with a per-section budget that keeps the newest progress, every step persists so a crash resumes it, each handover gets its own generation so a committed move never becomes the next target, the Team check counts real teammates rather than the lead the roster always lists, a refused commit stops the prepared target so two workers never run one ticket, and the pointer is committed in one write |
+| `src/app/routing.ts` | `multiSession` and `modelFor`: whether a hard ticket may be split, and which approved model a session runs on at a given difficulty |
+| `src/app/self-inspect.ts` | What this installation is missing, and how a ticket's directory broke, stated as the step that fixes each gap rather than as a status category |
+| `src/app/source-probe.ts` | On-demand source connectivity checks that do not send messages or return credentials |
+| `src/app/update-check.ts` | Checks the distribution repository's latest stable version without changing the installation |
+| `src/app/tools/plugin.ts` | `orchestrator_plugin`: lists, installs and removes this profile's DSH plugins through the host's own plugin manager |
+| `src/app/usage.ts` | `UsageMeter`: the day's token count, per local calendar day, shared by every session so one limit covers them all |
+| `src/app/review-snapshot.ts` | Computes a Git worktree fingerprint for independent review, including staged and untracked changes |
+| `src/client/budget.tsx` | The context-and-budget settings group: when to archive, whether a long assignment may interrupt, and how much may be spent in a day |
+| `src/client/routing.tsx` | The routing settings group: one session or several, the approved models and their order, the difficulty threshold, thinking effort and placement |
+| `src/sources/imap.ts` | `ImapClient`: a small IMAP client whose literals are measured in bytes, so a UTF-8 body is read whole rather than cut short |
+| `src/sources/mail.ts` | The Mail Source: IMAP polling on a cursor, a dedupe set per mailbox, and in-process SMTP replies using the configured app password |
+| `src/sources/qq.ts` | The OneBot Source kind: one factory serves QQ, WeChat and WeCom, each instance with its own endpoint, token and allow-list |
+| `src/sources/qqbot.ts` | The official QQ bot Source: receives supported platform events and sends replies through the official SDK |
 
-`src/sources/github.ts` and `src/sources/feishu.ts` are also the entries of the two Source plugins, built by `tsdown.config.ts` and exported in `package.json` as `./github-watch` and `./feishu-watch`. The bundle's `cordis.patch.yml` inserts the three plugins, with Feishu disabled.
+The GitHub, Feishu, OneBot, mail and official QQ bot Sources have separate plugin entries built by `tsdown.config.ts` and exported in `package.json`. The bundle's `cordis.patch.yml` supplies their configuration.
 
 ## Tests
 
@@ -435,7 +451,7 @@ Some generic modules still refer directly to GitHub or Feishu:
 | `tests/prompts.spec.ts` | Prompt validation, assembly and versions |
 | `tests/cards.spec.ts` | The rules the built-in text must state, file by file |
 | `tests/model-surface.spec.ts` | Everything models read: tools, prompts, skills and inputs, checked against the tool schemas, the execution environment and the glossary, within a size budget per role |
-| `tests/deployment.spec.ts`, `tests/environment.spec.ts`, `tests/index.spec.ts` | The plugin configuration and setup, the agent's process environment, the plugin entry |
+| `tests/deployment.spec.ts`, `tests/deployment-probe.spec.ts`, `tests/environment.spec.ts`, `tests/index.spec.ts` | The plugin configuration and setup, the agent's process environment, the plugin entry |
 | `tests/service-script.spec.ts` | `scripts/dsh-superagent` against fake `ps`, `tmux` and `dsh` |
 | `tests/client.spec.tsx`, `tests/navigation.spec.ts`, `tests/controls.spec.tsx` | The client plugin's registration and polling, Session navigation and route memory, the local controls, and the panel's imports, which have no cycle |
 | `tests/panel-overview.spec.tsx`, `panel-source.spec.tsx`, `panel-trigger.spec.tsx`, `panel-eval.spec.tsx`, `panel-execution.spec.tsx` | Each page of the panel, against a fake management API answered by route |
@@ -444,6 +460,21 @@ Some generic modules still refer directly to GitHub or Feishu:
 | `tests/locales.spec.ts`, `tests/styles.spec.ts` | The copy in both languages, the stylesheet |
 | `tests/class-docs.spec.ts` | Every class in `src` has a JSDoc block before it |
 | `tests/docs.spec.ts` | Numbered documents link only to earlier ones, every local link resolves, no document has merge conflict markers, and this document's tables list every module and every test |
+| `tests/imap.spec.ts` | The IMAP client: a literal is measured in bytes so a UTF-8 body arrives whole, and a piece arriving in two reads is joined before it is parsed |
+| `tests/mail-source.spec.ts` | The Mail Source: MIME and header parsing, message triggers, mailbox configuration and health |
+| `tests/smtp.spec.ts` | SMTP replies against a local fake server, including authentication, Unicode message content and authentication failures |
+| `tests/relay.spec.ts` | Session identity by owner record, a handover built from the old transcript, refusals that keep the ticket in place, and resumption after a crash |
+| `tests/archive.spec.ts` | Context archiving thresholds, host compaction and error handling |
+| `tests/archive-runtime.spec.ts` | Context archiving wired through the running Runtime |
+| `tests/usage.spec.ts` | Token usage accounting and budget enforcement |
+| `tests/review-snapshot.spec.ts` | Detects changes to Git worktree contents and rejects unsupported workspaces |
+| `tests/qqbot-source.spec.ts` | Official QQ bot event handling, message delivery and Source registration |
+| `tests/multi-instance.spec.ts` | Instance identity: a suffixed id (`qq-work`) is the same kind as `qq`, an unregistered prefix invents nothing, and a kind with suffixes does not also offer a bare instance |
+| `tests/qq-source.spec.ts` | The OneBot Source on Windows: a `.cmd` program is wrapped in `cmd.exe`, `gh` binds its account through an isolated `GH_CONFIG_DIR`, and message segments flatten to readable text |
+| `tests/routing.spec.ts` | Routing: which approved model a difficulty picks, whether a hard ticket may be split, and that the approved order is the operator's rather than a ranking |
+| `tests/self-inspect.spec.ts` | Self-inspection: a gap is reported with the step that closes it, and a ticket whose directory is gone is found and repaired |
+| `tests/source-probe.spec.ts` | On-demand source checks, including error redaction and no message delivery |
+| `tests/update-check.spec.ts` | Read-only stable release comparison and unavailable-network handling |
 
 `tests/fixtures/` holds what several tests share: `host.ts`, a simulated DeepSeek Harness host; `panel-server.ts` and `panel.tsx`, the fake management API and the panel around a page; `deployment.ts`, a resolved deployment; `git.ts`, the environment of every git the tests start, which names no repository; and `async.ts`.
 

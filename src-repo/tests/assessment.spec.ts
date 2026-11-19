@@ -11,6 +11,14 @@ import { deferred } from './fixtures/async.ts'
 import { githubKind } from '../src/sources/github.ts'
 import { SourceRegistry } from '../src/sources/registry.ts'
 
+it('accepts a bounded complexity estimate without requiring one from older clients', () => {
+  const base = { decision: 'ignore', rule_assessments: [], direction: { implementation_requested: false,
+    target_basis: 'undetermined', requires_design_decision: false, evidence: 'No implementation request' }, title: 't', scope: 's', reason: 'r' }
+  expect(AssessmentSchema.parse({ ...base, difficulty: 95 }).difficulty).toBe(95)
+  expect(AssessmentSchema.safeParse({ ...base, difficulty: 101 }).success).toBe(false)
+  expect(AssessmentSchema.safeParse(base).success).toBe(true)
+})
+
 /** Assessor fixture backed by in-memory repositories and fake GitHub Issue and file reads. */
 function setup(strength: 'explicit' | 'inferred' = 'inferred', bodies = Array.from({ length: 5 }, (_, i) => `comment ${i}`),
   threadContext?: AssessorHost['threadContext']) {

@@ -25,7 +25,7 @@ export class Passes {
   private pumping?: Promise<void>
   private pumpAgain?: Promise<void>
   constructor(private readonly host: PassesHost) {}
-  start(): void { if (!this.stopped) this.timer = setInterval(() => { this.request() }, 2000) }
+  start(): void { if (!this.stopped && !this.timer) this.timer = setInterval(() => { this.request() }, 2000) }
   stop(): Promise<unknown> {
     this.stopped = true
     clearInterval(this.timer)

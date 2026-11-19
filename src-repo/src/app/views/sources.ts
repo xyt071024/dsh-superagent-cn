@@ -58,10 +58,26 @@ export function sourcesStatus(host: ViewHost, health: HealthMap, setup: SetupSta
     // Source whose guide lists nothing is simply configured elsewhere.
     return { ...named, installed: instance.installed, enabled: instance.enabled, state: sourceState(instance, parts, setup), health: parts,
       ...problem ? { problem } : {},
-      ...guide ? { guide: { purpose: guide.purpose, steps: guide.steps, ready, missing: missingSteps(guide, instance, problem, ready) } } : {},
+      ...guide ? { guide: { purpose: guide.purpose, steps: guide.steps.map(step => ({ ...step,
+        status: setupStepStatus(instance, step.key, setup) })), ready, missing: missingSteps(guide, instance, problem, ready) } } : {},
       stats: stats[instance.id] ?? { received: 0, filtered: 0, lastAt: '' }, filtered: filtered(instance.id),
       dropped: dropped.filter(item => item.channel.source === instance.id) }
   })
+}
+/** Only claim a fact this process can observe. Never include configuration values (which may contain secrets). */
+export function setupStepStatus(instance: SourceInstance, step: string, setup: SetupState): 'configured' | 'needs_input' | 'verified' | 'not_checked' {
+  const config = instance.config
+  const field = (name: string) => typeof config[name] === 'string' && !!(config[name] as string).trim() ? 'configured' : 'needs_input'
+  if (instance.kind === 'mail') {
+    if (step === 'secret') return field('secret')
+    if (step === 'address') return field('address')
+  }
+  if (['qq', 'wechat', 'wecom'].includes(instance.kind) && step === 'endpoint') return field('endpoint')
+  if (instance.kind === 'qqbot' && step === 'credentials')
+    return config.appId && config.appSecret ? 'configured' : 'needs_input'
+  if (instance.kind === 'github' && step === 'repo') return setup.deployment?.repository ? 'verified' : field('repository')
+  if (instance.kind === 'feishu' && step === 'cli') return setup.deployment?.feishu ? 'verified' : field('cli')
+  return 'not_checked'
 }
 export type SourceStatusView = ReturnType<typeof sourcesStatus>[number]
 /** Replies dropped in the last 24 hours, enriched with their associated ticket and thread. */

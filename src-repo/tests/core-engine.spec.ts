@@ -71,6 +71,35 @@ function accepted(h: ReturnType<typeof harness>, id = '1', thread = 't1') {
   return decision
 }
 
+it('does not finish a ticket while its independent review is pending or failed', () => {
+  for (const state of ['pending', 'failed'] as const) {
+    const h = harness()
+    const { ticketId } = accepted(h)
+    const ticket = h.repo.tickets.get(ticketId!)!
+    ticket.review = { state, round: 1, fingerprint: 'snapshot', reviewer: 'reviewer' }
+    h.repo.tickets.save(ticket)
+    h.engine.report(ticketId!, { state: 'ready', summary: 'candidate ready' })
+    expect(h.repo.tickets.get(ticketId!)?.ended).toBeUndefined()
+  }
+})
+
+it('keeps a ticket open when its PR closes during review and allows completion after a pass', () => {
+  const h = harness()
+  const ticketId = accepted(h).ticketId!
+  h.engine.bindThread(ticketId, { source: 'gh', id: 'pr-9' }, true)
+  const ticket = h.repo.tickets.get(ticketId)!
+  ticket.review = { state: 'pending', round: 1, fingerprint: 'snapshot', reviewer: 'reviewer' }
+  h.repo.tickets.save(ticket)
+  h.engine.report(ticketId, { state: 'ready', summary: 'candidate ready' })
+  h.engine.threadClosed({ source: 'gh', id: 'pr-9' }, 'merged', '2026-09-23T00:00:01Z')
+  expect(h.repo.tickets.get(ticketId)?.ended).toBeUndefined()
+  const reviewed = h.repo.tickets.get(ticketId)!
+  reviewed.review!.state = 'passed'
+  h.repo.tickets.save(reviewed)
+  h.engine.report(ticketId, { state: 'ready', summary: 'reviewed' })
+  expect(h.repo.tickets.get(ticketId)?.ended?.outcome).toBe('merged')
+})
+
 describe('intake', () => {
   it('stores a trigger once and records source filtering', () => {
     const h = harness()

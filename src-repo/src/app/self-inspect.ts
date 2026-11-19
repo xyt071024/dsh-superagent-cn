@@ -58,25 +58,9 @@ export function inspect(settings: Settings, sources: Pick<SourceRegistry, 'insta
     gaps.push({ code: 'emptyAllowList', detail: 'Every Source list is empty, so nothing becomes an explicit request.',
       fix: 'Open Settings → Sources and add your own account to the list of the Source you use.' })
   }
-  if (!settings.routing.allow.length) {
-    gaps.push({ code: 'noApprovedModel', detail: 'No model is approved for workers, so every Session runs on the Execution model.',
-      fix: 'Open Settings → Routing → Approved models and tick the models a worker may use, cheapest first.' })
-  }
-  if (settings.routing.multiSession === 'single') {
-    gaps.push({ code: 'singleSession', detail: 'Every job runs in one Session, so a hard job never spreads across models.',
-      fix: 'Open Settings → Routing → Multiple Sessions and choose 自动拆分.' })
-  }
   if (settings.eval.mode === 'observe') {
     gaps.push({ code: 'observeOnly', detail: 'Assessments are recorded but never accepted, so the agent accepts no work on its own.',
       fix: 'Open Settings → Eval and choose 自动 once the rules describe what you want accepted.' })
-  }
-  if (!instances.some(instance => instance.kind === 'mail')) {
-    gaps.push({ code: 'noMailSource', detail: 'No mailbox is connected, so work cannot arrive by mail.',
-      fix: 'Turn on the Mail Source and fill in the address and the app password.' })
-  }
-  if (!settings.executor.prepare.trim()) {
-    gaps.push({ code: 'noPrepare', detail: 'No prepare command runs, so each ticket starts from an empty directory.',
-      fix: 'Open Settings → Execution → Prepare command and add what prepares a workspace, such as a clone or a worktree.' })
   }
 
   const since = Date.now() - days * 86_400_000

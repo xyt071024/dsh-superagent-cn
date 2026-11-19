@@ -18,7 +18,7 @@ export interface ImapOptions {
   timeoutMs?: number
 }
 /** One message as fetched; `body` holds whatever the caller asked `FETCH` for. */
-export interface ImapMessage { seq: number; body: string }
+export interface ImapMessage { seq: number; body: string; raw: Buffer }
 
 const CRLF = '\r\n'
 
@@ -32,7 +32,8 @@ const quoted = (text: string): string => `"${text.replace(/[\\"]/g, char => `\\$
  */
 export class ImapClient {
   private socket?: Socket | TLSSocket
-  private buffer = ''
+  private buffer: Buffer = Buffer.alloc(0)
+  private literal?: { line: string; size: number }
   private tag = 0
   private greeting = false
   private readonly waiting = new Map<string, { resolve: (lines: string[]) => void; reject: (error: Error) => void }>()
@@ -54,7 +55,7 @@ export class ImapClient {
       if (secure) (socket as TLSSocket).once('secureConnect', ready)
       else socket.once('connect', ready)
     })
-    this.socket.on('data', chunk => { this.consume(String(chunk)) })
+    this.socket.on('data', chunk => { this.consume(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)) })
     this.socket.on('error', (error: Error) => { for (const entry of this.waiting.values()) entry.reject(error); this.waiting.clear() })
     await this.awaitGreeting()
     await this.run(`LOGIN ${quoted(this.options.user)} ${quoted(this.options.password)}`)
@@ -81,36 +82,31 @@ export class ImapClient {
   /** Signs out and closes the socket; safe to call twice. */
   async close(): Promise<void> {
     const socket = this.socket
-    this.socket = undefined
     if (!socket) return
     try { await this.run('LOGOUT') } catch { /* A closed connection needs no goodbye. */ }
+    this.socket = undefined
     socket.destroy()
   }
 
-  private consume(chunk: string): void {
-    this.buffer += chunk
-    let index: number
-    while ((index = this.buffer.indexOf(CRLF)) >= 0) {
-      const line = this.buffer.slice(0, index)
-      this.buffer = this.buffer.slice(index + CRLF.length)
-      // A literal (`{123}`) is followed by that many *bytes* of body, which arrive after the line that announced it.
-      //
-      // This used to slice by `String.length`, which counts UTF-16 code units. The two agree only while the text is pure
-      // ASCII; a single Chinese character is three bytes but one code unit, so every non-ASCII message was cut short —
-      // or, worse, the cut landed mid-literal and the rest of the stream was parsed as if it were a command reply. The
-      // offset has to be computed on the encoded bytes and the slice decoded afterwards.
-      const literal = /\{(\d+)\}$/.exec(line)
-      if (literal) {
-        const size = Number(literal[1])
-        const need = size + Buffer.byteLength(CRLF)
-        const bytes = Buffer.from(this.buffer, 'utf8')
-        if (bytes.length < need) { this.buffer = `${line}${CRLF}${this.buffer}`; return }
-        const body = bytes.subarray(0, size).toString('utf8')
-        this.deliver(`${line}${CRLF}${body}`)
-        this.buffer = bytes.subarray(need).toString('utf8')
+  private consume(chunk: Buffer): void {
+    this.buffer = Buffer.concat([this.buffer, chunk])
+    while (true) {
+      if (this.literal) {
+        if (this.buffer.length < this.literal.size) return
+        // Latin-1 maps each byte to one character, preserving arbitrary MIME bytes until parseFetch.
+        const body = this.buffer.subarray(0, this.literal.size).toString('latin1')
+        this.buffer = this.buffer.subarray(this.literal.size)
+        this.deliver(`${this.literal.line}${CRLF}${body}`)
+        this.literal = undefined
         continue
       }
-      this.deliver(line)
+      const index = this.buffer.indexOf(CRLF)
+      if (index < 0) return
+      const line = this.buffer.subarray(0, index).toString('utf8')
+      this.buffer = this.buffer.subarray(index + CRLF.length)
+      const literal = /\{(\d+)\}$/.exec(line)
+      if (literal) this.literal = { line, size: Number(literal[1]) }
+      else this.deliver(line)
     }
   }
   private deliver(line: string): void {
@@ -154,13 +150,37 @@ export class ImapClient {
 
 /**
  * Extracts messages from `FETCH` replies. A reply looks like `* 3 FETCH (UID 12 BODY[TEXT] {5}\r\nhello)`, and the body
- * may itself contain brackets and parentheses, so the outer pair is stripped rather than parsed as a tree.
+ * may itself contain parentheses or complete lines, so literal byte lengths must be skipped while finding the outer pair.
  */
 export function parseFetch(lines: string[]): ImapMessage[] {
   const out: ImapMessage[] = []
   const joined = lines.join('\r\n')
-  const pattern = /^\*\s+(\d+)\s+FETCH\s+\(([\s\S]*?)\)\s*$/gim
+  const pattern = /^\*\s+(\d+)\s+FETCH\s+\(/gim
   let match: RegExpExecArray | null
-  while ((match = pattern.exec(joined)) !== null) out.push({ seq: Number(match[1]), body: match[2] ?? '' })
+  while ((match = pattern.exec(joined)) !== null) {
+    const start = pattern.lastIndex
+    let depth = 1
+    let i = start
+    let body: Buffer | undefined
+    while (i < joined.length && depth > 0) {
+      const literal = /^\{(\d+)\}\r\n/.exec(joined.slice(i))
+      if (literal) {
+        i += literal[0].length
+        const size = Number(literal[1])
+        if (i + size > joined.length) break
+        // The transport represents literal bytes one-to-one as Latin-1 characters.
+        if (!body) body = Buffer.from(joined.slice(i, i + size), 'latin1')
+        i += size
+        continue
+      }
+      if (joined[i] === '(') depth++
+      else if (joined[i] === ')') depth--
+      i++
+    }
+    if (depth === 0 && body) {
+      out.push({ seq: Number(match[1]), body: body.toString('utf8'), raw: body })
+      pattern.lastIndex = i
+    }
+  }
   return out
 }

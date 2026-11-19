@@ -1,7 +1,8 @@
 /** Probes repository and account CLIs, configures the worker execution environment and command shims, and tracks setup readiness. */
 import type { Context } from '@deepseek-ai/cordis'
 import { UserError } from '../core/index.ts'
-import { SETUP_FIELDS, resolveDeployment, resolveFeishuBot, workerProbe, type Deployment, type Machine } from '../deployment.ts'
+import { SETUP_FIELDS, resolveDeployment, resolveFeishuBot, resolveMail, resolveOneBot, workerProbe,
+  type Deployment, type Machine } from '../deployment.ts'
 import { agentVariables, applyEnvironment, verifyEnvironment, withoutDirectory, workerBin, writeEnvironment } from '../infra/environment.ts'
 import type { Settings, SettingsBlock } from '../policy.ts'
 import { SetupError, type SetupProblem } from '../setup.ts'
@@ -58,11 +59,26 @@ export class Setup {
   /** Defer the restart to the next macrotask so the current HTTP or tool caller receives its response first. */
   restart(): void { setTimeout(this.host.restart, 0) }
   /** Verify account CLIs for a modified source block before saving, ignoring setup errors belonging to other blocks. */
+  /**
+   * Verify a modified Source block before it is saved, and refuse the save when the check names that same block.
+   *
+   * OneBot and mail are checked here too, which is where they were missing: saving a QQ, WeChat, WeCom or mailbox card
+   * used to succeed no matter what was typed, and the only feedback was a Source that stayed waiting for reasons the
+   * panel never named. Each check runs against the saved settings own Source instance, so the message names the platform
+   * and the server a person can actually fix, and a failure for a different block is ignored rather than refusing an
+   * unrelated save.
+   */
   async checkAccounts(block: SettingsBlock, settings: Settings): Promise<void> {
     const { machine } = this.host
+    const named = block.startsWith('source:') ? block.slice('source:'.length) : undefined
+    // Which Source instance the block belongs to; OneBot serves qq / wechat / wecom from one factory.
+    const instance = (kind: string, id: string) => ({ kind,
+      config: (settings.sources[id as keyof Settings['sources']]?.config ?? {}) as Record<string, unknown> })
     const check = block === 'source:feishu' ? resolveFeishuBot(machine, settings.sources.feishu?.config, this.probe())
-      : resolveDeployment(machine, settings.sources.github?.config, this.probe())
-    await check.catch((error: unknown) => { if (!(error instanceof SetupError) || error.place === block.slice(7)) throw error })
+      : named === 'qq' || named === 'wechat' || named === 'wecom' ? resolveOneBot(instance(named, named))
+        : named === 'mail' ? resolveMail(instance('mail', 'mail'))
+          : resolveDeployment(machine, settings.sources.github?.config, this.probe())
+    await check.catch((error: unknown) => { if (!(error instanceof SetupError) || error.place === named) throw error })
   }
   async blockCommands(blocked: readonly string[]): Promise<void> {
     if (this.resolved) await writeEnvironment(this.resolved, blocked)

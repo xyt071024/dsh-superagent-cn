@@ -7,6 +7,53 @@ import type { SettingsVersion } from './app/store.ts'
 import type { SettingsSave } from './policy.ts'
 import type { Retry } from './sources/github.ts'
 
+/**
+ * One ticket's Session handover, persisted across every step so a crash resumes instead of repeating or losing work.
+ *
+ * `idle` is the starting point and also the state after a move that was never attempted; `prepared` means the summary
+ * exists and is durable but no Session was created yet; `created` means the target Session exists; `summarised` means the
+ * summary was delivered to it; `committed` means `current` was switched to it, which is the only point readers move;
+ * `failed` means the attempt stopped and the ticket stays on `current` with the reason recorded.
+ */
+export interface Relay {
+  /** Session the ticket is committed to. Readers use this field and nothing else. */
+  current: string
+  /** Sessions this ticket has already moved away from, oldest first. */
+  previous: string[]
+  /** Session being prepared. Present only while a move is in flight; never a routing target. */
+  target?: string
+  /** Last step that completed. */
+  stage: 'idle' | 'prepared' | 'created' | 'summarised' | 'committed' | 'failed'
+  /** When the record last advanced. */
+  at: string
+  /** Request id of the handover in flight, so a retry after a crash delivers the summary once. */
+  requestId?: string
+  /**
+   * The handover summary of the move in flight.
+   *
+   * Cleared when the move commits: the summary now lives in the new Session's own history, and keeping it here would
+   * make the next handover reuse the previous one's text.
+   */
+  summary?: string
+  /** Why the last attempt stopped. The ticket keeps working on `current` when this is set. */
+  error?: string
+  /**
+   * How many times this ticket has been handed over.
+   *
+   * A generation number, not a timestamp: two moves in the same second must produce different Session names, and it
+   * makes a resumed move provably the same move rather than a new one.
+   */
+  generation?: number
+  /**
+   * Set once the target Session exists but must not act yet.
+   *
+   * The summary is delivered while the ticket still belongs to the old Session, and the new one is woken only after
+   * the pointer commits. Without this flag a move that is refused after delivery leaves a second worker running the
+   * same task — two Sessions doing one job.
+   */
+  held?: boolean
+}
+
 /** Key of a KV record whose value has type `V`; a plain string represents an untyped key. */
 export type Key<V> = string & { readonly __value?: V }
 /** Family of KV records sharing a prefix: callable to build a key from its name parts, and exposing `prefix` for listing. */
@@ -30,9 +77,27 @@ export const KV = {
     /** The built-in text of a prompt part an override was edited from, by its `base`, which shows what an upgrade changed. */
     builtIn: family<string, [base: string]>('prompt-built-in:') },
   /** Runtime: the main Session's ID. */
-  runtime: { masterId: record<string>('master-id') },
+  runtime: { masterId: record<string>('master-id'), usage: record<{ day: string; tokens: number }>('daily-usage') },
   /** Sessions: prompt revisions each Session has worked under, ordered oldest first; the last entry (`.at(-1)`) is its active revision. */
-  sessions: { prompts: family<number[], [session: string]>('session-prompts:') },
+  sessions: { prompts: family<number[], [session: string]>('session-prompts:'),
+    teamModels: family<{ inherited: { provider: string; model: string; reasoningEffort?: string } | null; models: ({ provider: string; model: string; reasoningEffort?: string } | null)[]; max: number; slots: Record<string, number>; autoHard?: boolean }, [ticket: string]>('team-models:'),
+    /**
+     * The ticket a Session works on, written when the Session is created and kept for its whole life.
+     *
+     * This is the only way a Session is recognised as a ticket's worker. Names are never parsed for it: a relayed
+     * Session is `worker-<ticket>-r<generation>`, which a prefix slice would turn into a ticket ID that does not exist,
+     * and a name can carry a newline, so `startsWith('worker-')` is not a decision this plugin can make safely.
+     */
+    owner: family<string, [session: string]>('session-ticket:'),
+    /**
+     * Handover record for a ticket being moved to a fresh Session because the old one filled up its context window.
+     *
+     * `current` is the Session the ticket is committed to and changes only at commit, so every reader keeps talking to a
+     * Session that exists and holds the summary; `target` is the one being prepared and is never routed to. `stage` is
+     * the last step that completed, and a record a crash left at a middle stage is resumed from there rather than
+     * restarted, which keeps the move idempotent.
+     */
+    relay: family<Relay, [ticket: string]>('session-relay:') },
   /** Schema 11 migration: legacy main-Session queues imported into the effect table. */
   queues: { relays: record<{ id: string; text: string }[]>('relay-queue'), unsubscribed: record<string[]>('subscription-results'),
     prompts: record<number | null>('prompt-notification'), settings: record<number | null>('settings-notification') },
@@ -58,5 +123,6 @@ export const KV = {
   /** Message ids already turned into triggers, per mailbox, so a re-read of the same mail does not open a second ticket. */
   mail: { seen: family<string[], [mailbox: string]>('mail-seen:') },
   /** Message ids already seen, per OneBot instance: two bridges on the same endpoint must not share a cursor. */
-  qq: { seen: family<string[], [instance: string]>('qq-seen:') },
+  qq: { seen: family<string[], [instance: string]>('qq-seen:'),
+    pending: family<Array<{ account: string; message: Record<string, unknown> }>, [instance: string]>('qq-pending:') },
 }

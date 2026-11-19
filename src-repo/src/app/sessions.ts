@@ -7,14 +7,14 @@ import type { SessionId } from '@deepseek-ai/dsh-session'
 import { dirname } from 'node:path'
 import { z } from 'zod'
 import { key, liveTicket, type Ticket } from '../core/index.ts'
-import { mandateInstructions, ticketOfSession } from '../executor/dsh.ts'
+import { mandateInstructions, ticketOfSession, validSessionId } from '../executor/dsh.ts'
 import type { HealthEntry } from '../infra/health.ts'
 import { AgentDelivery, messageId } from './delivery.ts'
 import type { Effects } from './effects.ts'
 import type { Variable } from './execution-environment.ts'
 import { RetryHealth } from './retry-health.ts'
 import { initializeRoleModel } from './role-models.ts'
-import { modelFor } from './routing.ts'
+import { modelFor, reserveSessionSlot } from './routing.ts'
 import { bundledSkills } from './skill-files.ts'
 import { SKILL_PREFIX, type PromptVersion, type Prompts } from './prompts.ts'
 import type { Store } from './store.ts'
@@ -148,7 +148,7 @@ export class Sessions {
       // Count usage for every Session the operator's limit covers, including a worker's subagents, before the per-Session
       // checks below skip them: a subagent spends the same allowance.
       this.usage.observe(event)
-      if (!agent || !binding || binding.subagent) return
+      if (!agent || !binding) return
       this.retryHealth.observe(agent.id, event)
       this.updateModelHealth()
     })
@@ -157,7 +157,7 @@ export class Sessions {
     // its first turn DSH refuses any selection, which leaves it as it is.
     ctx.inject(['agentPresets'], child => {
       child.on('agent-preset/selected', (sessionId, preset) => {
-        const ticketId = ticketOfSession(sessionId), agent = ctx.agents.get(sessionId as SessionId)
+        const ticketId = ticketOfSession(this.host.store, sessionId), agent = ctx.agents.get(sessionId as SessionId)
         const ours = sessionId === this.host.masterId ? ROUTER_PRESET : ticketId && this.host.store.tickets.get(ticketId) ? WORKER_PRESET : undefined
         if (!ours || preset === ours || !agent) return
         const presets = child.get('agentPresets') as { select(agent: Agent, preset: string): Promise<string> }
@@ -174,8 +174,16 @@ export class Sessions {
    * `hard` is the difficulty verdict for a worker Session: the Routing settings pick the approved model from it, so two
    * Sessions of one job can run on different models without either leaving the operator's allowance.
    */
-  async ensure(id: string, cwd: string, title: string, role: 'orchestrator' | 'worker', hard = false): Promise<Agent> {
+  async ensure(id: string, cwd: string, title: string, role: 'orchestrator' | 'worker', hard = false, ticketId?: string): Promise<Agent> {
     const ctx = this.ctx
+    // A Session name is durable identity: it is persisted, put in URLs and matched back to a ticket, so a name that
+    // cannot be matched is refused here rather than at the first routing decision that cannot find its ticket.
+    if (!validSessionId(id)) throw new Error(`Refusing to create a Session whose id is not a usable name: ${JSON.stringify(id)}`)
+    // A worker's ticket is recorded before the Session exists, so every later lookup — decoration, tools, mandate,
+    // routing after a handover — reads one authoritative answer instead of slicing the name.
+    const owner = role === 'worker' ? ticketId : undefined
+    if (role === 'worker' && owner === undefined) throw new Error(`Refusing to create worker Session ${id} without its ticket`)
+    if (owner !== undefined) this.host.store.set(KV.sessions.owner(id), owner)
     let result = await ctx.sessionController.resolveAgent(id as SessionId)
     if ('error' in result && result.error.code === 'session/not-found') {
       const workspace = await ctx.workspaceRegistry.create(cwd)
@@ -186,12 +194,17 @@ export class Sessions {
     }
     if ('error' in result) throw result.error
     const settings = this.host.store.settings()
+    const task = role === 'worker' ? ticketOfSession(this.host.store, id) : undefined
+    if (task && settings.routing.multiSession === 'auto' && !this.host.store.get(KV.sessions.teamModels(task))) {
+      this.host.store.set(KV.sessions.teamModels(task), { inherited: this.operatorModel(), models: settings.routing.sessionModels,
+        max: settings.routing.maxSessions, slots: {}, ...(settings.routing.thinking === 'auto' ? { autoHard: hard } : {}) })
+    }
     // An orchestrator decides whether to take work, so its model comes from the Eval settings. A worker's comes from
     // whatever the operator is using right now, unless they configured a model or asked the approved list to win.
     const model = role === 'orchestrator'
       ? settings.eval.model
       : this.workerModel(settings, hard)
-    await initializeRoleModel(ctx, result.agent, model)
+    await initializeRoleModel(ctx, result.agent, model, false, role === 'worker' && settings.routing.thinking === 'auto' ? hard : undefined)
     await this.decorate(result.agent)
     ctx.permissionPresets.set(result.agent.session, 'danger-full-access')
     await ctx.sessionController.rename({ sessionId: id as SessionId, title })
@@ -315,7 +328,7 @@ export class Sessions {
       : { state: 'ready', detail: 'No managed Session is waiting on a model budget retry' })
   }
   private ticketOf(agent: Agent): Ticket | undefined {
-    const ticketId = ticketOfSession(agent.id)
+    const ticketId = ticketOfSession(this.host.store, agent.id)
     return ticketId === undefined ? undefined : this.host.store.tickets.get(ticketId)
   }
   private async decorate(agent: Agent): Promise<void> {
@@ -323,7 +336,7 @@ export class Sessions {
     const host = this.host
     const master = agent.id === host.masterId
     const ticket = master ? undefined : this.ticketOf(agent)
-    if (!master && !ticket) { this.limitSubagent(agent); return }
+    if (!master && !ticket) { await this.limitSubagent(agent); return }
     const binding: SessionBinding = { disposers: [] }
     this.bindings.set(agent, binding)
     this.retryHealth.restore(agent.id, agent.session.snapshotEvents())
@@ -398,14 +411,46 @@ export class Sessions {
    * permissions, gets the same work tools as the worker, and none once the worker's ticket ended. Any other agent is left as
    * it is.
    */
-  private limitSubagent(agent: Agent): void {
+  private async limitSubagent(agent: Agent): Promise<void> {
     let parent = agent.session.header.parentSession
     // Up the subagents' parents to the worker, which are loaded while their subagents run.
-    for (let depth = 0; parent !== undefined && ticketOfSession(parent) === undefined && depth < 8; depth++) {
+    for (let depth = 0; parent !== undefined && ticketOfSession(this.host.store, parent) === undefined && depth < 8; depth++) {
       parent = this.ctx.agents.get(parent)?.session.header.parentSession
     }
-    const ticketId = parent === undefined ? undefined : ticketOfSession(parent)
+    const ticketId = parent === undefined ? undefined : ticketOfSession(this.host.store, parent)
     if (ticketId === undefined || !this.host.store.tickets.get(ticketId)) return
+    const ticket = this.host.store.tickets.get(ticketId)!
+    // Team membership is journaled before the host announces the child Agent. The serial agent/created hook
+    // therefore installs this guard before a reviewer can execute its first tool call.
+    let teams: { tryMembership?(agent: Agent): { name: string; role: string; root: Agent } | undefined } | undefined
+    try { teams = this.ctx.get('agentTeams') as typeof teams } catch { /* Agent Teams is optional. */ }
+    const member = teams?.tryMembership?.(agent)
+    if (ticket.review?.state === 'pending' && (!member || (member.role === 'teammate' && member.name === ticket.review.reviewer))) {
+      const allowed = new Set(['read', 'read_image', 'glob', 'grep'])
+      const dispose = agent.ctx.tools.guard(execution => allowed.has(execution.name) ? undefined : 'Independent review permits read-only tools only')
+      this.bindings.set(agent, { disposers: [dispose], subagent: true })
+      return
+    }
+    if (member?.role === 'teammate' || (!member && agent.session.header.parentSession === parent)) {
+      const saved = this.host.store.get(KV.sessions.teamModels(ticketId))
+      if (saved) {
+        let slot = saved.slots[agent.id]
+        let assigned = false
+        if (slot === undefined) {
+          slot = reserveSessionSlot(saved.slots, agent.id, saved.max)
+          this.host.store.set(KV.sessions.teamModels(ticketId), saved)
+          assigned = true
+        }
+        try { await initializeRoleModel(this.ctx, agent, saved.models[slot] ?? saved.inherited, true, saved.autoHard) }
+        catch (error) {
+          if (assigned) {
+            const latest = this.host.store.get(KV.sessions.teamModels(ticketId))
+            if (latest?.slots[agent.id] === slot) { delete latest.slots[agent.id]; this.host.store.set(KV.sessions.teamModels(ticketId), latest) }
+          }
+          throw error
+        }
+      }
+    }
     this.bindings.set(agent, { disposers: this.workOnly(agent, ticketId, true), subagent: true })
   }
   /** Register the skills of a prompt version in the agent's skill scope, in place of an earlier version's. */
