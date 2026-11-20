@@ -17,6 +17,7 @@
 import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { execFileSync } from 'node:child_process'
+import { gunzipSync } from 'node:zlib'
 import { installNative } from './install-native.mjs'
 
 const ROOT = 'D:/DeepSeekHarness'
@@ -204,7 +205,11 @@ function stageDsh(dest, os) {
       // and with it the sandbox, the terminal and every shell tool. Only prune a package that the platform-specific
       // dependency graph actually excludes — an `optionalDependency` of some parent, whose place is taken by that
       // platform's own package.
-      if (optionalOnly().has(packageName)) return true
+      // Prune only what is genuinely a per-platform alternative: a package some parent lists as an optionalDependency.
+      // Anything else is a hard dependency and must ship on every platform, whatever its name looks like —
+      // `dsh-win32-process` is the case that proves it, since `dsh-subprocess-local` requires it everywhere.
+      const optional = optionalOnly().has(packageName)
+      if (!optional) return true
       if (wrongPlatform(packageName, os)) { skipped.push(packageName); return false }
       return true
     },
@@ -267,21 +272,53 @@ function stagePayload(dest, build) {
   installPluginIntoProfile(dest, build)
 }
 
+/**
+ * Unpacks a gzipped tarball written by `npm pack`, dropping the archive's leading `package/` directory.
+ *
+ * A tarball is a sequence of 512-byte headers followed by that entry's bytes padded to 512; that is the whole format
+ * this needs, and reading it here keeps the build free of an external `tar`.
+ */
+function untarGz(file, dest) {
+  const buf = gunzipSync(readFileSync(file))
+  let at = 0, written = 0
+  while (at + 512 <= buf.length) {
+    const field = (start, length) => buf.toString('utf8', at + start, at + start + length).replace(/ .*$/, '')
+    const name = field(0, 100)
+    if (!name) { at += 512; continue }
+    const size = parseInt(field(124, 12).trim() || '0', 8)
+    const type = field(156, 1)
+    const prefix = field(345, 155)
+    const full = prefix ? `${prefix}/${name}` : name
+    // The first path segment is the archive root (`package/`), which must not become a directory of its own.
+    const relative = full.split('/').slice(1).join('/')
+    at += 512
+    if (type === '5' || full.endsWith('/')) {
+      if (relative) mkdirSync(join(dest, relative), { recursive: true })
+    } else if (relative) {
+      mkdirSync(dirname(join(dest, relative)), { recursive: true })
+      writeFileSync(join(dest, relative), buf.subarray(at, at + size))
+      written++
+    }
+    at += Math.ceil(size / 512) * 512
+  }
+  return written
+}
+
 /** Unpacks the plugin tarball into the profile's node_modules, where DSH looks for a bundle. */
 function installPluginIntoProfile(dest, build) {
   const modules = join(dest, 'payload', 'node_modules')
   const target = join(modules, 'dsh-superagent')
   rmSync(target, { recursive: true, force: true })
   mkdirSync(target, { recursive: true })
-  // `tar` strips the archive's `package/` root, so the files land directly in the package directory.
-  execFileSync('tar', ['-xzf', join(dest, 'payload', 'dsh-superagent.tgz'), '-C', target, '--strip-components=1'],
-    { stdio: ['ignore', 'pipe', 'pipe'] })
+  // Unpacked in-process rather than shelling out to `tar`: on Windows a path like `C:/...` is read as a remote host
+  // ("Cannot connect to C: resolve failed"), and the build must not depend on which tar happens to be on PATH.
+  untarGz(join(dest, 'payload', 'dsh-superagent.tgz'), target)
   const manifest = JSON.parse(readFileSync(join(target, 'package.json'), 'utf8'))
   if (manifest.name !== 'dsh-superagent') throw new Error(`unpacked the wrong package into the profile: ${manifest.name}`)
   if (!existsSync(join(target, 'lib', 'index.js'))) throw new Error('the unpacked plugin has no lib/index.js')
   // Its own runtime dependencies are already present: `_packages/plugin/<build>/node_modules` holds them, and the
   // launcher copies that directory to the same place.
-  log(`plugin unpacked into payload/node_modules/dsh-superagent (v${manifest.version})`)
+  console.log(`plugin unpacked into payload/node_modules/dsh-superagent (v${manifest.version})`)
 }
 
 /** 启动器：用包内 node 跑包内 dsh，不碰系统 PATH。 */
