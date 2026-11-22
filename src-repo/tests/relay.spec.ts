@@ -9,6 +9,16 @@ import { KV } from '../src/kv.ts'
 import { sessionOf, ticketOfSession, validSessionId } from '../src/executor/dsh.ts'
 import { startRuntime, feishu, type Host } from './fixtures/host.ts'
 
+/**
+ * The handover summaries a Session holds, newest last.
+ *
+ * A summary is delivered as a notice: it is written into the new Session's history without starting a turn, which is
+ * what keeps the target from running before the ticket's pointer has switched. So it is read from the inject calls,
+ * not from the queued deliveries (whose one entry is the wake-up that carries no history).
+ */
+const summariesOf = (host: Host, sessionId: string): string[] => (host.agents.get(sessionId)?.inject.mock.calls ?? [])
+  .map(call => JSON.stringify(call[0]))
+
 /** Gives a Session the two services the archiver measures and compacts with, and a context pressure to measure. */
 function measure(host: Host, sessionId: string, pressure: number, onCompact = () => {}) {
   const agent = host.agents.get(sessionId)
@@ -111,13 +121,17 @@ describe('handing a ticket over', () => {
       expect(ticketOfSession(host.runtime.store, moved)).toBe(ticket.id)
       // The ticket moved, so the old Session must not also have been compacted.
       expect(services.compaction.compactNow).not.toHaveBeenCalled()
-      // The summary the new Session received is the old one's own history, not a fixed sentence.
-      const delivered = host.deliveries.mock.calls.map(([call]) => call).filter(call => call.sessionId === moved)
+      // The summary the new Session holds is the old one's own history, not a fixed sentence. It is written into the
+      // new Session's history as a notice (so it starts no turn), which is why it is read from the inject calls.
+      const delivered = summariesOf(host, moved)
       expect(delivered).toHaveLength(1)
-      expect(delivered[0]!.text).toContain('widgets.ts')
-      expect(delivered[0]!.text).toContain('not committed yet')
-      expect(delivered[0]!.text).toContain(ticket.id)
-      expect(delivered[0]!.text).toMatch(/handover, not a restart/)
+      expect(delivered[0]!).toContain('widgets.ts')
+      expect(delivered[0]!).toContain('not committed yet')
+      expect(delivered[0]!).toContain(ticket.id)
+      expect(delivered[0]!).toMatch(/handover, not a restart/)
+      // And the target is woken only after the ticket already points at it.
+      expect(host.deliveries.mock.calls.map(([call]) => call).filter(call => call.sessionId === moved)
+        .some(call => call.text.includes('The handover summary above is the state of this ticket'))).toBe(true)
     } finally { await host.stop() }
   })
 
@@ -189,12 +203,12 @@ describe('a move interrupted by a crash', () => {
       expect(record.stage).toBe('committed')
       expect(record.current).toBe(target)
       expect(sessionOf(host.runtime.store, ticket.id)).toBe(target)
-      const delivered = host.deliveries.mock.calls.map(([call]) => call).filter(call => call.sessionId === target)
+      const delivered = summariesOf(host, target)
       expect(delivered).toHaveLength(1)
-      expect(delivered[0]!.text).toContain('do not resend the invoice email')
+      expect(delivered[0]!).toContain('do not resend the invoice email')
       // Running the resume again must not deliver a second copy.
       await host.runtime.relay.resume()
-      expect(host.deliveries.mock.calls.map(([call]) => call).filter(call => call.sessionId === target)).toHaveLength(1)
+      expect(summariesOf(host, target)).toHaveLength(1)
       expect(sessionId).not.toBe(target)
     } finally { await host.stop() }
   })
@@ -296,7 +310,7 @@ describe('the handover budget', () => {
         .move(ticket.id, sessionId, 0.9)
       expect(answer).toHaveProperty('moved')
       const target = sessionOf(host.runtime.store, ticket.id)
-      const text = host.deliveries.mock.calls.map(([call]) => call).find(call => call.sessionId === target)!.text
+      const text = summariesOf(host, target)[0]!
       // The last thing the old Session said is where the work stopped, so a trimmed handover must keep it.
       expect(text).toContain('NEWEST_PROGRESS_MARKER')
       expect(text).toMatch(/omitted/)

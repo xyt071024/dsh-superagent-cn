@@ -45,6 +45,16 @@ export interface ArchiverHost {
    * this archiver then compacts in place, which creates no Session.
    */
   relay?(ticketId: string, fromSession: string, percent: number): Promise<{ moved: string } | { refused: string }>
+  /**
+   * Hand the main coordinator's work to a fresh Session; the same contract as `relay`, without a ticket.
+   *
+   * The operator's rule is that *every* Session continues in a new one at the threshold, and the main Session used
+   * to be the single exception: it had no ticket, so `relay` was never called for it and it only ever compacted in
+   * place. Absent on a host that predates this, in which case the main Session compacts as before.
+   */
+  masterRelay?(fromSession: string, percent: number): Promise<{ moved: string } | { refused: string }>
+  /** Whether a managed Session is the main coordinator, which is moved by `masterRelay` rather than by its ticket. */
+  isMaster?(session: string): boolean
   /** Map a managed Session back to its ticket, or `undefined` for the main Session. */
   ticketOf(session: string): string | undefined
 }
@@ -157,6 +167,19 @@ export class ContextArchiver {
         // A ticket with a live Team or undelivered input cannot be moved without losing state, so the host answers
         // `undefined` and this falls through to compaction — the old behaviour, still correct, just not a handover.
         const ticketId = this.host.ticketOf(id)
+        // The main coordinator owns no ticket, so it is handed over through its own relay; without one it compacts
+        // in place exactly as before. Checked first because a coordinator Session never has a ticket.
+        if (ticketId === undefined && this.host.isMaster?.(id) && this.host.masterRelay) {
+          const answer = await this.host.masterRelay(id, before)
+          const moved = 'moved' in answer ? answer.moved : undefined
+          if (moved !== undefined) {
+            this.last.set(id, Date.now())
+            this.unchanged.delete(id)
+            this.host.report(`${id}: handed over to ${moved} at ${Math.round(before * 100)}%`, 'ready')
+            return
+          }
+          this.host.report(`${id}: no handover (${'refused' in answer ? answer.refused : 'unavailable'}); compacting the main Session instead`, 'ready')
+        }
         if (ticketId !== undefined && this.host.relay) {
           // The handover text is built from the old Session's own transcript and ticket, not from a fixed sentence: a
           // claim that history is attached is only true if something actually read that history.

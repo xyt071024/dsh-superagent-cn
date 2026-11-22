@@ -47,7 +47,9 @@ test('shared bootstrap respects a separate DSH_HOME and preserves an existing pr
     fs.copyFileSync(path.join(root, 'scripts', 'windows-profile-bootstrap.mjs'), path.join(tools, 'unix-profile-bootstrap.mjs'))
     fs.writeFileSync(path.join(payload, 'profile', 'package.json'), JSON.stringify({ dsh: { profile: { bundles: ['dsh-superagent'] } } }))
     fs.writeFileSync(path.join(payload, 'profile', 'cordis.patch.yml'), 'state: __STATE_DIR__\nport: __PORT__\n')
-    fs.writeFileSync(path.join(payload, 'node_modules', 'dsh-superagent', 'package.json'), JSON.stringify({ name: 'dsh-superagent' }))
+    fs.mkdirSync(path.join(payload, 'node_modules', 'dsh-superagent', 'lib'), { recursive: true })
+    fs.writeFileSync(path.join(payload, 'node_modules', 'dsh-superagent', 'package.json'), JSON.stringify({ name: 'dsh-superagent', version: JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version }))
+    fs.writeFileSync(path.join(payload, 'node_modules', 'dsh-superagent', 'lib', 'index.js'), 'export default {}' + String.fromCharCode(10))
     fs.writeFileSync(path.join(payload, 'dsh-superagent.tgz'), 'test fixture')
     const home = path.join(temp, 'isolated dsh home')
     const env = { ...process.env, DSH_HOME: home, HOME: path.join(temp, 'other home') }

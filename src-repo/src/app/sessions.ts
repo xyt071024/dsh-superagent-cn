@@ -269,6 +269,17 @@ export class Sessions {
   managed(): { id: string; agent: Agent }[] {
     return [...this.bindings.entries()].flatMap(([agent, binding]) => binding.subagent ? [] : [{ id: agent.id, agent }])
   }
+  /**
+   * Every Session this plugin decorated that fills a context window, subagents included.
+   *
+   * `managed()` is the set the ticket machinery works on, and a subagent has no ticket of its own, so it was excluded
+   * from archiving entirely — the one class of Session the operator's "every Session continues in a new one at 60%"
+   * rule never reached. This is the set the archiver measures; a subagent has no ticket either, so it compacts in
+   * place (a subagent cannot be handed over: its transcript is the parent's answer, and its parent is mid-turn).
+   */
+  archivable(): { id: string; agent: Agent }[] {
+    return [...this.bindings.entries()].map(([agent]) => ({ id: agent.id, agent }))
+  }
   /** Enqueues a steering relay to the main Session; relays are durable and retried by `Effects` until delivered, at most once per `requestId`. */
   relay(requestId: string, text: string): void { this.host.effects.enqueue('relay', requestId, { text }) }
   /** Enqueues a durable background notice for injection into the main Session; a new notice with the same `name` replaces a still-waiting notice of that `name`. */

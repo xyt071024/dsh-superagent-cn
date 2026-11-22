@@ -210,7 +210,10 @@ export async function startRuntime(seed?: (store: Store) => void, existingDirect
         turn++
         take(true)
       })
-      const session = { id: sessionId, snapshotEvents: () => [], requestHeader: () => undefined, append: vi.fn() }
+      // The header DSH always provides: a preset and, for a child, its parent Session. A handover creates a
+      // coordinator replacement and reads both, so a stand-in without them would fail for a reason the real host has not.
+      const session = { id: sessionId, header: { agentPreset: 'dsh-superagent-router', parentSession: undefined } as { agentPreset?: string; parentSession?: string },
+        snapshotEvents: () => [], requestHeader: () => undefined, append: vi.fn() }
       let status = 'idle'
       const idle: (() => void)[] = []
       // A cancel drops the inbox unless kept, and the turn it stops ends a moment later, which DSH says.

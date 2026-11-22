@@ -27,11 +27,17 @@ const correctNode = platform === 'linux'
   : header.readUInt32LE(0) === 0xfeedfacf && header.readUInt32LE(4) === (arch === 'x64' ? 0x01000007 : 0x0100000c)
 if (!correctNode) throw new Error('Bundled Node does not match the target platform')
 fs.mkdirSync(path.dirname(runtime), { recursive: true })
+// cpSync copies the contents of `modules` into `runtime`, which is runtime/node_modules: the result is
+// runtime/node_modules/<package>, not runtime/node_modules/node_modules/<package>. The plugin is therefore where
+// NODE_PATH resolution expects it. Verified by tests/unix-bundle.test.mjs and the packaging smoke run.
 fs.cpSync(modules, runtime, { recursive: true, dereference: true })
 execFileSync(process.execPath, [path.join(root, 'scripts', 'prepare-windows-bundle.mjs'), stage, archive], { stdio: 'inherit' })
 const tools = path.join(stage, 'tools')
 fs.renameSync(path.join(tools, 'windows-profile-bootstrap.mjs'), path.join(tools, 'unix-profile-bootstrap.mjs'))
 fs.rmSync(path.join(stage, 'start.cmd'))
+// The launcher only starts the shared bootstrap and then the host: it copies nothing itself, so there is no copy
+// destination that can nest a level deeper. Profile setup, reuse and repair all live in the bootstrap script that
+// the Windows bundle also ships (renamed below), so both platforms run one implementation.
 const start = path.join(stage, 'start.sh')
 fs.writeFileSync(start, [
   '#!/bin/sh', 'set -eu', 'cd -P "$(dirname "$0")"',

@@ -76,8 +76,16 @@ export const KV = {
   prompts: { revision: record<number>('prompt-revision'), version: family<PromptVersion, [revision: number]>('prompt-version:'),
     /** The built-in text of a prompt part an override was edited from, by its `base`, which shows what an upgrade changed. */
     builtIn: family<string, [base: string]>('prompt-built-in:') },
-  /** Runtime: the main Session's ID. */
-  runtime: { masterId: record<string>('master-id'), usage: record<{ day: string; tokens: number }>('daily-usage') },
+  /**
+   * Runtime: the Session the main Session is currently on, and the ones it has already been handed on from.
+   *
+   * `masterId` used to be written once and never changed, which made "the main Session also hands over at the threshold"
+   * impossible: every reader held one fixed ID. It is now the *current* generation, and `masterPrevious` records the
+   * sessions it replaced so input typed into an old window can still be routed (see the relay's superseded routes).
+   * Both are durable: a restart must not lose which Session the panel should be showing.
+   */
+  runtime: { masterId: record<string>('master-id'), masterPrevious: record<string[]>('master-previous'),
+    usage: record<{ day: string; tokens: number }>('daily-usage') },
   /** Sessions: prompt revisions each Session has worked under, ordered oldest first; the last entry (`.at(-1)`) is its active revision. */
   sessions: { prompts: family<number[], [session: string]>('session-prompts:'),
     teamModels: family<{ inherited: { provider: string; model: string; reasoningEffort?: string } | null; models: ({ provider: string; model: string; reasoningEffort?: string } | null)[]; max: number; slots: Record<string, number>; autoHard?: boolean }, [ticket: string]>('team-models:'),

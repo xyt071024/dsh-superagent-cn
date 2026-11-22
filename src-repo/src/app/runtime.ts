@@ -81,7 +81,19 @@ export class Runtime extends Service implements SourceHost {
   readonly ready: Promise<void>
   private readonly board = new HealthBoard()
   private readonly runtimeHealth = this.board.claim('runtime', { state: 'starting', detail: '' })
-  readonly masterId: string
+  /**
+   * The Session the main coordinator is on right now.
+   *
+   * Mutable, and that is the point: the main Session is a Session like any other and fills its context window like
+   * any other, so at the archive threshold it hands over to a fresh one too. Every reader goes through this getter,
+   * so a handover changes where new work and notices go without touching the twenty-odd call sites.
+   */
+  get masterId(): string { return this.masterCurrent }
+  private masterCurrent = ''
+  /** The main-coordinator Sessions this one replaced, oldest first. Kept so an old window's input can be routed. */
+  private masterPrevious: string[] = []
+  /** Whether the main Session is allowed to hand over (see the relay's `bound` for what can veto it). */
+  private readonly masterRelay = new AbortController()
   private readonly sourceLinks = new TextCache(200_000)
   private readonly stopped = new AbortController()
   private readonly disposers: (() => void)[] = []
@@ -110,7 +122,9 @@ export class Runtime extends Service implements SourceHost {
         ? environmentOf({ deployment: setup.deployment, sources: this.sources, settings: store.settings() }) : undefined
       const feishu = () => setup.configured() && !!setup.deployment.feishu
       const prompts = this.prompts = new Prompts(store, () => machine.promptMaxChars.get(), deployed, feishu)
-      const masterId = this.masterId = store.get(KV.runtime.masterId) ?? `orchestrator-${key(machine.stateDir)}`
+      const masterId = store.get(KV.runtime.masterId) ?? `orchestrator-${key(machine.stateDir)}`
+      this.masterCurrent = masterId
+      this.masterPrevious = store.get(KV.runtime.masterPrevious) ?? []
       store.set(KV.runtime.masterId, masterId)
       const commands = this.commands = new Commands(() => setup.deployment, setup.commandEnvironment, this.lifetime)
       const board = this.board
@@ -132,8 +146,17 @@ export class Runtime extends Service implements SourceHost {
         closing: () => this.closing(), environment,
         tools: (agent, ticket) => ticket ? executorTools(this.toolHost, ticket) : mainTools(this.toolHost, agent) })
       const archiveHealth = board.claim('archive')
-      this.relay = new SessionRelay({ context: ctx, store, sessions, report: (detail, state = 'ready') => archiveHealth.set({ state, detail, at: now() }) })
-      this.archiver = new ContextArchiver({ context: ctx, managed: () => sessions.managed(),
+      this.relay = new SessionRelay({ context: ctx, store, sessions, coordinatorCwd: machine.stateDir,
+        report: (detail, state = 'ready') => archiveHealth.set({ state, detail, at: now() }),
+        // One place decides which Session the coordinator runs on, so a handover is visible to every reader at once.
+        setMaster: to => {
+          this.masterPrevious = [...this.masterPrevious.filter(id => id !== to), this.masterCurrent]
+          this.masterCurrent = to
+          store.set(KV.runtime.masterPrevious, this.masterPrevious)
+          store.set(KV.runtime.masterId, to)
+        } })
+      // Archiving covers every decorated Session, subagents included: only the ticket machinery is narrower.
+      this.archiver = new ContextArchiver({ context: ctx, managed: () => sessions.archivable(),
         budget: () => ({ enabled: store.settings().budget.archiveEnabled, percent: store.settings().budget.archivePercent }),
         steer: (id, requestId, text) => sessions.prompt(id, requestId, text, 'steer'),
         report: (detail, state = 'ready') => archiveHealth.set({ state, detail, at: now() }),
@@ -141,7 +164,11 @@ export class Runtime extends Service implements SourceHost {
         // Session's name carries a generation suffix that a slice would read as part of the ticket ID.
         ticketOf: session => ticketOfSession(store, session),
         // The move itself lives in `SessionRelay`: resumable, refused while state would be lost, committed once.
-        relay: (ticketId, fromSession, percent) => this.relay.move(ticketId, fromSession, percent) })
+        relay: (ticketId, fromSession, percent) => this.relay.move(ticketId, fromSession, percent),
+        // The main coordinator is a Session too, and it reaches the same threshold. Moving it is a different move: it
+        // owns no ticket, so it is handed over by the coordinator relay below rather than through the ticket machinery.
+        masterRelay: (fromSession, percent) => this.relay.moveCoordinator(fromSession, percent),
+        isMaster: session => session === this.masterCurrent })
       const policyChanged: EngineForSettings['policyChanged'] = (from, to, effects) => { this.engine.policyChanged(from, to, effects) }
       this.settings = new Settings({ store, sources, engine: { policyChanged }, health: board, context: ctx, lifetime: this.lifetime, sessions,
         sourceHost: this, setup, requestPass: () => { this.passes.request() }, requestReview: ticket => this.executor.review(ticket) })
@@ -228,8 +255,11 @@ export class Runtime extends Service implements SourceHost {
     this.sessions.install()
     this.executor.install()
     await this.sessions.ensure(this.masterId, this.machine.stateDir, 'dsh-superagent orchestrator', 'orchestrator')
-    // A move a previous process left half-finished is carried forward before any worker or pass runs, so no routing
-    // decision is taken against a ticket whose Session is still being swapped.
+    // The superseded-Session routes are derived from the committed relay records, so they are rebuilt from the store
+    // before anything can deliver input: a restart that dropped them would reopen the hole where a message typed into a
+    // moved-away window is lost or starts a second turn on work that already moved.
+    this.relay.restoreRoutes()
+    this.disposers.push(this.relay.install())
     await this.relay.resume()
     for (const id of this.settings.syncable()) await this.settings.sync(id).catch(() => { /* sync() records its failure in health. */ })
     // If stop() was called while awaiting setup, session creation, or policy sync, do not start background loops.
@@ -255,7 +285,9 @@ export class Runtime extends Service implements SourceHost {
     this.closingFlag = true; const passes = this.passes.stop(); const archive = this.archiver.stop(); this.stopped.abort()
     try {
       this.assessor.stop()
-      const ids = [this.masterId, ...this.store.tickets.list().map(ticket => sessionOf(this.store, ticket.id))]
+      // Every main-coordinator generation still loaded is stopped, not only the current one: an old window that is
+      // still open must not keep running turns on work that has moved.
+      const ids = [this.masterCurrent, ...this.masterPrevious, ...this.store.tickets.list().map(ticket => sessionOf(this.store, ticket.id))]
       const agents = ids.map(id => this.ctx.agents.get(id as SessionId)).filter((agent): agent is Agent => agent !== undefined)
       for (const agent of agents) agent.cancel({ kind: 'user' }, { keepInbox: true })
       await Promise.allSettled([passes, archive, this.effects.drain(), ...agents.map(agent => agent.whenIdle())])
