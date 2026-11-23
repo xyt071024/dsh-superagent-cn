@@ -503,6 +503,151 @@ describe('M07: 复杂度判定与多独立可打开分工对话', () => {
       expect(h.runtime.relay.route(gen1)).toBe(gen2)
     } finally { await h.stop() }
   })
+
+  it('M07-g/h/i & M06-b: 复杂工单自动拆分多分工、拒绝旧轮复查迟到改写、修订计划保留已完成成果、接班后恢复不重投首次任务', async () => {
+    const h = await startRuntime(store => {
+      const s = store.settings()
+      store.saveSettings(SettingsSchema.parse({
+        ...s,
+        executor: { ...s.executor, reviewEnabled: true },
+        routing: { ...s.routing, multiSession: 'auto', maxSessions: 5, difficultyThreshold: 50 },
+      }))
+    })
+    try {
+      // 1. M07-g: 普通复杂工单明确包含多项独立交付物（接口、前端、测试）时，自动拆分为多个独立分工会话
+      const req = '@bot 分成三个相互独立、可并行的对话：一人做 API，一人做前端 UI，一人做测试；分别提交成果。' + ' independent complex deliverables'.repeat(25)
+      const accepted = await h.acceptedTicket(feishu('multi-deliverables-1', req))
+      const autoPlan = h.runtime.divisions.get(accepted.ticket.id)!
+      expect(autoPlan).toBeDefined()
+      expect(autoPlan.divisions.length).toBeGreaterThanOrEqual(3)
+      for (const d of autoPlan.divisions) {
+        expect(h.agents.has(d.sessionId)).toBe(true)
+      }
+
+      // 2. M07-i: 修订计划新增/修改分工时，保留未变更分工的 completed 状态与成果
+      await h.runtime.divisions.dispatch({
+        originSessionId: h.runtime.masterId,
+        taskId: 'revise-task',
+        planKey: 'p1',
+        title: 'Parallel Delivery',
+        brief: 'API and UI',
+        difficulty: 90,
+        divisions: [
+          { divisionId: 'api', title: 'API', brief: 'Implement API' },
+          { divisionId: 'ui', title: 'UI', brief: 'Implement UI' },
+        ],
+      })
+      await h.runtime.divisions.reportDivision({
+        taskId: 'revise-task',
+        divisionId: 'api',
+        state: 'completed',
+        summary: 'API finished',
+        result: 'API_V1_DONE',
+        eventId: 'evt-api-v1',
+      })
+      await h.runtime.divisions.dispatch({
+        originSessionId: h.runtime.masterId,
+        taskId: 'revise-task',
+        planKey: 'p2',
+        title: 'Parallel Delivery',
+        brief: 'API, UI, and QA',
+        difficulty: 90,
+        divisions: [
+          { divisionId: 'api', title: 'API', brief: 'Implement API' },
+          { divisionId: 'ui', title: 'UI', brief: 'Implement UI' },
+          { divisionId: 'qa', title: 'QA', brief: 'Regression testing' },
+        ],
+      })
+      const revised = h.runtime.divisions.get('revise-task')!
+      expect(revised.divisions.find(d => d.divisionId === 'api')?.status).toBe('completed')
+      expect(revised.divisions.find(d => d.divisionId === 'api')?.result).toBe('API_V1_DONE')
+      expect(revised.divisions.find(d => d.divisionId === 'qa')?.status).toBe('running')
+
+      // 3. M07-h: 第二轮复查处于 pending 时，第一轮旧复查会话迟到提交 approved=true 必须被拒绝且记入 history，不得改写第二轮状态
+      await h.runtime.divisions.reportDivision({
+        taskId: 'revise-task',
+        divisionId: 'ui',
+        state: 'completed',
+        summary: 'UI finished',
+        result: 'UI_V1_DONE',
+        eventId: 'evt-ui-v1',
+      })
+      await h.runtime.divisions.reportDivision({
+        taskId: 'revise-task',
+        divisionId: 'qa',
+        state: 'completed',
+        summary: 'QA finished',
+        result: 'QA_V1_DONE',
+        eventId: 'evt-qa-v1',
+      })
+      const r1Review = h.runtime.divisions.get('revise-task')!.review!
+      expect(r1Review.round).toBe(1)
+      expect(r1Review.state).toBe('pending')
+
+      await h.runTool(r1Review.sessionId, 'orchestrator_division_review_submit', {
+        approved: false,
+        summary: 'Fix QA edge case',
+        findings: ['QA missing negative test'],
+        rework_division_ids: ['qa'],
+      })
+      await h.runtime.divisions.reportDivision({
+        taskId: 'revise-task',
+        divisionId: 'qa',
+        state: 'completed',
+        summary: 'QA negative test added',
+        result: 'QA_V2_DONE',
+        eventId: 'evt-qa-v2',
+      })
+      const r2Review = h.runtime.divisions.get('revise-task')!.review!
+      expect(r2Review.round).toBe(2)
+      expect(r2Review.state).toBe('pending')
+
+      // 第一轮旧审查会话迟到提交通过 -> 拒绝并保持第 2 轮 pending
+      await expect(h.runTool(r1Review.sessionId, 'orchestrator_division_review_submit', {
+        approved: true,
+        summary: 'Late approval from round 1 reviewer',
+      })).rejects.toThrow(/stale reviewer/)
+      const stillPending = h.runtime.divisions.get('revise-task')!.review!
+      expect(stillPending.round).toBe(2)
+      expect(stillPending.state).toBe('pending')
+      expect(stillPending.history?.some(e => e.state === 'superseded_late' && e.round === 1)).toBe(true)
+
+      // 第二轮审查会话正常提交通过，且重复提交被拒绝
+      await h.runTool(r2Review.sessionId, 'orchestrator_division_review_submit', {
+        approved: true,
+        summary: 'Round 2 verified and approved',
+      })
+      expect(h.runtime.divisions.get('revise-task')!.review!.state).toBe('passed')
+      await expect(h.runTool(r2Review.sessionId, 'orchestrator_division_review_submit', {
+        approved: true,
+        summary: 'Duplicate round 2 submission',
+      })).rejects.toThrow(/already passed/)
+
+      // 4. M06-b: 分工接班成功后执行 divisions.resume()，绝不向接班会话重投首次 division-start
+      const handoverPlan = (await h.runtime.divisions.dispatch({
+        originSessionId: h.runtime.masterId,
+        taskId: 'handover-no-repost',
+        planKey: 'hp1',
+        title: 'Handover Resume Check',
+        brief: 'Long running division',
+        difficulty: 85,
+        divisions: [{ divisionId: 'worker', title: 'Worker', brief: 'Step 1 and Step 2' }],
+      })).plan
+      const gen1Session = handoverPlan.divisions[0]!.sessionId
+      h.agents.get(gen1Session)!.status = 'idle'
+      h.controller.inspect.mockResolvedValue({
+        events: [{ type: 'assistant/message', data: { message: { content: 'Step 1 done; Step 2 remaining' } } }],
+      } as never)
+      const moved = await h.runtime.relay.moveDivision('handover-no-repost', 'worker', gen1Session, 0.75)
+      expect(moved).toHaveProperty('moved')
+      const gen2Session = h.runtime.divisions.get('handover-no-repost')!.divisions[0]!.sessionId
+      expect(gen2Session).not.toBe(gen1Session)
+
+      const promptSpy = vi.spyOn(h.runtime.sessions, 'prompt')
+      await h.runtime.divisions.resume()
+      expect(promptSpy.mock.calls.filter(c => c[0] === gen2Session && c[1] === 'division-start:handover-no-repost:worker')).toHaveLength(0)
+    } finally { await h.stop() }
+  })
 })
 
 describe('M08 & 设置保存接口: 版本/配置识别与 routing/budget 保存', () => {

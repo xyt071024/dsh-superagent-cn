@@ -689,11 +689,6 @@ export class DshExecutor implements Executor {
           brief: taskText,
           difficulty: ticket.execution?.difficulty ?? Math.max(reading.difficultyThreshold, 80),
           planKey: `ticket:${ticket.id}`,
-          divisions: [{
-            divisionId: 'investigate',
-            title: `Independent investigation: ${ticket.title}`,
-            brief: `Investigate this task independently without changing files or external state. Report concrete findings and risks using orchestrator_division_report. Task: ${taskText.slice(0, 4000)}`,
-          }],
         }).catch(error => {
           if (!this.host.closing()) this.host.health.set({ state: 'error', detail: `Division could not start: ${error instanceof Error ? error.message : String(error)}` })
         })

@@ -117,6 +117,16 @@ export interface PendingDivisionDelivery {
 }
 
 /** 一次任务（工单或聊天派工）的多会话规划与运行记录。 */
+export interface ReviewHistoryEntry {
+  round: number
+  sessionId: string
+  state: 'passed' | 'failed' | 'superseded_late'
+  summary: string
+  findings?: string[] | undefined
+  deliverableVersion?: string | undefined
+  submittedAt: string
+}
+
 export interface TaskPlan {
   taskId: string
   title: string
@@ -139,6 +149,8 @@ export interface TaskPlan {
     findings?: string[] | undefined
     reworkDivisionIds?: string[] | undefined
     limitReached?: boolean | undefined
+    deliverableVersion?: string | undefined
+    history?: ReviewHistoryEntry[] | undefined
   } | undefined
   createdAt: string
   updatedAt: string

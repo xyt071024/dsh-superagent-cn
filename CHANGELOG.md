@@ -8,6 +8,29 @@
 
 ## [Unreleased]
 
+## [0.3.14] - 2026-11-24
+
+本版针对独立复验第 48 号目录发现的四项长任务与多交付物自动拆分缺陷（`M07-g`、`M07-h`、`M07-i`、`M06-b`）进行了全面修复与边界加固。
+
+### 修复与深度加固
+
+**1. 复杂工单与普通聊天多交付物自动规划拆分（M07-g）**
+
+- 新增 `planDivisionsFromText(title, brief, maxSessions)` 并接入 `DivisionCoordinator.dispatch` 与 `DshExecutor.launch`：当自动多会话开启且任务达复杂度阈值时，不再固定写死单一 `investigate` 对话，而是自动从需求文本提取独立并行交付物（支持显式“一人做 X / 分别做 Y”分句、编号/项目符号清单、“模块 A、模块 B、模块 C 分别开对话并行做”并列枚举，以及 API/后端、前端/UI、数据库/迁移、认证、安全审计、测试/验证、文档、部署等多领域轨道），按 `maxSessions` 上限自动分配模型槽位并开启多个独立可打开分工会话。
+
+**2. 独立复查轮次、审查会话与交付版本强绑定（M07-h）**
+
+- `startReview` 在启动每轮独立复查时，于同一事务内持久绑定当前轮次 `round`、审查会话 `sessionId` 以及所有分工成果的指纹 `deliverableVersion`，并保留跨轮次 `history`。
+- `submitReview` 与 `orchestrator_division_review_submit` 强制核对调用者会话（含接班路由后继）、所属轮次、`state === 'pending'` 以及 `deliverableVersion`：上一轮旧复查会话迟到提交的结论仅记入 `review.history`（`state: 'superseded_late'`）并拒绝改写当前待审轮次状态；同一轮重复提交亦被拒绝。
+
+**3. 计划修订按稳定分工 ID 无损合并（M07-i）**
+
+- `DivisionCoordinator.dispatch` 对同一 `taskId` 提交新 `planKey` 时，不再整表覆盖重建，而是按稳定 `divisionId` 智能合并：未变更的分工完整保留其 `completed` / `running` 状态、`result`、会话 ID、接班代次、模型槽位与已投递事件回执；仅对新增分工分配空闲槽位并启动，对说明或依赖发生实质修改的分工复用原会话投递修订通知。
+
+**4. 分工接班成功后恢复流程防重投首次派工（M06-b）**
+
+- `reconcilePlan` 识别已发生 60% 阈值接班的分工代次（`generation > 1` 或 `previousSessions.length > 0`）：首次派工请求 `division-start:${taskId}:${divisionId}` 仅限初代会话；接班后的后继会话在执行 `divisions.resume()` 或进程重启恢复时，只核对并补齐缺失的接班激活步骤（`activate:division:${taskId}:${divisionId}:g${generation}`），绝不向接班会话重复投递原始派工单。
+
 ## [0.3.13] - 2026-11-23
 
 本版针对独立复验中暴露的分工生命周期韧性、单子项委托、汇报通知回执事务、并发追问状态保持、多轮复查打回闭环、分工会话接班激活恢复以及 Windows 深层中文路径引导复制栈溢出（`0xC0000409`）进行了深度加固。
