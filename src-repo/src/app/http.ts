@@ -26,6 +26,9 @@ import { policyHistory } from './settings-history.ts'
 import { inspect, hygiene } from './self-inspect.ts'
 import { probeSource } from './source-probe.ts'
 import { checkForUpdate, currentVersion } from './update-check.ts'
+import type { DivisionCoordinator } from './divisions.ts'
+import type { VersionTracker } from './version-info.ts'
+import { KV } from '../kv.ts'
 import { overview } from './views/overview.ts'
 import { settingsView } from './views/settings.ts'
 import { sourcesStatus, type SetupState } from './views/sources.ts'
@@ -46,6 +49,8 @@ export interface HttpHost {
   readonly health: Record<string, Health>
   readonly machine: Machine
   readonly masterId: string
+  readonly versions?: VersionTracker
+  readonly divisions?: DivisionCoordinator
   /** Resolves once startup finishes or setup determines what is still missing. */
   readonly ready: Promise<void>
   /** Resolved deployment; throws if read while waiting for setup (`!configured()`). */
@@ -109,9 +114,11 @@ function setupView(runtime: HttpHost) {
 /** Build the `/orchestrator/api/state` response consumed by the management panel and `scripts/dsh-superagent status` (`docs/006-deployment.md`). */
 export function stateView(runtime: HttpHost) {
   const settings = runtime.store.settings()
+  const version = runtime.versions?.snapshot()
   return { setup: setupView(runtime), load: { ...executorLoad(runtime.store, runtime.executor.activeCount()),
     maxWorkers: settings.executor.maxWorkers },
-    masterId: runtime.masterId, paused: settings.paused, health: runtime.health }
+    masterId: runtime.masterId, paused: settings.paused, health: runtime.health,
+    ...(version ? { version } : {}) }
 }
 const views = (runtime: HttpHost): ViewHost => ({ store: runtime.store, sources: runtime.sources, links: runtime.links() })
 const setupState = (runtime: HttpHost): SetupState => ({ deployment: runtime.configured() ? runtime.deployment : undefined,
@@ -121,7 +128,8 @@ export type StateView = ReturnType<typeof stateView>
 function ticketPage(runtime: HttpHost, id: string) {
   const detail = ticketDetail(views(runtime), id), ticket = runtime.store.tickets.get(id)
   if (!detail || !ticket) throw new RouteError(404, 'Ticket not found')
-  return { ...detail, environment: runtime.configured() ? runtime.ticketEnvironment(ticket) : [] }
+  const plan = runtime.divisions?.get(id) ?? runtime.store.get(KV.sessions.divisions(id))
+  return { ...detail, environment: runtime.configured() ? runtime.ticketEnvironment(ticket) : [], ...(plan ? { plan } : {}) }
 }
 export type TicketPageView = ReturnType<typeof ticketPage>
 function promptsView(runtime: HttpHost, revision: number | undefined, offset: number) {
@@ -150,7 +158,7 @@ const DecisionsQuery = z.object({ kind: z.string().default(''), window: z.litera
 const count = z.coerce.number().int().nonnegative()
 const PromptsQuery = z.object({ revision: count.optional(), offset: count.default(0) })
 const SourceBlock = z.templateLiteral(['source:', z.string().regex(/^[a-z][a-z0-9-]*$/)])
-const SettingsBlockSchema = z.union([z.enum(['policy', 'eval', 'executor']), SourceBlock])
+const SettingsBlockSchema = z.union([z.enum(['policy', 'eval', 'executor', 'routing', 'budget']), SourceBlock])
 const SaveRequest = z.object({ value: z.unknown(), revision: z.number().int().nonnegative() })
 
 function routes(runtime: HttpHost): Routes {
@@ -165,7 +173,11 @@ function routes(runtime: HttpHost): Routes {
       if (!allowed.includes(params.kind as typeof allowed[number])) throw new RouteError(404, 'Effect kind not found')
       return { retried: runtime.effects.retryHeld(params.kind as typeof allowed[number]) }
     },
-    'GET self-inspect': () => ({ inspection: inspect(store.settings(), runtime.sources, runtime.health, store), hygiene: hygiene(store) }),
+    'GET self-inspect': () => {
+      const version = runtime.versions?.snapshot()
+      return { inspection: inspect(store.settings(), runtime.sources, runtime.health, store, 7, version), hygiene: hygiene(store), ...(version ? { version } : {}) }
+    },
+    'GET divisions': () => ({ plans: runtime.divisions?.list() ?? [] }),
     'GET update-check': async () => checkForUpdate(await currentVersion()),
     'GET overview': () => overview(views(runtime), runtime.health, policyVersion(store.settings()),
       executorLoad(store, runtime.executor.activeCount()), runtime.setupProblem ?? runtime.feishuProblem),

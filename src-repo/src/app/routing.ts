@@ -91,10 +91,100 @@ export function reserveSessionSlot(slots: Record<string, number>, id: string, ma
  * reaches it at `HARD_BRIEF_CHARS` characters' worth of instruction. It is a proxy, not a measurement, and the panel says so.
  */
 const HARD_BRIEF_CHARS = 1200
+const MULTI_MODULE_CUE = /(?:前端|后端|数据库|接口|API|测试|部署|文档|迁移|重构|认证|登录|权限|路由|组件|模块|frontend|backend|database|schema|migration|auth|endpoint|test|deploy|refactor)/gi
+const PARALLEL_CUE = /(?:并且|同时|分别|并行|独立|拆分|以及|另外|此外|parallel|independently|separate|split|across\s+modules?)/i
+const SIMPLE_EDIT_CUE = /(?:改成|改为|替换为|typo|错别字|拼写|改一下|仅需|只改|端口|port\s*\d+|重命名|rename|explain|解释|总结|翻译)/i
+
+/**
+ * 综合评估任务复杂度（M07）：
+ * 1. 若有显式评分（人工或规划器），优先按评分对比 threshold；
+ * 2. 缺分时结合跨模块/多交付物/并行结构信号与长度，避免把“简短难题”漏判为简单、或把“贴了长日志的简单修改”误判为难题。
+ */
+export function assessComplexity(input: {
+  threshold?: number | undefined
+  explicitDifficulty?: number | null | undefined
+  brief?: string | undefined
+  plannedDivisions?: number | undefined
+}): { hard: boolean; score: number; threshold: number; source: 'explicit' | 'planner' | 'heuristic'; reason: string; signals: string[] } {
+  const threshold = input.threshold ?? 60
+  if (input.explicitDifficulty !== undefined && input.explicitDifficulty !== null) {
+    const score = Math.max(0, Math.min(100, Math.round(input.explicitDifficulty)))
+    return {
+      hard: score >= threshold,
+      score,
+      threshold,
+      source: 'explicit',
+      reason: score >= threshold ? `Explicit difficulty ${score} >= threshold ${threshold}` : `Explicit difficulty ${score} < threshold ${threshold}`,
+      signals: ['explicit-difficulty'],
+    }
+  }
+  if (input.plannedDivisions !== undefined && input.plannedDivisions > 1) {
+    const score = Math.max(threshold, Math.min(100, 60 + input.plannedDivisions * 10))
+    return {
+      hard: true,
+      score,
+      threshold,
+      source: 'planner',
+      reason: `Planner proposed ${input.plannedDivisions} independent divisions`,
+      signals: [`divisions:${input.plannedDivisions}`],
+    }
+  }
+  const text = (input.brief ?? '').trim()
+  if (!text) {
+    return { hard: false, score: 0, threshold, source: 'heuristic', reason: 'Empty brief', signals: [] }
+  }
+  const signals: string[] = []
+  const modules = new Set((text.match(MULTI_MODULE_CUE) ?? []).map(item => item.toLowerCase()))
+  const listItems = (text.match(/(?:^|\n)\s*(?:\d+[.)]|[-*•])\s+\S/g) ?? []).length
+  const parallel = PARALLEL_CUE.test(text)
+  if (modules.size >= 3) signals.push(`modules:${modules.size}`)
+  if (listItems >= 2) signals.push(`steps:${listItems}`)
+  if (parallel) signals.push('parallel-cue')
+
+  // 简短难题：虽然字数不多，但明确涉及跨模块协作（>=3 个不同模块/层）或显式多步骤拆分。
+  if ((modules.size >= 3 && (parallel || modules.size >= 4)) || (listItems >= 2 && (modules.size >= 2 || parallel))) {
+    const score = Math.min(100, Math.max(threshold, 65 + modules.size * 5 + listItems * 5))
+    return {
+      hard: score >= threshold,
+      score,
+      threshold,
+      source: 'heuristic',
+      reason: `Cross-module or multi-step work detected (${signals.join(', ')})`,
+      signals,
+    }
+  }
+
+  // 冗长简单题：大段贴出日志/代码块，而实际指令只是单点改动或问答。
+  const fencedLen = (text.match(/```[\s\S]*?```/g) ?? []).reduce((sum, block) => sum + block.length, 0)
+  const logLines = text.split('\n').filter(line => /^\s*(?:\[|\d{4}-\d{2}-\d{2}|at\s+\S+|Error:|WARN|INFO|DEBUG)/.test(line)).length
+  const proseOnly = text.replace(/```[\s\S]*?```/g, '').trim()
+  if ((fencedLen > text.length * 0.55 || logLines >= 8) && proseOnly.length < 240 && SIMPLE_EDIT_CUE.test(proseOnly) && modules.size < 3) {
+    signals.push('pasted-context-single-edit')
+    const score = Math.min(40, threshold - 1)
+    return {
+      hard: false,
+      score,
+      threshold,
+      source: 'heuristic',
+      reason: 'Long pasted log/snippet with a single localized change',
+      signals,
+    }
+  }
+
+  const lengthScore = Math.min(100, Math.round((text.length * 100) / HARD_BRIEF_CHARS))
+  if (text.length * 100 >= HARD_BRIEF_CHARS * threshold) signals.push(`length:${text.length}`)
+  return {
+    hard: text.length * 100 >= HARD_BRIEF_CHARS * threshold,
+    score: lengthScore,
+    threshold,
+    source: 'heuristic',
+    reason: lengthScore >= threshold ? `Brief length (${text.length} chars) reached threshold ${threshold}%` : `Brief length (${text.length} chars) below threshold ${threshold}%`,
+    signals,
+  }
+}
+
 export const isHard = (config: RoutingConfig | undefined, brief: string | undefined): boolean => {
-  if (!brief) return false
-  const threshold = config?.difficultyThreshold ?? 60
-  return brief.length * 100 >= HARD_BRIEF_CHARS * threshold
+  return assessComplexity({ threshold: config?.difficultyThreshold ?? 60, brief }).hard
 }
 
 /**

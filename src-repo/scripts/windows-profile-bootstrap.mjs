@@ -10,13 +10,36 @@ import path from 'node:path'
 import { createServer } from 'node:net'
 import { fileURLToPath } from 'node:url'
 
+function parseProfileName(argv) {
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i]
+    if (arg === '--profile') {
+      const val = argv[i + 1]?.trim()
+      if (!val) throw new Error('--profile requires a profile name')
+      return val
+    }
+    if (arg.startsWith('--profile=')) {
+      const val = arg.slice('--profile='.length).trim()
+      if (!val) throw new Error('--profile= requires a profile name')
+      return val
+    }
+  }
+  return process.env.DSH_PROFILE?.trim() || 'superagent'
+}
+
+const profileName = parseProfileName(process.argv.slice(2))
+if (!/^[a-zA-Z0-9._-]+$/.test(profileName) || profileName === '.' || profileName === '..') {
+  throw new Error(`Invalid profile name "${profileName}". Only letters, digits, ., _, and - are allowed.`)
+}
+
 const bundle = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const configured = process.env.DSH_HOME?.trim()
 const expanded = configured === '~' ? os.homedir() : configured?.startsWith('~/') || configured?.startsWith('~\\') ? path.join(os.homedir(), configured.slice(2)) : configured
 const home = path.resolve(expanded || path.join(os.homedir(), '.dsh'))
 const profiles = path.join(home, 'profiles')
-const target = path.join(profiles, 'superagent')
+const target = path.join(profiles, profileName)
 const manifest = path.join(target, 'package.json')
+console.log(`Target profile: ${profileName} (${target})`)
 
 const payload = path.join(bundle, 'payload')
 const sourceProfile = path.join(payload, 'profile')
@@ -104,7 +127,7 @@ function copyPluginTree(from, to) {
 
 function installFresh(pluginInfo) {
   fs.mkdirSync(profiles, { recursive: true })
-  const temp = fs.mkdtempSync(path.join(profiles, '.superagent-install-'))
+  const temp = fs.mkdtempSync(path.join(profiles, `.${profileName}-install-`))
   try {
     fs.cpSync(sourceProfile, temp, { recursive: true })
     fs.cpSync(sourceModules, path.join(temp, 'node_modules'), { recursive: true })
@@ -112,7 +135,7 @@ function installFresh(pluginInfo) {
     const patch = path.join(temp, 'cordis.patch.yml')
     const text = fs.readFileSync(patch, 'utf8')
     if (!text.includes('__STATE_DIR__') || !text.includes('__PORT__')) fail('Profile placeholders are missing.')
-    const state = path.join(home, 'state', 'superagent').replaceAll('\\', '/')
+    const state = path.join(home, 'state', profileName).replaceAll('\\', '/')
     return { temp, patch, text, state, version: pluginInfo.version }
   } catch (error) {
     fs.rmSync(temp, { recursive: true, force: true })

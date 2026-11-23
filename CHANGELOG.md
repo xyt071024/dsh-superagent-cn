@@ -8,6 +8,46 @@
 
 ## [Unreleased]
 
+## [0.3.12] - 2026-11-23
+
+本版完成从 0.3.11 遗留缺陷修复、多会话独立分工、运行时版本识别到跨平台测试与快速安全打包发布链的全面补齐。
+
+### 新增与改进
+
+**1. 多会话规划与独立可打开分工会话（M07）**
+
+- 新增 `DivisionCoordinator` 与 `orchestrator_dispatch` / `orchestrator_division_send` / `orchestrator_division_status` 工具及 `GET /divisions` 面板接口。
+- `assessComplexity` 同时支持明确难度值、`divisions` 规划、“简短难题”与“冗长简单题”识别：简单任务严格保持 0 额外会话，复杂任务才拆分为独立的持久化 DSH 会话（可在宿主/面板直接点击 `<SessionButton>` 打开）。
+- 严格遵循 `maxSessions` 与 `sessionModels` 槽位策略：已配置槽位使用对应模型与思考深度，留空槽位继承发起会话实时模型，超限明确拒绝；支持依赖 DAG 自动唤醒、上游交付注入、`event_id` 汇报去重、请求边界实际模型调用轨迹记录，以及独立复查会话入口。
+
+**2. 继任主会话权责、子会话/分工 60% 接力与崩溃恢复（M03–M06）**
+
+- 修复 `Runtime` 初始化时按值捕获旧 `masterId` 导致继任主会话缺少管理工具、`httpHost` 返回过期主会话等缺陷；新增 `pendingOrchestrators` 确保接班主会话立即获得完整工具组并可实际派工。
+- 子会话与分工会话达 60% 阈值后自动迁移接力，保留父子关联、模型槽位与共享任务，不额外消耗槽位配额。
+- 多代迁移 `A -> B -> C` 自动压缩直达最新路由，提交态 `pendingActivation` / `masterActivation` / `subagentRelay` 崩溃恢复不丢失、不重复激活；未认领共享任务随摘要迁移，任务板读取失败时明确拒绝切换而非静默放行。
+
+**3. 运行时版本与 Profile 识别、设置保存与无损升级（M02 / M08）**
+
+- 新增 `VersionTracker`，启动时固定 `loaded` 版本与当前 DSH `profileName` / `profileDir`，查询与自检实时读取磁盘 `installed` 版本，不一致时在 `GET /state` 与 `/self-inspect` 中触发 `reloadRequired` 提醒。
+- 修复 Web 面板 HTTP 路由 `SettingsBlockSchema` 遗漏 `'routing'` 与 `'budget'` 导致设置页保存报 400 的问题。
+- 所有 Bundled 启动脚本（`start.cmd` / `start.sh`）统一接入 `windows-profile-bootstrap.mjs` / `unix-profile-bootstrap.mjs`（支持 `--profile` 与 `DSH_PROFILE`），先校验插件版本、入口与依赖并无损升级、保留用户既有 `cordis.patch.yml` 与其他插件。
+
+**4. 一键安装脚本、打包性能与安全预检（M01 / M02）**
+
+- 仓库与 Pages 根路径的 `install.ps1`、`install.sh` 及文本副本全部同步为动态查询最新 GitHub Release 资产并带 `v0.3.12` 兜底链，`install.ps1` 同时支持 `DSH_HOME` 覆盖。
+- 修复 Windows Bundled 包混入 `node/node_modules/npm/.npmrc` 的问题；重构 `_build/make-dist-zips.mjs` 为 `worker_threads` 多核并行压缩 + 4 MB 缓冲顺序写入。
+- 为 `scripts/release_preflight.py` 建立经原文核查的第三方依赖精确白名单（`docs/release-preflight-allowlist.md`）并强制要求 Bundled 包内含启动引导脚本。
+
+### 修复与跨平台测试
+
+- 修复 `feishu-loops.ts` 中 stderr `[event] ready` 竞态覆盖 JSON 解析报错的问题。
+- 补全 Windows `.cmd` shim（`environment.ts`）与大小写不敏感路径比较，修复 Windows 套件与 `environment.spec.ts` / `commands.spec.ts` / `class-docs.spec.ts` / `docs.spec.ts` / `model-surface.spec.ts` 测试。
+
+### 已知限制
+
+- 各消息源（QQ / 微信 / 飞书 / 邮箱 / GitHub）真实外部账号长连收发未在本机联网实测（受限于真实账号凭据），相关行为通过协议与模拟集成测试验证。
+- Linux / macOS 内置包已校验 ZIP64 结构、Unix 权限位（`0755` / `0644`）、原生依赖与 Git Bash `start.sh` / 引导脚本逻辑，未在物理 Linux / macOS 桌面机器双机开机实测。
+
 ## [0.3.11] - 2026-11-22
 
 本版修的是会话接力这一类问题：一个会话填满上下文之后，交接要么让两个会话同时干活，要么把人的话弄丢，要么根本没交接；另有一键安装默认地址 404 与启动器误判 profile 已就绪两项。

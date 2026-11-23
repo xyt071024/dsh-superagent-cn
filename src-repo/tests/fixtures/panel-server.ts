@@ -304,6 +304,7 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
   } },
   'GET self-inspect': { answer: () => ({ inspection: { gaps: [{ code: 'noLiveSource', detail: 'No source is ready', fix: 'Check sources' }],
     activity: { days: 7, tickets: 0, open: 0, ended: 0, waiting: 0 }, sources: [] }, hygiene: { open: 0, missing: [] } }) },
+  'GET divisions': { answer: () => ({ plans: [] }) },
   'GET update-check': { answer: () => ({ current: '0.3.5', latest: '0.3.5', status: 'up-to-date', releases: 'https://github.com/xyt071024/dsh-superagent-cn/releases' }) },
   'GET search': { query: ['q'], answer: async ({ query }) => {
     const q = query.q ?? ''

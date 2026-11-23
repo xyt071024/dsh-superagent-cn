@@ -10,10 +10,10 @@
 
 | 系统 | 下载 |
 |---|---|
-| **Windows x64** | [Super-Agent-Bundled-Windows-x64-v0.3.11.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.11/Super-Agent-Bundled-Windows-x64-v0.3.11.zip) |
-| **macOS Apple Silicon**（M1/M2/M3/M4） | [Super-Agent-Bundled-macOS-arm64-v0.3.11.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.11/Super-Agent-Bundled-macOS-arm64-v0.3.11.zip) |
-| **macOS Intel** | [Super-Agent-Bundled-macOS-x64-v0.3.11.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.11/Super-Agent-Bundled-macOS-x64-v0.3.11.zip) |
-| **Linux x64** | [Super-Agent-Bundled-Linux-x64-v0.3.11.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.11/Super-Agent-Bundled-Linux-x64-v0.3.11.zip) |
+| **Windows x64** | [Super-Agent-Bundled-Windows-x64-v0.3.12.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.12/Super-Agent-Bundled-Windows-x64-v0.3.12.zip) |
+| **macOS Apple Silicon**（M1/M2/M3/M4） | [Super-Agent-Bundled-macOS-arm64-v0.3.12.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.12/Super-Agent-Bundled-macOS-arm64-v0.3.12.zip) |
+| **macOS Intel** | [Super-Agent-Bundled-macOS-x64-v0.3.12.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.12/Super-Agent-Bundled-macOS-x64-v0.3.12.zip) |
+| **Linux x64** | [Super-Agent-Bundled-Linux-x64-v0.3.12.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.12/Super-Agent-Bundled-Linux-x64-v0.3.12.zip) |
 
 ### 步骤
 
@@ -38,23 +38,23 @@
 
    终端会打印地址，形如 `http://127.0.0.1:3087`。
 
-> **如果提示 profile 已存在**，说明之前装过。先把 `~/.dsh/profiles/superagent` 移走再运行。
+> **如果已有旧版 profile**，启动脚本会自动备份并无损升级 `dsh-superagent` 插件，保留你原有的 `cordis.patch.yml` 及其他插件。
 
 ---
 
 ## 方式二：插件包（已装 DSH）
 
 ```bash
-dsh plugin add ./Super-Agent-Plugin-v0.3.11.tgz
+dsh plugin add ./Super-Agent-Plugin-v0.3.12.tgz
 ```
 
 或指定 profile：
 
 ```bash
-dsh plugin --profile superagent add ./Super-Agent-Plugin-v0.3.11.tgz
+dsh plugin --profile superagent add ./Super-Agent-Plugin-v0.3.12.tgz
 ```
 
-下载：[Super-Agent-Plugin-v0.3.11.tgz](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.11/Super-Agent-Plugin-v0.3.11.tgz)
+下载：[Super-Agent-Plugin-v0.3.12.tgz](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.12/Super-Agent-Plugin-v0.3.12.tgz)
 
 > 插件需要 Node.js 22.19+ 与已安装的 DSH（0.2.2）。
 
@@ -91,17 +91,11 @@ dsh plugin --profile superagent add ./Super-Agent-Plugin-v0.3.11.tgz
 
 ## 已知限制
 
-**上下文达阈值时是压缩，不是开新会话。**
+**多会话与独立复查默认关闭。** 需在 设置 → 路由 / 执行 中按需开启。
 
-设置中的百分比为「归档阈值」，实际行为是压缩当前会话并在同一会话内继续。跨会话移交尚未实现。
+**各通道未做真实外部账号收发验收。** 已验证协议行为与错误映射；真实外部账号的登录、收发、断线恢复未在本机联网验证。
 
-**多会话与独立复查默认关闭。**
-
-**各通道未做真实收发验收。** 已验证协议行为与错误映射；真实账号的登录、收发、断线恢复未验证。
-
-**macOS / Linux 未在真机启动验证。** 包结构与原生模块正确，但未实际运行过。
-
-**Windows 上约 35 项测试失败。** 测试脚本依赖 POSIX 命令、符号链接、权限位，非功能故障。
+**macOS / Linux 未在物理真机桌面启动验证。** 包结构、原生模块、Unix 权限位与引导脚本已校验，但未在物理 macOS / Linux 机器双击实跑。
 
 ---
 

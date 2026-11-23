@@ -54,11 +54,11 @@ async function put(remote, content, message) {
 // 中文 README 是仓库门面；英文和日文各自独立成文，不在同一页并排放三种语言。
 const PAGES = path.join(ROOT, '_pages-0310')
 const files = [
-  ['README.md', path.join(ROOT, '34-README-v0.3.10.md'), 'docs: README for v0.3.9'],
+  ['README.md', path.join(ROOT, '_remote', 'README.md'), 'docs: README for v0.3.11'],
   // 英文与日文各自整篇，不在同一页并排三种语言。
-  ['README.en.md', path.join(ROOT, '_remote', 'README.en.md'), 'docs: English README for v0.3.9'],
-  ['README.ja.md', path.join(ROOT, '_remote', 'README.ja.md'), 'docs: Japanese README for v0.3.9'],
-  ['CHANGELOG.md', path.join(ROOT, '_remote', 'CHANGELOG.md'), 'docs: changelog for v0.3.9'],
+  ['README.en.md', path.join(ROOT, '_remote', 'README.en.md'), 'docs: English README for v0.3.11'],
+  ['README.ja.md', path.join(ROOT, '_remote', 'README.ja.md'), 'docs: Japanese README for v0.3.11'],
+  ['CHANGELOG.md', path.join(ROOT, '_remote', 'CHANGELOG.md'), 'docs: changelog for v0.3.11'],
   // Pages 站点的安装页：三语各一份，下载链接里的版本号随发行版走。
   // 站点根是仓库根：中文首页与安装页在根，英文在 en/，日文在 ja/。
   ['install.html', path.join(PAGES, 'install.html'), 'docs: install page for v0.3.9'],

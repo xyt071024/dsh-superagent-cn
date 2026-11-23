@@ -19,7 +19,7 @@ import { testDeployment } from './fixtures/deployment.ts'
 import { SettingsSchema, settingsPolicy } from '../src/policy.ts'
 import { sourceContextOf, type SourceContextDeps } from '../src/app/source-context.ts'
 import { SetupError, type SetupProblem } from '../src/setup.ts'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -1044,20 +1044,40 @@ describe('feishu event consumer', () => {
    * and `flaky` exits after its first ready. It records each run and the PID of the latest.
    */
   function cli(mode: 'never' | 'warn' | 'ready' | 'flaky' | 'events' | 'late'): string {
-    const path = join(dir, 'lark-bot')
-    writeFileSync(path, `#!/bin/sh
-  [ "$1" = event ] || { echo '{"ok":true,"data":{}}'; exit 0; }
-  n=$(cat '${dir}/runs' 2>/dev/null || echo 0); n=$((n + 1)); echo $n > '${dir}/runs'; echo $$ > '${dir}/pid'
-  case ${mode} in
-    never) exec sleep 60 ;;
-    warn) echo '[event] ready' >&2; echo 'WARN the connection was reset' >&2; exec sleep 60 ;;
-    ready) echo '[event] ready' >&2; exec sleep 60 ;;
-    flaky) echo '[event] ready' >&2; [ "$n" -gt 1 ] && exec sleep 60; exit 1 ;;
-    events) echo '[event] ready' >&2; cat '${dir}/events'; touch '${dir}/printed'; exec sleep 60 ;;
-    late) echo '[event] ready' >&2; sleep 1; cat '${dir}/events'; touch '${dir}/printed'; exec sleep 60 ;;
-  esac
-  `, { mode: 0o755 })
-    return path
+    const modDir = join(dir, 'node_modules', 'fake-lark')
+    mkdirSync(modDir, { recursive: true })
+    const script = join(modDir, 'cli.mjs')
+    writeFileSync(script, `
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+const dir = ${JSON.stringify(dir)}
+const mode = ${JSON.stringify(mode)}
+if (process.argv[2] !== 'event') { console.log('{"ok":true,"data":{}}'); process.exit(0) }
+const runsFile = join(dir, 'runs')
+const n = (existsSync(runsFile) ? Number(readFileSync(runsFile, 'utf8')) : 0) + 1
+writeFileSync(runsFile, String(n))
+writeFileSync(join(dir, 'pid'), String(process.pid))
+const hold = () => setInterval(() => {}, 60000)
+const printEvents = () => {
+  const f = join(dir, 'events')
+  if (existsSync(f)) process.stdout.write(readFileSync(f, 'utf8'))
+  writeFileSync(join(dir, 'printed'), '1')
+}
+if (mode === 'never') { hold() }
+else if (mode === 'warn') { console.error('[event] ready'); console.error('WARN the connection was reset'); hold() }
+else if (mode === 'ready') { console.error('[event] ready'); hold() }
+else if (mode === 'flaky') { console.error('[event] ready'); if (n > 1) hold(); else process.exit(1) }
+else if (mode === 'events') { console.error('[event] ready'); printEvents(); hold() }
+else if (mode === 'late') { console.error('[event] ready'); setTimeout(() => { printEvents(); hold() }, 1000) }
+`)
+    if (process.platform === 'win32') {
+      const cmdPath = join(dir, 'lark-bot.cmd')
+      writeFileSync(cmdPath, `@echo off\r\n"%dp0%\\node_modules\\fake-lark\\cli.mjs" %*\r\n`)
+      return cmdPath
+    }
+    const shPath = join(dir, 'lark-bot')
+    writeFileSync(shPath, `#!/bin/sh\nexec "${process.execPath}" "${script}" "$@"\n`, { mode: 0o755 })
+    return shPath
   }
   const runs = () => existsSync(join(dir, 'runs')) ? Number(readFileSync(join(dir, 'runs'), 'utf8')) : 0
   const alive = (pid: number) => { try { process.kill(pid, 0); return true } catch { return false } }

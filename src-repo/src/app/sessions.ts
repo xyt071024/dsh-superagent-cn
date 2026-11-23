@@ -41,13 +41,17 @@ export interface SessionsHost {
   environment(ticket: Ticket): Variable[]
   /** Tools to register on the main Session (`ticket === undefined`) or on `ticket`'s worker Session. */
   tools(agent: Agent, ticket?: Ticket): Tool[]
+  /** 独立分工对话（M07）挂载的专用汇报与读取工具。 */
+  divisionTools?(agent: Agent, taskId: string, divisionId: string): Tool[]
+  /** 在请求边界记录分工对话实际调用的模型与思考等级。 */
+  observeModelCall?(sessionId: string, call: { provider?: string; model?: string; reasoningEffort?: string }): void
 }
 
 /**
  * What Sessions registered for an agent it decorated: the releases of its prompt section, tools and skill scope, the scope
  * its skills are registered in, and the skills of one prompt revision; for a worker's subagent, only its tool limits.
  */
-interface SessionBinding { disposers: (() => void)[]; scope?: Context; skills?: { revision: number; dispose: () => void }; subagent?: true }
+interface SessionBinding { disposers: (() => void)[]; scope?: Context; skills?: { revision: number; dispose: () => void }; subagent?: true; master?: true; division?: { taskId: string; divisionId: string } }
 
 /** The agent presets Executor Sessions and the main Session are created with, which the bundle's patch defines. */
 export const WORKER_PRESET = 'dsh-superagent-worker', ROUTER_PRESET = 'dsh-superagent-router'
@@ -122,6 +126,10 @@ export class Sessions {
   private readonly agentDelivery: AgentDelivery
   /** Decorated agents mapped to their registered disposers and skill scope until the agent is disposed or `Sessions.dispose()` runs. */
   private readonly bindings = new Map<Agent, SessionBinding>()
+  /** 正在准备中的继任主会话，在指针切换前创建时即按主协调者身份装配工具与提示词。 */
+  private readonly pendingOrchestrators = new Set<string>()
+  /** 用户在普通聊天中显式切换到 Super Agent 路由预设的会话集合。 */
+  private readonly chatCoordinators = new Set<string>()
   private readonly retryHealth = new RetryHealth()
   /** Daily token accounting; `Sessions` feeds every Session event into it, subagents included. */
   readonly usage: UsageMeter
@@ -148,6 +156,16 @@ export class Sessions {
       // Count usage for every Session the operator's limit covers, including a worker's subagents, before the per-Session
       // checks below skip them: a subagent spends the same allowance.
       this.usage.observe(event)
+      if (event.type === 'request/header' || event.type === 'model/selection') {
+        const data = (event.data ?? {}) as { provider?: unknown; model?: unknown; reasoningEffort?: unknown }
+        if (typeof data.provider === 'string' || typeof data.model === 'string') {
+          this.host.observeModelCall?.(session.id, {
+            ...(typeof data.provider === 'string' ? { provider: data.provider } : {}),
+            ...(typeof data.model === 'string' ? { model: data.model } : {}),
+            ...(typeof data.reasoningEffort === 'string' ? { reasoningEffort: data.reasoningEffort } : {}),
+          })
+        }
+      }
       if (!agent || !binding) return
       this.retryHealth.observe(agent.id, event)
       this.updateModelHealth()
@@ -158,7 +176,15 @@ export class Sessions {
     ctx.inject(['agentPresets'], child => {
       child.on('agent-preset/selected', (sessionId, preset) => {
         const ticketId = ticketOfSession(this.host.store, sessionId), agent = ctx.agents.get(sessionId as SessionId)
-        const ours = sessionId === this.host.masterId ? ROUTER_PRESET : ticketId && this.host.store.tickets.get(ticketId) ? WORKER_PRESET : undefined
+        const division = this.host.store.get(KV.sessions.divisionOwner(sessionId))
+        const ours = sessionId === this.host.masterId ? ROUTER_PRESET
+          : (ticketId && this.host.store.tickets.get(ticketId)) || division ? WORKER_PRESET : undefined
+        if (!ours && preset === ROUTER_PRESET && agent && !this.bindings.get(agent)?.subagent) {
+          // 用户在普通聊天中手动选择了 Super Agent 预设：将其装配为可交互的 Super Agent 协调入口。
+          this.chatCoordinators.add(sessionId)
+          void this.redecorate(agent)
+          return
+        }
         if (!ours || preset === ours || !agent) return
         const presets = child.get('agentPresets') as { select(agent: Agent, preset: string): Promise<string> }
         presets.select(agent, ours).catch(() => {})
@@ -167,6 +193,11 @@ export class Sessions {
     ctx.on('agent/status', ({ agent, status }) => {
       if (status === 'idle' && !this.host.closing()) { this.retryHealth.clear(agent.id); this.updateModelHealth() }
     })
+  }
+  /** 释放旧绑定并重新按最新角色装配会话。 */
+  private async redecorate(agent: Agent): Promise<void> {
+    this.release(agent)
+    await this.decorate(agent)
   }
   /**
    * Resolves or creates session `id` in workspace `cwd`, initializes its role model, decorates it with prompts/skills/tools,
@@ -184,31 +215,128 @@ export class Sessions {
     const owner = role === 'worker' ? ticketId : undefined
     if (role === 'worker' && owner === undefined) throw new Error(`Refusing to create worker Session ${id} without its ticket`)
     if (owner !== undefined) this.host.store.set(KV.sessions.owner(id), owner)
-    let result = await ctx.sessionController.resolveAgent(id as SessionId)
+    if (role === 'orchestrator') this.pendingOrchestrators.add(id)
+    try {
+      let result = await ctx.sessionController.resolveAgent(id as SessionId)
+      if ('error' in result && result.error.code === 'session/not-found') {
+        const workspace = await ctx.workspaceRegistry.create(cwd)
+        // A Session keeps the preset it was created with, one of the bundle's own (cordis.patch.yml).
+        await ctx.sessionController.create({ sessionId: id as SessionId, workspaceId: workspace.id,
+          agentPreset: role === 'worker' ? WORKER_PRESET : ROUTER_PRESET })
+        result = await ctx.sessionController.resolveAgent(id as SessionId)
+      }
+      if ('error' in result) throw result.error
+      const settings = this.host.store.settings()
+      const task = role === 'worker' ? ticketOfSession(this.host.store, id) : undefined
+      if (task && settings.routing.multiSession === 'auto' && !this.host.store.get(KV.sessions.teamModels(task))) {
+        this.host.store.set(KV.sessions.teamModels(task), { inherited: this.operatorModel(), models: settings.routing.sessionModels,
+          max: settings.routing.maxSessions, slots: {}, ...(settings.routing.thinking === 'auto' ? { autoHard: hard } : {}) })
+      }
+      // An orchestrator decides whether to take work, so its model comes from the Eval settings. A worker's comes from
+      // whatever the operator is using right now, unless they configured a model or asked the approved list to win.
+      const model = role === 'orchestrator'
+        ? settings.eval.model
+        : this.workerModel(settings, hard)
+      await initializeRoleModel(ctx, result.agent, model, false, role === 'worker' && settings.routing.thinking === 'auto' ? hard : undefined)
+      // 若之前以普通/子会话身份装配过，先释放旧绑定再按当前角色（如继任主会话）重装工具。
+      const existing = this.bindings.get(result.agent)
+      if (existing && (role === 'orchestrator') !== !!existing.master) await this.redecorate(result.agent)
+      else await this.decorate(result.agent)
+      ctx.permissionPresets.set(result.agent.session, 'danger-full-access')
+      await ctx.sessionController.rename({ sessionId: id as SessionId, title })
+      return result.agent
+    } finally {
+      if (role === 'orchestrator') this.pendingOrchestrators.delete(id)
+    }
+  }
+  /**
+   * 为子会话接班（M06）创建或恢复继任子会话：保留父会话、所属工单与原模型槽位（不额外消耗并发名额）。
+   */
+  async ensureSubagent(id: string, cwd: string, title: string, options: {
+    parentId: string; ticketId?: string | undefined; slot?: number | undefined; model?: RoleModel | null | undefined; autoHard?: boolean | undefined
+  }): Promise<Agent> {
+    if (!validSessionId(id)) throw new Error(`Refusing to create a Session whose id is not a usable name: ${JSON.stringify(id)}`)
+    const { parentId, ticketId, slot, model, autoHard } = options
+    this.host.store.set(KV.sessions.subagentParent(id), parentId)
+    if (ticketId) this.host.store.set(KV.sessions.subagentTicket(id), ticketId)
+    if (ticketId && slot !== undefined) {
+      const saved = this.host.store.get(KV.sessions.teamModels(ticketId))
+      if (saved && saved.slots[id] !== slot) {
+        saved.slots[id] = slot
+        this.host.store.set(KV.sessions.teamModels(ticketId), saved)
+      }
+    }
+    let result = await this.ctx.sessionController.resolveAgent(id as SessionId)
     if ('error' in result && result.error.code === 'session/not-found') {
-      const workspace = await ctx.workspaceRegistry.create(cwd)
-      // A Session keeps the preset it was created with, one of the bundle's own (cordis.patch.yml).
-      await ctx.sessionController.create({ sessionId: id as SessionId, workspaceId: workspace.id,
-        agentPreset: role === 'worker' ? WORKER_PRESET : ROUTER_PRESET })
-      result = await ctx.sessionController.resolveAgent(id as SessionId)
+      const workspace = await this.ctx.workspaceRegistry.create(cwd)
+      await this.ctx.sessionController.create({ sessionId: id as SessionId, workspaceId: workspace.id, agentPreset: 'standard' })
+      result = await this.ctx.sessionController.resolveAgent(id as SessionId)
+    }
+    if ('error' in result) throw result.error
+    await this.limitSubagent(result.agent)
+    if (model && !result.agent.session.snapshotEvents().some(event => event.type === 'model/selection')) {
+      await initializeRoleModel(this.ctx, result.agent, model, true, autoHard)
+    }
+    this.ctx.permissionPresets.set(result.agent.session, 'danger-full-access')
+    await this.ctx.sessionController.rename({ sessionId: id as SessionId, title })
+    return result.agent
+  }
+  /**
+   * 为复杂任务创建或接续一个独立可打开的分工对话（M07），在宿主会话列表可见且可由用户随时点开继续交互。
+   */
+  async ensureDivision(id: string, cwd: string, title: string, options: {
+    taskId: string; divisionId: string; model: RoleModel | null; autoHard?: boolean | undefined
+  }): Promise<Agent> {
+    if (!validSessionId(id)) throw new Error(`Refusing to create a Session whose id is not a usable name: ${JSON.stringify(id)}`)
+    this.host.store.set(KV.sessions.divisionOwner(id), { taskId: options.taskId, divisionId: options.divisionId })
+    let result = await this.ctx.sessionController.resolveAgent(id as SessionId)
+    if ('error' in result && result.error.code === 'session/not-found') {
+      const workspace = await this.ctx.workspaceRegistry.create(cwd)
+      await this.ctx.sessionController.create({ sessionId: id as SessionId, workspaceId: workspace.id, agentPreset: WORKER_PRESET })
+      result = await this.ctx.sessionController.resolveAgent(id as SessionId)
     }
     if ('error' in result) throw result.error
     const settings = this.host.store.settings()
-    const task = role === 'worker' ? ticketOfSession(this.host.store, id) : undefined
-    if (task && settings.routing.multiSession === 'auto' && !this.host.store.get(KV.sessions.teamModels(task))) {
-      this.host.store.set(KV.sessions.teamModels(task), { inherited: this.operatorModel(), models: settings.routing.sessionModels,
-        max: settings.routing.maxSessions, slots: {}, ...(settings.routing.thinking === 'auto' ? { autoHard: hard } : {}) })
-    }
-    // An orchestrator decides whether to take work, so its model comes from the Eval settings. A worker's comes from
-    // whatever the operator is using right now, unless they configured a model or asked the approved list to win.
-    const model = role === 'orchestrator'
-      ? settings.eval.model
-      : this.workerModel(settings, hard)
-    await initializeRoleModel(ctx, result.agent, model, false, role === 'worker' && settings.routing.thinking === 'auto' ? hard : undefined)
+    const hard = options.autoHard ?? (settings.routing.thinking === 'auto' ? true : undefined)
+    await initializeRoleModel(this.ctx, result.agent, options.model, false, settings.routing.thinking === 'auto' ? hard : undefined)
     await this.decorate(result.agent)
-    ctx.permissionPresets.set(result.agent.session, 'danger-full-access')
-    await ctx.sessionController.rename({ sessionId: id as SessionId, title })
+    this.ctx.permissionPresets.set(result.agent.session, 'danger-full-access')
+    await this.ctx.sessionController.rename({ sessionId: id as SessionId, title })
     return result.agent
+  }
+  /** 读取某个指定会话当前选用的模型（用于捕获用户发起会话时的实时模型）。 */
+  sessionModel(sessionId: string): RoleModel | null {
+    const agent = this.ctx.agents.get(sessionId as SessionId)
+    if (!agent) return null
+    const selection = agent.session.snapshotEvents().findLast(event => event.type === 'model/selection')
+    if (!selection || selection.type !== 'model/selection') return null
+    const { provider, model, reasoningEffort } = selection.data
+    if (!provider || !model) return null
+    return { provider, model, ...reasoningEffort ? { reasoningEffort } : {} }
+  }
+  /** 判断某个会话是否被作为子会话（subagent / teammate）管理。 */
+  isSubagent(sessionId: string): boolean {
+    const agent = this.ctx.agents.get(sessionId as SessionId)
+    return agent ? !!this.bindings.get(agent)?.subagent : false
+  }
+  /** 判断某个会话是否为 M07 独立分工会话。 */
+  divisionOf(sessionId: string): { taskId: string; divisionId: string } | undefined {
+    return this.host.store.get(KV.sessions.divisionOwner(sessionId))
+  }
+  /** 解析子会话的父会话、所属工单及当前模型槽位。 */
+  subagentContext(agent: Agent): { parentId?: string; ticketId?: string; slot?: number; model: RoleModel | null; autoHard?: boolean } {
+    const parentId = agent.session.header.parentSession ?? this.host.store.get(KV.sessions.subagentParent(agent.id))
+    let ancestor = parentId
+    for (let depth = 0; ancestor !== undefined && ticketOfSession(this.host.store, ancestor) === undefined && depth < 8; depth++) {
+      ancestor = this.ctx.agents.get(ancestor as SessionId)?.session.header.parentSession ?? this.host.store.get(KV.sessions.subagentParent(ancestor))
+    }
+    const ticketId = (ancestor === undefined ? undefined : ticketOfSession(this.host.store, ancestor))
+      ?? this.host.store.get(KV.sessions.subagentTicket(agent.id))
+    const saved = ticketId ? this.host.store.get(KV.sessions.teamModels(ticketId)) : undefined
+    const slot = saved?.slots[agent.id]
+    const model = slot !== undefined && saved ? (saved.models[slot] ?? saved.inherited) : this.sessionModel(agent.id)
+    return { ...(parentId ? { parentId } : {}), ...(ticketId ? { ticketId } : {}), ...(slot !== undefined ? { slot } : {}),
+      model, ...(saved?.autoHard !== undefined ? { autoHard: saved.autoHard } : {}) }
   }
   /**
    * The model a worker Session runs on, in the order the operator meant by the settings.
@@ -345,10 +473,11 @@ export class Sessions {
   private async decorate(agent: Agent): Promise<void> {
     if (this.bindings.has(agent)) return
     const host = this.host
-    const master = agent.id === host.masterId
+    const master = agent.id === host.masterId || this.pendingOrchestrators.has(agent.id) || this.chatCoordinators.has(agent.id)
     const ticket = master ? undefined : this.ticketOf(agent)
-    if (!master && !ticket) { await this.limitSubagent(agent); return }
-    const binding: SessionBinding = { disposers: [] }
+    const division = master || ticket ? undefined : this.host.store.get(KV.sessions.divisionOwner(agent.id))
+    if (!master && !ticket && !division) { await this.limitSubagent(agent); return }
+    const binding: SessionBinding = { disposers: [], ...(master ? { master: true as const } : {}), ...(division ? { division } : {}) }
     this.bindings.set(agent, binding)
     this.retryHealth.restore(agent.id, agent.session.snapshotEvents())
     if (agent.status === 'idle') this.retryHealth.clear(agent.id)
@@ -371,6 +500,20 @@ export class Sessions {
     // Bail out if the agent was disposed while awaiting the skill scope.
     if (this.bindings.get(agent) !== binding) return
     const register = this.registerTool(agent, binding)
+    if (division) {
+      for (const tool of host.divisionTools?.(agent, division.taskId, division.divisionId) ?? []) register(tool.name, tool.description, tool.schema, tool.execute)
+      const parent = scopeParentOf(agent)
+      const known = WORK_TOOLS.filter(name => agent.ctx.tools.get(name, parent))
+      binding.disposers.push(agent.ctx.tools.restrict({ allow: known }), agent.ctx.tools.guard(() => {
+        const linked = host.store.tickets.get(division.taskId)
+        if (linked && !liveTicket(linked)) return 'Ticket ended; new work needs a new authorized ticket'
+        const plan = host.store.get(KV.sessions.divisions(division.taskId))
+        const row = plan?.divisions.find(item => item.divisionId === division.divisionId)
+        if (row?.status === 'stopped') return 'Division was stopped'
+        return undefined
+      }))
+      return
+    }
     for (const tool of host.tools(agent, ticket)) register(tool.name, tool.description, tool.schema, tool.execute)
     if (master) {
       // The preset enables `bash` or `pwsh` by platform; restrict only names this host really has. The agent's own view
@@ -423,12 +566,15 @@ export class Sessions {
    * it is.
    */
   private async limitSubagent(agent: Agent): Promise<void> {
-    let parent = agent.session.header.parentSession
+    if (this.bindings.has(agent)) return
+    const persistedParent = this.host.store.get(KV.sessions.subagentParent(agent.id))
+    let parent = agent.session.header.parentSession ?? persistedParent
     // Up the subagents' parents to the worker, which are loaded while their subagents run.
     for (let depth = 0; parent !== undefined && ticketOfSession(this.host.store, parent) === undefined && depth < 8; depth++) {
-      parent = this.ctx.agents.get(parent)?.session.header.parentSession
+      parent = this.ctx.agents.get(parent as SessionId)?.session.header.parentSession ?? this.host.store.get(KV.sessions.subagentParent(parent))
     }
-    const ticketId = parent === undefined ? undefined : ticketOfSession(this.host.store, parent)
+    const ticketId = (parent === undefined ? undefined : ticketOfSession(this.host.store, parent))
+      ?? this.host.store.get(KV.sessions.subagentTicket(agent.id))
     if (ticketId === undefined || !this.host.store.tickets.get(ticketId)) return
     const ticket = this.host.store.tickets.get(ticketId)!
     // Team membership is journaled before the host announces the child Agent. The serial agent/created hook
@@ -442,7 +588,7 @@ export class Sessions {
       this.bindings.set(agent, { disposers: [dispose], subagent: true })
       return
     }
-    if (member?.role === 'teammate' || (!member && agent.session.header.parentSession === parent)) {
+    if (member?.role === 'teammate' || (!member && (agent.session.header.parentSession === parent || persistedParent === parent))) {
       const saved = this.host.store.get(KV.sessions.teamModels(ticketId))
       if (saved) {
         let slot = saved.slots[agent.id]

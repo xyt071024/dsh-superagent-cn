@@ -879,6 +879,17 @@ const TEXT = {
   'healthCode.mailMissingImapHost': ['请填写 IMAP 服务器地址', HEALTH_TEXT.mailMissingImapHost],
   'healthCode.mailMissingSmtpHost': ['IMAP 已连接，但未填写 SMTP 服务器地址，无法回信', HEALTH_TEXT.mailMissingSmtpHost],
   'healthCode.mailImapReady': ['IMAP 已连接；收到 {count} 封新邮件。SMTP 尚未验证', HEALTH_TEXT.mailImapReady],
+  versionLoaded: ['已加载版本', 'Loaded version'],
+  versionInstalled: ['磁盘已安装版本', 'Installed version'],
+  versionProfile: ['当前配置', 'Profile'],
+  versionReloadRequired: ['当前配置已安装新版本（{installed}），但宿主进程仍运行旧版本（{loaded}）。请重载或重启当前配置。',
+    'Disk version ({installed}) differs from running version ({loaded}); reload the current profile.'],
+  'inspect.reloadRequired': ['当前配置已升级但尚未重载，请重启当前配置以加载新版插件。',
+    'Installed version differs from loaded version; reload the current profile.'],
+  divisionsTitle: ['分工独立对话', 'Division sessions'],
+  divisionsReview: ['独立复查对话', 'Independent review session'],
+  divisionsDependsOn: ['依赖', 'Depends on'],
+  divisionsSlot: ['槽位 {slot}', 'Slot {slot}'],
 } as const satisfies Record<string, readonly [string, string]>
 export type DshSuperagentKey = keyof typeof TEXT
 const language = (index: 0 | 1) => Object.fromEntries(Object.entries(TEXT).map(([key, pair]) => [key, pair[index]])) as Record<DshSuperagentKey, string>

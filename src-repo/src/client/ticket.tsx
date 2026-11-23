@@ -154,6 +154,34 @@ export function TicketPage({ id }: { id: string }) {
       <span className="dt-banner-label">{t('deliveryFailedPrefix')}</span>{data.deliveryError}
     </p>}
     <MandateDetails ticket={data} actor={actor} />
+    {data.plan && data.plan.divisions.length > 0 && <Section title={t('divisionsTitle')} count={data.plan.divisions.length}>
+      <ul className="dt-list">
+        {data.plan.divisions.map(div => <li key={div.divisionId} className="dt-row">
+          <Dot state={div.status === 'running' ? 'ongoing' : div.status === 'failed' || div.status === 'blocked' ? 'warning' : 'idle'}
+            label={div.status} />
+          <div className="dt-row-main">
+            <div className="dt-row-title">{div.title} <Tag tone="neutral">{div.status}</Tag></div>
+            <div className="dt-row-meta">
+              <span>{t('divisionsSlot', { slot: div.slot + 1 })}</span>
+              <span>{div.model ? `${div.model.provider}/${div.model.model}` : 'inherit'}</span>
+              {div.dependsOn.length > 0 && <span>{t('divisionsDependsOn')}: {div.dependsOn.join(', ')}</span>}
+              {div.generation > 1 && <span>r{div.generation}</span>}
+            </div>
+            {div.latestProgress && <Hint>{div.latestProgress}</Hint>}
+          </div>
+          <div className="dt-row-actions"><SessionButton variant="outline" sessionId={div.sessionId} /></div>
+        </li>)}
+        {data.plan.review && <li className="dt-row">
+          <Dot state={data.plan.review.state === 'pending' ? 'ongoing' : data.plan.review.state === 'failed' ? 'warning' : 'idle'}
+            label={data.plan.review.state} />
+          <div className="dt-row-main">
+            <div className="dt-row-title">{t('divisionsReview')} <Tag tone="neutral">{data.plan.review.state}</Tag></div>
+            {data.plan.review.summary && <Hint>{data.plan.review.summary}</Hint>}
+          </div>
+          <div className="dt-row-actions"><SessionButton variant="outline" sessionId={data.plan.review.sessionId} /></div>
+        </li>}
+      </ul>
+    </Section>}
     {undelivered.length > 0 && <Section title={t('undeliveredInputs')} count={undelivered.length}>
       <Hint>{data.deliveryError ? t('inputRetryHint') : data.paused ? t('inputPausedHint') : t('inputWaitingHint')}</Hint>
       <InputList inputs={undelivered} />

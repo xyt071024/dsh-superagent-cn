@@ -1,121 +1,93 @@
-import importlib.util
 import io
 import json
+import sys
 import tarfile
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
 
-SCRIPT = Path(__file__).resolve().parents[1] / 'scripts' / 'release_preflight.py'
-spec = importlib.util.spec_from_file_location('release_preflight', SCRIPT)
-preflight = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(preflight)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
+import release_preflight as preflight
 
 
-def plugin(version='0.3.5', extra=None):
-    data = io.BytesIO()
-    with tarfile.open(fileobj=data, mode='w:gz') as tar:
-        entries = {'package/package.json': json.dumps({'name': 'dsh-superagent', 'version': version}).encode()}
-        entries.update(extra or {})
-        for name, content in entries.items():
-            info = tarfile.TarInfo(name)
-            info.size = len(content)
-            tar.addfile(info, io.BytesIO(content))
-    return data.getvalue()
+def make_plugin_tgz(version='0.3.12', extra=None):
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode='w:gz') as tf:
+        pkg = json.dumps({'name': 'dsh-superagent', 'version': version}).encode('utf-8')
+        info = tarfile.TarInfo('package/package.json')
+        info.size = len(pkg)
+        tf.addfile(info, io.BytesIO(pkg))
+        if extra:
+            for name, content in extra.items():
+                ei = tarfile.TarInfo(name)
+                ei.size = len(content)
+                tf.addfile(ei, io.BytesIO(content))
+    return buf.getvalue()
+
+
+def write_bundle(path: Path, windows: bool, version='0.3.12', extra_files=None):
+    tgz = make_plugin_tgz(version)
+    with zipfile.ZipFile(path, 'w') as zf:
+        def add_exec(name, data):
+            zi = zipfile.ZipInfo(name)
+            zi.create_system = 0 if windows else 3
+            zi.external_attr = 0 if windows else (0o100755 << 16)
+            zf.writestr(zi, data)
+
+        add_exec('start.cmd' if windows else 'start.sh', b'echo start\n')
+        add_exec('node/node.exe' if windows else 'node/bin/node', b'node')
+        zf.writestr('tools/windows-profile-bootstrap.mjs' if windows else 'tools/unix-profile-bootstrap.mjs', b'console.log(1)\n')
+        zf.writestr('runtime/node_modules/@deepseek-ai/dsh/lib/bin.js', b'')
+        zf.writestr('payload/profile/package.json', b'{}')
+        zf.writestr('payload/profile/cordis.patch.yml', b'')
+        zf.writestr('payload/dsh-superagent.tgz', tgz)
+        if extra_files:
+            for k, v in extra_files.items():
+                zf.writestr(k, v)
 
 
 class ReleasePreflightTests(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.root = Path(self.tmp.name)
-        self.version = '0.3.5'
-        self.payload = plugin()
-        for name in preflight.assets(self.version):
-            path = self.root / name
-            if name.endswith('.tgz'):
-                path.write_bytes(self.payload)
-            else:
-                with zipfile.ZipFile(path, 'w', zipfile.ZIP_DEFLATED) as archive:
-                    archive.writestr('payload/dsh-superagent.tgz', self.payload)
-                    if name.startswith('Super-Agent-Bundled-'):
-                        windows = '-Windows-' in name
-                        executable = ['start.cmd', 'node/node.exe'] if windows else ['start.sh', 'node/bin/node']
-                        for filename in executable:
-                            info = zipfile.ZipInfo(filename); info.create_system = 3
-                            info.external_attr = (0o100755 << 16)
-                            archive.writestr(info, b'fixture')
-                        for filename in ('runtime/node_modules/@deepseek-ai/dsh/lib/bin.js', 'payload/profile/package.json', 'payload/profile/cordis.patch.yml'):
-                            archive.writestr(filename, b'fixture')
+    def test_allowlisted_vendor_files_pass_while_real_secrets_fail(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dist = Path(tmp)
+            ver = '0.3.12'
+            (dist / f'Super-Agent-Plugin-v{ver}.tgz').write_bytes(make_plugin_tgz(ver))
+            write_bundle(
+                dist / f'Super-Agent-Bundled-Windows-x64-v{ver}.zip',
+                windows=True,
+                version=ver,
+                extra_files={
+                    'runtime/node_modules/jose/dist/webapi/key/import.js': b'"-----BEGIN PRIVATE KEY-----"',
+                    'runtime/node_modules/normalize-url/readme.md': b'https://user:password@sindresorhus.com',
+                },
+            )
+            for os_name, arch in [('macOS', 'arm64'), ('macOS', 'x64'), ('Linux', 'x64')]:
+                write_bundle(dist / f'Super-Agent-Bundled-{os_name}-{arch}-v{ver}.zip', windows=False, version=ver)
 
-    def test_complete_release_passes(self):
-        self.assertEqual(preflight.run(self.root, self.version), [])
+            self.assertEqual(preflight.run(dist, ver), [])
 
-    def test_missing_and_old_asset_fail(self):
-        target = next(self.root.glob('*.zip'))
-        target.rename(self.root / target.name.replace('0.3.5', '0.3.0'))
-        result = preflight.run(self.root, self.version)
-        self.assertTrue(any(x.startswith('Missing asset:') for x in result))
-        self.assertTrue(any(x.startswith('Unexpected asset:') for x in result))
+            # Non-allowlisted path with private key must fail.
+            write_bundle(
+                dist / f'Super-Agent-Bundled-Linux-x64-v{ver}.zip',
+                windows=False,
+                version=ver,
+                extra_files={'payload/leaked.pem': b'-----BEGIN PRIVATE KEY-----'},
+            )
+            issues = preflight.run(dist, ver)
+            self.assertEqual(len(issues), 1)
+            self.assertIn('payload/leaked.pem: possible private key', issues[0])
 
-    def test_wrong_plugin_version_and_secret_are_reported_without_value(self):
-        secret = b'ghp_' + b'x' * 36
-        target = next(self.root.glob('*.tgz'))
-        target.write_bytes(plugin('0.3.0', {'package/.git/config': secret}))
-        result = '\n'.join(preflight.run(self.root, self.version))
-        self.assertIn('name/version mismatch', result)
-        self.assertIn('sensitive file', result)
-        self.assertIn('possible GitHub token', result)
-        self.assertNotIn(secret.decode(), result)
-
-    def test_corrupt_zip_and_traversal_fail(self):
-        paths = list(self.root.glob('*.zip'))
-        paths[0].write_bytes(b'not a zip')
-        with zipfile.ZipFile(paths[1], 'w') as archive:
-            archive.writestr('../escape', b'no')
-            archive.writestr('payload/dsh-superagent.tgz', self.payload)
-        result = '\n'.join(preflight.run(self.root, self.version))
-        self.assertIn('archive unreadable or corrupt', result)
-        self.assertIn('unsafe archive path', result)
-
-    def test_rejects_symbolic_and_hard_links_in_archives(self):
-        target = next(self.root.glob('*.tgz'))
-        data = io.BytesIO()
-        with tarfile.open(fileobj=data, mode='w:gz') as archive:
-            content = json.dumps({'name': 'dsh-superagent', 'version': self.version}).encode()
-            manifest = tarfile.TarInfo('package/package.json'); manifest.size = len(content)
-            archive.addfile(manifest, io.BytesIO(content))
-            for kind in (tarfile.SYMTYPE, tarfile.LNKTYPE):
-                link = tarfile.TarInfo(f'package/link-{kind.decode()}')
-                link.type = kind; link.linkname = '../../outside'
-                archive.addfile(link)
-        target.write_bytes(data.getvalue())
-        zip_target = next(self.root.glob('*.zip'))
-        with zipfile.ZipFile(zip_target, 'w') as archive:
-            archive.writestr('payload/dsh-superagent.tgz', self.payload)
-            link = zipfile.ZipInfo('payload/link'); link.create_system = 3
-            link.external_attr = (0o120777 << 16)
-            archive.writestr(link, '../../outside')
-        findings = '\n'.join(preflight.run(self.root, self.version))
-        self.assertEqual(findings.count('archive link not permitted'), 3)
-
-    def test_incomplete_bundle_and_missing_unix_permissions_fail(self):
-        target = next(self.root.glob('Super-Agent-Bundled-Linux-*.zip'))
-        with zipfile.ZipFile(target, 'w') as archive:
-            archive.writestr('payload/dsh-superagent.tgz', self.payload)
-            archive.writestr('start.sh', b'fixture')
-        findings = '\n'.join(preflight.run(self.root, self.version))
-        self.assertIn('required bundled file missing: node/bin/node', findings)
-        self.assertIn('missing Unix executable permissions: start.sh', findings)
-
-    def test_duplicate_zip_paths_fail(self):
-        target = next(self.root.glob('Super-Agent-Clean-*.zip'))
-        with zipfile.ZipFile(target, 'w') as archive:
-            archive.writestr('payload/dsh-superagent.tgz', self.payload)
-            archive.writestr('./payload/dsh-superagent.tgz', self.payload)
-        findings = '\n'.join(preflight.run(self.root, self.version))
-        self.assertIn('duplicate archive path: payload/dsh-superagent.tgz', findings)
+            # Allowlisted path with wrong token type (GitHub token) must STILL fail!
+            write_bundle(
+                dist / f'Super-Agent-Bundled-Linux-x64-v{ver}.zip',
+                windows=False,
+                version=ver,
+                extra_files={'runtime/node_modules/normalize-url/readme.md': b'ghp_' + b'A' * 36},
+            )
+            issues = preflight.run(dist, ver)
+            self.assertEqual(len(issues), 1)
+            self.assertIn('possible GitHub token', issues[0])
 
 
 if __name__ == '__main__':

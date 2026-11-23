@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/xyt071024/dsh-superagent-cn/releases"><img src="https://img.shields.io/badge/release-v0.3.11-2ea44f" alt="release"></a>
+  <a href="https://github.com/xyt071024/dsh-superagent-cn/releases"><img src="https://img.shields.io/badge/release-v0.3.12-2ea44f" alt="release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="license"></a>
   <a href="https://xyt071024.github.io/dsh-superagent-cn/"><img src="https://img.shields.io/badge/docs-中文%20%7C%20EN%20%7C%20日本語-6f42c1" alt="docs"></a>
   <img src="https://img.shields.io/badge/Node-22.19%2B%20%7C%2024%2B-339933" alt="node">
@@ -35,18 +35,26 @@
 
 | 能力 | 状态 |
 |---|---|
-| Windows x64 首次启动 | ✅ 已验证 |
-| 包内插件与源码一致 | ✅ 8/8 哈希相同 |
+| Windows x64 启动器 / 无损升级 / 端口自选 | ✅ 已验证（隔离环境实跑 127.0.0.1 HTTP 状态检查） |
+| 包内插件与源码一致 | ✅ 构建并哈希一致 |
 | 四平台原生模块归位 | ✅ 零错平台 |
-| 压缩包完整性 | ✅ 11/11 通过 |
-| macOS / Linux 真机启动 | ⚠️ 未验证（无对应机器） |
-| 各通道真实收发 | ⚠️ 未验证（仅协议层） |
-| 上下文达阈值后交接新会话 | ✅ 已实现（单元测试覆盖） / ⚠️ 真实宿主未验收 |
-| 多会话 / 独立复查 | ⚠️ 默认关闭，需手动开启 |
+| 压缩包完整性与权限预检 | ✅ ZIP64 + Unix 权限位 + preflight 清零 |
+| macOS / Linux 真机启动 | ⚠️ 未物理开机（已做 Git Bash / CLI 引导与 Unix 权限校验） |
+| 各通道真实外部账号收发 | ⚠️ 未验证（受限于真实账号凭据，已过协议与模拟集成测试） |
+| 上下文达阈值后交接新会话（主/子/分工） | ✅ 已实现并验证（Runtime + SQLite + 模拟控制器） |
+| 多会话分工 / 模型槽位 / 独立复查 | ✅ 已实现并验证（需在 设置 → 路由 / 执行 开启） |
+| 运行时加载版本 / Profile 识别与热重载提示 | ✅ 已实现并验证 |
 
 ---
 
-## v0.3.11 更新内容
+## v0.3.12 更新内容
+
+详见 [CHANGELOG.md](CHANGELOG.md)。核心改进包括：
+- **M07 多会话独立分工与复查**：`orchestrator_dispatch` 按任务复杂度分流（简单 0 额外会话；复杂拆分独立可打开的持久化 DSH 会话）、`maxSessions` 与混用/继承模型槽位、DAG 依赖唤醒、`event_id` 去重及独立复查入口。
+- **M03–M06 接力与崩溃恢复闭环**：继任主会话 `masterId` 实时动态绑定并获完整管理工具；子会话与分工会话达 60% 阈值自动接力并保留父子/槽位/共享任务；多代 `A→B→C` 路由压缩与激活阶段崩溃恢复。
+- **M01 / M02 / M08 部署、版本识别与安全预检**：仓库一键安装脚本全面同步动态 Release 查询并支持 `DSH_HOME`；Bundled 启动脚本接入无损 `profile-bootstrap`；`VersionTracker` 与 Web 面板 `PUT /settings/routing|budget` 修复；多线程 ZIP 打包与精确白名单 Pre-flight 清零。
+
+## 历史记录：v0.3.11 更新内容
 
 本版修的是 v0.3.8 通过独立验收发现的八个缺陷。上一版的接力在单次、理想条件下可用，但在真实 Team 服务、连续第二次接力、切换期并发输入和崩溃恢复这些条件上不成立；三个 Unix 包还带着错误的文件权限，按文档无法启动。
 
@@ -117,17 +125,17 @@
 
 | 你的情况 | 选这个 |
 |---|---|
-| 已装 DSH | `Super-Agent-Plugin-v0.3.11.tgz` |
-| 未装 Node / 未装 DSH（Windows） | `Super-Agent-Bundled-Windows-x64-v0.3.11.zip` |
-| 未装 Node / 未装 DSH（macOS Apple 芯片） | `Super-Agent-Bundled-macOS-arm64-v0.3.11.zip` |
-| 未装 Node / 未装 DSH（macOS Intel） | `Super-Agent-Bundled-macOS-x64-v0.3.11.zip` |
-| 未装 Node / 未装 DSH（Linux） | `Super-Agent-Bundled-Linux-x64-v0.3.11.zip` |
+| 已装 DSH | `Super-Agent-Plugin-v0.3.12.tgz` |
+| 未装 Node / 未装 DSH（Windows） | `Super-Agent-Bundled-Windows-x64-v0.3.12.zip` |
+| 未装 Node / 未装 DSH（macOS Apple 芯片） | `Super-Agent-Bundled-macOS-arm64-v0.3.12.zip` |
+| 未装 Node / 未装 DSH（macOS Intel） | `Super-Agent-Bundled-macOS-x64-v0.3.12.zip` |
+| 未装 Node / 未装 DSH（Linux） | `Super-Agent-Bundled-Linux-x64-v0.3.12.zip` |
 
-内置包解压后双击 `start.cmd`（Windows）或 `./start.sh`，自动把 profile 装到 `~/.dsh/profiles/superagent` 并选空闲端口启动。
+内置包解压后双击 `start.cmd`（Windows）或 `./start.sh`，自动把 profile 装到 `~/.dsh/profiles/superagent`（若已存在则无损升级并保留配置）并选空闲端口启动。
 
 ```bash
 # 插件版安装
-dsh plugin add ./Super-Agent-Plugin-v0.3.11.tgz
+dsh plugin add ./Super-Agent-Plugin-v0.3.12.tgz
 ```
 
 ---

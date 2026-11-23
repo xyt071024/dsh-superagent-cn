@@ -343,6 +343,8 @@ Some generic modules still refer directly to GitHub or Feishu:
 | `src/app/tools/tool.ts` | The `Tool` type, `readTool`, the `orchestrator_read` of both roles, and `AcknowledgementSchema` |
 | `src/app/tools/main.ts` | The main Session's tools |
 | `src/app/tools/executor.ts` | An Executor Session's tools |
+| `src/app/divisions.ts` | `DivisionCoordinator`: multi-session task planning, openable division sessions, dependencies, and review handoffs |
+| `src/app/version-info.ts` | `VersionTracker`: startup loaded version, live installed version, and active profile detection |
 | `src/app/http.ts` | The `/orchestrator/api` routes: the same-origin check, request limits and one status per kind of failure |
 | `src/app/api.ts` | `Api`, every route with its parameters, query, body and response, and the filters of the lists; it imports only types, so the panel bundles it |
 | `src/app/views/text.ts` | The two forms of a view's text: `preview`, plain text on one line, and `markdown` without HTML; `plain` and `readable` |
@@ -475,6 +477,7 @@ The GitHub, Feishu, OneBot, mail and official QQ bot Sources have separate plugi
 | `tests/self-inspect.spec.ts` | Self-inspection: a gap is reported with the step that closes it, and a ticket whose directory is gone is found and repaired |
 | `tests/source-probe.spec.ts` | On-demand source checks, including error redaction and no message delivery |
 | `tests/update-check.spec.ts` | Read-only stable release comparison and unavailable-network handling |
+| `tests/divisions-and-m06-m08.spec.ts` | Post-handover dispatch, subagent/division 60% relay, multi-session planning, version info, and routing/budget HTTP save validation |
 
 `tests/fixtures/` holds what several tests share: `host.ts`, a simulated DeepSeek Harness host; `panel-server.ts` and `panel.tsx`, the fake management API and the panel around a page; `deployment.ts`, a resolved deployment; `git.ts`, the environment of every git the tests start, which names no repository; and `async.ts`.
 

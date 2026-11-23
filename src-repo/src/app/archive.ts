@@ -57,6 +57,12 @@ export interface ArchiverHost {
   isMaster?(session: string): boolean
   /** Map a managed Session back to its ticket, or `undefined` for the main Session. */
   ticketOf(session: string): string | undefined
+  /** 独立分工会话（M07）到所属任务和分工的映射，超阈值时优先走分工接力。 */
+  divisionOf?(session: string): { taskId: string; divisionId: string } | undefined
+  divisionRelay?(taskId: string, divisionId: string, fromSession: string, percent: number): Promise<{ moved: string } | { refused: string }>
+  /** 子会话（M06）达阈值时走保留父子关系、模型槽与共享状态的接力路径。 */
+  isSubagent?(session: string): boolean
+  subagentRelay?(fromSession: string, percent: number): Promise<{ moved: string } | { refused: string }>
 }
 
 const TICK_MS = 15_000
@@ -180,6 +186,18 @@ export class ContextArchiver {
           }
           this.host.report(`${id}: no handover (${'refused' in answer ? answer.refused : 'unavailable'}); compacting the main Session instead`, 'ready')
         }
+        const division = ticketId === undefined ? this.host.divisionOf?.(id) : undefined
+        if (division && this.host.divisionRelay) {
+          const answer = await this.host.divisionRelay(division.taskId, division.divisionId, id, before)
+          const moved = 'moved' in answer ? answer.moved : undefined
+          if (moved !== undefined) {
+            this.last.set(id, Date.now())
+            this.unchanged.delete(id)
+            this.host.report(`${id}: division relayed to ${moved} at ${Math.round(before * 100)}%`, 'ready')
+            return
+          }
+          this.host.report(`${id}: no handover (${'refused' in answer ? answer.refused : 'unavailable'}); compacting division Session instead`, 'ready')
+        }
         if (ticketId !== undefined && this.host.relay) {
           // The handover text is built from the old Session's own transcript and ticket, not from a fixed sentence: a
           // claim that history is attached is only true if something actually read that history.
@@ -193,6 +211,17 @@ export class ContextArchiver {
           }
           // Saying why keeps the operator from reading a compaction as a handover: no new Session was created.
           this.host.report(`${id}: no handover (${'refused' in answer ? answer.refused : 'unavailable'}); compacting this Session instead, so no new Session was created`, 'ready')
+        }
+        if (ticketId === undefined && !division && !this.host.isMaster?.(id) && this.host.isSubagent?.(id) && this.host.subagentRelay) {
+          const answer = await this.host.subagentRelay(id, before)
+          const moved = 'moved' in answer ? answer.moved : undefined
+          if (moved !== undefined) {
+            this.last.set(id, Date.now())
+            this.unchanged.delete(id)
+            this.host.report(`${id}: subagent relayed to ${moved} at ${Math.round(before * 100)}%`, 'ready')
+            return
+          }
+          this.host.report(`${id}: no handover (${'refused' in answer ? answer.refused : 'unavailable'}); compacting subagent Session instead`, 'ready')
         }
         const result = await compaction.compactNow({ session: agent.session, runMaintenance: agent.runMaintenance.bind(agent) }, signal)
         if (signal.aborted) return

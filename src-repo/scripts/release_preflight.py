@@ -18,6 +18,30 @@ TOKENS = {
     'credential in URL': re.compile(rb'https?://[^\s/:@]+:[^\s/@]{8,}@'),
 }
 
+# Verified false positives in upstream @deepseek-ai/dsh vendor runtime (see docs/release-preflight-allowlist.md).
+# Keyed by exact inner archive path (with trailing kind), never wildcarding runtime/node_modules as a whole.
+VENDOR_ALLOWLIST = {
+    ('runtime/node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/legacy-dM_vujv7.js', 'credential in URL'),
+    ('runtime/node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/entrypoints/lighthouse_worker/lighthouse_worker.js', 'credential in URL'),
+    ('runtime/node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/models/issues_manager/descriptions/corsRedirectContainsCredentials.md', 'credential in URL'),
+    ('runtime/node_modules/http2-wrapper/README.md', 'credential in URL'),
+    ('runtime/node_modules/jose/dist/webapi/key/import.js', 'private key'),
+    ('runtime/node_modules/normalize-url/index.d.ts', 'credential in URL'),
+    ('runtime/node_modules/normalize-url/readme.md', 'credential in URL'),
+    *{
+        (f'runtime/node_modules/@opentelemetry/semantic-conventions/dist/{stem}.{ext}', 'credential in URL')
+        for stem in ('experimental_attributes', 'stable_attributes', 'trace/SemanticAttributes')
+        for ext in ('cjs', 'cjs.map', 'mjs', 'mjs.map', 'd.cts', 'd.mts')
+    },
+}
+
+
+def is_allowlisted(label, kind):
+    if '!' not in label:
+        return False
+    inner = label.split('!', 1)[1].lstrip('./').replace('\\', '/')
+    return (inner, kind) in VENDOR_ALLOWLIST
+
 
 def assets(version):
     """Final asset set: four system bundles plus one bare plugin tarball.
@@ -44,7 +68,8 @@ def inspect_stream(stream, label, issues):
         data = tail + chunk
         for kind, pattern in TOKENS.items():
             if kind not in found and pattern.search(data):
-                issues.append(f'{label}: possible {kind} (value redacted)')
+                if not is_allowlisted(label, kind):
+                    issues.append(f'{label}: possible {kind} (value redacted)')
                 found.add(kind)
         tail = data[-512:]
 
@@ -106,8 +131,9 @@ def inspect_zip(path, version, issues):
         if path.name.startswith('Super-Agent-Bundled-'):
             windows = '-Windows-' in path.name
             startup = 'start.cmd' if windows else 'start.sh'
+            bootstrap = 'tools/windows-profile-bootstrap.mjs' if windows else 'tools/unix-profile-bootstrap.mjs'
             node = 'node/node.exe' if windows else 'node/bin/node'
-            required = [startup, node, 'runtime/node_modules/@deepseek-ai/dsh/lib/bin.js',
+            required = [startup, bootstrap, node, 'runtime/node_modules/@deepseek-ai/dsh/lib/bin.js',
                         'payload/profile/package.json', 'payload/profile/cordis.patch.yml']
             for name in required:
                 if name not in entries or entries[name].is_dir():

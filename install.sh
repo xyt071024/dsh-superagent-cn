@@ -11,7 +11,9 @@ set -euo pipefail
 # Named SA_* because PROFILE is a common shell variable and this script may be sourced in a shell the user keeps.
 SA_PROFILE="${SUPERAGENT_PROFILE:-superagent}"
 SA_PURGE=0
-SA_BUNDLE="${SUPERAGENT_BUNDLE:-https://github.com/xyt071024/dsh-superagent-cn/releases/latest/download/Super-Agent-Plugin.tgz}"
+# Empty means "ask the release which file this run installs" (step 4). A value here is an explicit override for a
+# mirror or a package built by hand, and it is used as given.
+SA_BUNDLE="${SUPERAGENT_BUNDLE:-}"
 # No shared default port: an install every user puts on 3082 is a port a scanner knows in advance, and two such installs
 # cannot coexist. A random port in a documented range is found by reading this run's output, not by guessing.
 SA_PORT=""
@@ -127,18 +129,129 @@ ok "$SA_DIR"
 echo ""
 echo "[4/6] Installing the plugin"
 
-if [ "$SA_PURGE" -eq 1 ]; then
-  echo "note: the purge build was removed from the release set; installing the standard plugin instead"
-fi
+# Releases name the package after its version: `Super-Agent-Plugin-v0.3.10.tgz`. An address that says only
+# `releases/latest/download/Super-Agent-Plugin.tgz` resolves to the newest tag and then asks that tag for a file it does
+# not contain, so every default install answered 404. The file name is read from the release instead.
+
+# Older releases separated the two builds with a segment (`-Stable-` -> `-Purge-`, version intact). From v0.3.6 the
+# stable name has no segment, so the segment is inserted before the version. A name of neither shape yields nothing, and
+# the caller stops rather than downloading the stable build under a purge label.
+sa_purge_name() {
+  case "$1" in
+    *-Stable-*) printf '%s' "$1" | sed 's/-Stable-/-Purge-/' ;;
+    Super-Agent-Plugin-v*.tgz) printf '%s' "$1" | sed 's/^Super-Agent-Plugin-v/Super-Agent-Plugin-Purge-v/' ;;
+    *) printf '' ;;
+  esac
+}
+
+# The pinned address is the fallback for a run that cannot reach the API at all (offline, proxy, rate limit). It names
+# one exact asset, so it moves together with the version and never guesses.
+SA_PINNED_VERSION='0.3.12'
+SA_PINNED_URL="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v$SA_PINNED_VERSION/Super-Agent-Plugin-v$SA_PINNED_VERSION.tgz"
+SA_API="https://api.github.com/repos/xyt071024/dsh-superagent-cn/releases/latest"
+
+# Sets SA_ASSET, SA_ASSET_URL and SA_ASSET_ORIGIN for the build this run wants. Deliberately not a subshell: `die`
+# called from here has to stop the script the way every other failure does.
+sa_resolve_bundle() {
+  SA_ASSET=""
+  SA_ASSET_URL=""
+  SA_ASSET_ORIGIN=""
+  if [ -n "$SA_BUNDLE" ]; then
+    _sa_leaf="${SA_BUNDLE##*/}"
+    SA_ASSET_ORIGIN=given
+    if [ "$SA_PURGE" -eq 1 ]; then
+      _sa_new="$(sa_purge_name "$_sa_leaf")"
+      [ -n "$_sa_new" ] || die "cannot derive a purge package name from $_sa_leaf; pass the exact purge URL or drop --purge"
+      SA_ASSET="$_sa_new"
+      SA_ASSET_URL="${SA_BUNDLE%/*}/$_sa_new"
+    else
+      SA_ASSET="$_sa_leaf"
+      SA_ASSET_URL="$SA_BUNDLE"
+    fi
+    return 0
+  fi
+
+  _sa_json=""
+  # `-A` matters as much as `User-Agent` does on the PowerShell side: the API answers 403 to a request without one, and
+  # that then reads as a broken installer rather than the rejected request it is.
+  _sa_json="$(curl -fsSL --retry 2 --max-time 20 -A "Super-Agent-Installer" -H "Accept: application/vnd.github+json" "$SA_API" 2>/dev/null)" || _sa_json=""
+
+  # Read once here: the success path reports it, and the no-match path quotes it back.
+  _sa_tag="$(printf '%s' "$_sa_json" | grep -oE '"tag_name": *"[^"]*"' | head -n 1 | sed -E 's/.*"([^"]*)"/\1/')" || _sa_tag=""
+  if [ -n "$_sa_json" ]; then
+    # The patterns are literal so that a purge name can never be matched by the stable one, and the jq regex is kept
+    # apart from the grep text patterns because the two syntaxes differ.
+    if [ "$SA_PURGE" -eq 1 ]; then
+      _sa_re='^Super-Agent-Plugin-Purge-v[0-9.]+\.tgz$'
+      _sa_name_pat='"name": *"Super-Agent-Plugin-Purge-v[0-9.]+\.tgz"'
+      _sa_url_pat='"browser_download_url": *"[^" ]*/Super-Agent-Plugin-Purge-v[0-9.]+\.tgz"'
+    else
+      _sa_re='^Super-Agent-Plugin-v[0-9.]+\.tgz$'
+      _sa_name_pat='"name": *"Super-Agent-Plugin-v[0-9.]+\.tgz"'
+      _sa_url_pat='"browser_download_url": *"[^" ]*/Super-Agent-Plugin-v[0-9.]+\.tgz"'
+    fi
+    if command -v jq >/dev/null 2>&1; then
+      # jq is preferred when present: it reads the payload as JSON instead of as text.
+      SA_ASSET="$(printf '%s' "$_sa_json" | jq -r --arg re "$_sa_re" '[.assets[].name | select(test($re))] | first // empty')" || SA_ASSET=""
+      if [ -n "$SA_ASSET" ]; then
+        SA_ASSET_URL="$(printf '%s' "$_sa_json" | jq -r --arg n "$SA_ASSET" '.assets[] | select(.name == $n) | .browser_download_url')" || SA_ASSET_URL=""
+      fi
+    fi
+    if [ -z "$SA_ASSET_URL" ]; then
+      # No jq, or jq found nothing: two quoted strings per asset are all that is needed, and the API writes one of
+      # each per line. The sed keeps the last quoted run of the match, which is the name and then the whole URL.
+      SA_ASSET="$(printf '%s' "$_sa_json" | grep -oE "$_sa_name_pat" | head -n 1 | sed -E 's/.*"([^"]+)"/\1/')" || SA_ASSET=""
+      if [ -n "$SA_ASSET" ]; then
+        SA_ASSET_URL="$(printf '%s' "$_sa_json" | grep -oE "$_sa_url_pat" | head -n 1 | sed -E 's/.*"([^"]+)"/\1/')" || SA_ASSET_URL=""
+      fi
+    fi
+    if [ -n "$SA_ASSET_URL" ]; then
+      SA_ASSET_ORIGIN="release ${_sa_tag:-unknown}"
+      return 0
+    fi
+  fi
+
+  if [ -n "$_sa_json" ]; then
+    # The release was readable and simply has no asset of this shape. Falling back here would hide that: with --purge
+    # it means the release publishes no purge build, and the pinned address would fail for exactly the same reason.
+    _sa_have="$(printf '%s' "$_sa_json" | grep -oE '"name": *"[^"]*\.tgz"' | sed -E 's/.*"([^"]+)"/\1/' | paste -sd ", " -)"
+    if [ "$SA_PURGE" -eq 1 ]; then
+      die "release ${_sa_tag:-latest} has no purge package (looked for $_sa_name_pat). Assets present: ${_sa_have:-none}"
+    fi
+    die "release ${_sa_tag:-latest} has no plugin package (looked for $_sa_name_pat). Assets present: ${_sa_have:-none}"
+  fi
+
+  # Nothing resolvable came out of the payload: use the pinned asset. A purge run still stops when the pinned name has
+  # no purge form, instead of installing the stable build under a purge label.
+  _sa_leaf="${SA_PINNED_URL##*/}"
+  SA_ASSET="$_sa_leaf"
+  SA_ASSET_URL="$SA_PINNED_URL"
+  SA_ASSET_ORIGIN="pinned v$SA_PINNED_VERSION"
+  if [ "$SA_PURGE" -eq 1 ]; then
+    _sa_new="$(sa_purge_name "$_sa_leaf")"
+    [ -n "$_sa_new" ] || die "cannot derive a purge package name for v$SA_PINNED_VERSION"
+    SA_ASSET="$_sa_new"
+    SA_ASSET_URL="${SA_PINNED_URL%/*}/$_sa_new"
+  fi
+}
+
+sa_resolve_bundle
 
 SA_WORK="$(mktemp -d)"
 # The trap is what makes an interrupted run reversible: nothing survives except the profile.
 trap 'rm -rf "$SA_WORK"' EXIT
 
-info "downloading $SA_BUNDLE"
-curl -fsSL --retry 3 --max-time 300 -o "$SA_WORK/dsh-superagent.tgz" "$SA_BUNDLE" \
-  || die "download failed: $SA_BUNDLE"
-info "sha256 $( { shasum -a 256 "$SA_WORK/dsh-superagent.tgz" 2>/dev/null || sha256sum "$SA_WORK/dsh-superagent.tgz"; } | cut -d' ' -f1)"
+info "package $SA_ASSET from $SA_ASSET_ORIGIN"
+info "downloading $SA_ASSET_URL"
+curl -fsSL --retry 3 --max-time 300 -o "$SA_WORK/dsh-superagent.tgz" "$SA_ASSET_URL" \
+  || die "download failed: $SA_ASSET_URL"
+
+# A 404 arrives as an HTML or JSON body carrying the status; saved to disk that body is a plausible file which only
+# fails later inside `dsh plugin add`. The gzip magic bytes are what a .tgz actually starts with.
+SA_MAGIC="$(head -c 2 "$SA_WORK/dsh-superagent.tgz" | od -An -tx1 | tr -d ' \n')"
+[ "$SA_MAGIC" = "1f8b" ] \
+  || die "the downloaded file is not a gzip package, so $SA_ASSET_URL did not return one"
+info "$SA_ASSET  sha256 $( { shasum -a 256 "$SA_WORK/dsh-superagent.tgz" 2>/dev/null || sha256sum "$SA_WORK/dsh-superagent.tgz"; } | cut -d' ' -f1)"
 
 # The package is passed by path: a bare name resolves to whatever the registry calls `dsh-superagent`, which is not this build.
 #
@@ -147,7 +260,7 @@ info "sha256 $( { shasum -a 256 "$SA_WORK/dsh-superagent.tgz" 2>/dev/null || sha
 # "required option '--profile <name>' not specified" and installs nothing — which is exactly what this installer did
 # until the flag was added.
 dsh plugin --profile "$SA_PROFILE" add "$SA_WORK/dsh-superagent.tgz" \
-  || die "dsh plugin add failed; the package is still at $SA_WORK/dsh-superagent.tgz for inspection."
+  || die "dsh plugin add failed; the package download is repeatable from $SA_ASSET_URL"
 ok "plugin installed from the downloaded package"
 
 # ---------- 5. configuration ----------

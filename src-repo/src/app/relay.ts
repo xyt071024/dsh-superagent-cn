@@ -26,6 +26,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { Context } from '@deepseek-ai/cordis'
 import { KV, type Relay } from '../kv.ts'
 import { key, type Ticket } from '../core/index.ts'
+import type { RoleModel } from '../policy.ts'
 import type { Store } from './store.ts'
 
 /** How much of the old Session's transcript the summary carries, and how much of its assignment text. */
@@ -39,13 +40,20 @@ const NL = '\n'
 /** What this module needs from `Sessions`; a narrow slice keeps the dependency one-way. */
 export interface RelaySessions {
   ensure(id: string, cwd: string, title: string, role: 'orchestrator' | 'worker', hard?: boolean, ticketId?: string): Promise<Agent>
+  ensureSubagent?(id: string, cwd: string, title: string, options: {
+    parentId: string; ticketId?: string | undefined; slot?: number | undefined; model?: RoleModel | null | undefined; autoHard?: boolean | undefined
+  }): Promise<Agent>
+  ensureDivision?(id: string, cwd: string, title: string, options: {
+    taskId: string; divisionId: string; model: RoleModel | null; autoHard?: boolean | undefined
+  }): Promise<Agent>
+  subagentContext?(agent: Agent): { parentId?: string; ticketId?: string; slot?: number; model: RoleModel | null; autoHard?: boolean }
   prompt(sessionId: string, requestId: string, text: string, mode: 'queue' | 'steer' | { inject: string }): Promise<void>
   holds(sessionId: string, requestId: string): Promise<boolean>
 }
 /** What this module needs from the runtime around it. */
 export interface RelayHost {
   readonly context: Context
-  readonly store: Pick<Store, 'get' | 'set' | 'keys' | 'atomic' | 'tickets'>
+  readonly store: Pick<Store, 'get' | 'set' | 'delete' | 'keys' | 'atomic' | 'tickets'>
   readonly sessions: RelaySessions
   /** Writes the outcome where the operator can see it. */
   report(detail: string, state?: 'ready' | 'error'): void
@@ -92,6 +100,20 @@ export class SessionRelay {
   /** Whether `sessionId` has been superseded by a handover, so the host may refuse to run it directly. */
   superseded(sessionId: string): boolean { return this.routes.has(sessionId) }
 
+  /** 把历史代次与当前旧会话一律指向最新目标，确保 A→B→C 后输入仍直达 C。 */
+  private recordRoutes(previous: readonly string[], fromSession: string, target: string): void {
+    const dest = this.route(target)
+    const oldTargets = new Set<string>([fromSession, ...previous])
+    for (const [k, v] of this.routes) {
+      if (oldTargets.has(v)) this.routes.set(k, dest)
+    }
+    for (const prev of previous) {
+      if (prev !== dest) this.routes.set(prev, dest)
+    }
+    if (fromSession !== dest) this.routes.set(fromSession, dest)
+    this.routes.delete(dest)
+  }
+
   /**
    * Watches inbox activity so a message typed into a superseded Session still reaches the ticket's current one.
    *
@@ -108,8 +130,9 @@ export class SessionRelay {
       disposers.push(this.host.context.on('agent/inbox/claimed', ({ agent, message }: {
         agent: Agent; message: InboxMessage
       }) => {
-        const target = this.routes.get(agent.id)
-        if (target === undefined || message?.source?.kind !== 'user' || message.id === undefined) return
+        const mapped = this.routes.get(agent.id)
+        if (mapped === undefined || message?.source?.kind !== 'user' || message.id === undefined) return
+        const target = this.route(mapped)
         const text = (message.content ?? []).map(block => block.text ?? '').join('').trim()
         if (!text) return
         // The claim means a turn has started on the superseded Session, so it is stopped before it can act; the message
@@ -133,11 +156,35 @@ export class SessionRelay {
       const record = this.host.store.get(name)
       if (!record || record.stage !== 'committed') continue
       for (const previous of record.previous) {
-        // A Session that appears again in a later generation must point at the newest one, so the scan does not stop at
-        // the first record that names it; records are read newest-wins below.
-        this.routes.set(previous, record.current)
+        if (previous !== record.current) this.routes.set(previous, record.current)
       }
       this.routes.delete(record.current)
+    }
+    const masterCurrent = this.host.store.get(KV.runtime.masterId)
+    const masterPrevious = this.host.store.get(KV.runtime.masterPrevious) ?? []
+    if (masterCurrent) {
+      for (const prev of masterPrevious) {
+        if (prev !== masterCurrent) this.routes.set(prev, masterCurrent)
+      }
+      this.routes.delete(masterCurrent)
+    }
+    for (const name of this.host.store.keys(KV.sessions.subagentRelay)) {
+      const record = this.host.store.get(name)
+      if (!record || record.stage !== 'committed') continue
+      for (const previous of record.previous) {
+        if (previous !== record.current) this.routes.set(previous, record.current)
+      }
+      this.routes.delete(record.current)
+    }
+    for (const name of this.host.store.keys(KV.sessions.divisions)) {
+      const plan = this.host.store.get(name)
+      if (!plan) continue
+      for (const div of plan.divisions) {
+        for (const prev of div.previousSessions) {
+          if (prev !== div.sessionId) this.routes.set(prev, div.sessionId)
+        }
+        this.routes.delete(div.sessionId)
+      }
     }
   }
 
@@ -213,15 +260,47 @@ export class SessionRelay {
     for (const name of store.keys(KV.sessions.relay)) {
       const ticketId = name.slice(KV.sessions.relay.prefix.length)
       const record = store.get(KV.sessions.relay(ticketId))
-      if (!record || record.stage === 'committed' || record.stage === 'failed' || record.stage === 'idle') continue
+      if (!record || record.stage === 'failed' || record.stage === 'idle') continue
+      if (record.stage === 'committed') {
+        if (record.pendingActivation) {
+          const { target, generation } = record.pendingActivation
+          await this.serialize(ticketId, async () => {
+            await this.activate(ticketId, target, generation)
+          }).catch(error => {
+            this.host.report(`relay activation for ${ticketId} could not be resumed: ${describe(error)}`, 'error')
+          })
+        }
+        continue
+      }
       await this.serialize(ticketId, async () => {
         const result = await this.advance(ticketId, record)
         const settled = store.get(KV.sessions.relay(ticketId))
         if ('moved' in result) this.host.report(`relay for ${ticketId} resumed onto ${settled?.current ?? result.moved}`)
         return result
       }).catch(error => {
-        this.host.report(`relay for ${ticketId} could not be resumed: ${error instanceof Error ? error.message : String(error)}`, 'error')
+        this.host.report(`relay for ${ticketId} could not be resumed: ${describe(error)}`, 'error')
       })
+    }
+    const masterPending = store.get(KV.runtime.masterActivation)
+    if (masterPending) {
+      await this.serialize('master', async () => {
+        await this.activateMaster(masterPending.target, masterPending.generation)
+      }).catch(error => {
+        this.host.report(`main Session activation could not be resumed: ${describe(error)}`, 'error')
+      })
+    }
+    for (const name of store.keys(KV.sessions.subagentRelay)) {
+      const rootKey = name.slice(KV.sessions.subagentRelay.prefix.length)
+      const record = store.get(KV.sessions.subagentRelay(rootKey))
+      if (!record || record.stage === 'failed' || record.stage === 'idle') continue
+      if (record.stage === 'committed' && record.pendingActivation) {
+        const { target, generation } = record.pendingActivation
+        await this.serialize(`subagent:${rootKey}`, async () => {
+          await this.activateSubagent(rootKey, target, generation)
+        }).catch(error => {
+          this.host.report(`subagent activation for ${rootKey} could not be resumed: ${describe(error)}`, 'error')
+        })
+      }
     }
   }
 
@@ -285,24 +364,23 @@ export class SessionRelay {
           if (typed !== undefined) return this.abandon(ticketId, record, `a message typed into the old Session has not been taken up: ${typed}`)
         }
         const previous = [...record.previous.filter(id => id !== target && id !== record.current), record.current]
+        const generation = record.generation ?? 1
         // The commit is the one write that moves the ticket: `current` becomes the target in the same record that
         // records the move, so no reader ever sees a committed record still pointing at the old Session. The summary is
         // dropped here because it now lives in the new Session's own history.
         const committed: Relay = { ...record, current: target, previous, stage: 'committed', at: new Date().toISOString(),
-          target: undefined, summary: undefined, requestId: undefined, held: false }
+          target: undefined, summary: undefined, requestId: undefined, held: false, pendingActivation: { target, generation } }
         // The pointer changes in one transaction, so no reader sees a record naming a Session it cannot use.
         store.atomic(() => this.save(ticketId, committed))
-        // The superseded Session's route is part of the commit, not an afterthought: the commit is what makes the old
-        // window stale, so between the two lines a message typed there would find no route and start a second turn.
-        // `restoreRoutes` derives the same map from these records at startup, so this stays consistent across restarts.
-        this.routes.set(record.current, target)
-        this.routes.delete(target)
+        // The superseded Session's route is part of the commit, not an afterthought: every earlier generation is updated
+        // directly to the newest target so A→B→C routes A directly to C across restarts too.
+        this.recordRoutes(previous, record.current, target)
         this.host.report(`${record.current}: relayed to ${target} with ${Math.round(summary.length / 1024)} KB of handover`
-          + ` (generation ${record.generation ?? 1})`)
+          + ` (generation ${generation})`)
         // Only now, with the pointer already naming the target, may the new Session start working. Activation is
-        // idempotent (its request id carries the generation), so a crash between the commit and this line is repaired
-        // by `resume` without the target ever running twice.
-        await this.activate(ticketId, target, record.generation ?? 1)
+        // idempotent (its request id carries the generation), so a crash or transient failure is repaired by `resume`
+        // until `pendingActivation` is cleared.
+        await this.activate(ticketId, target, generation)
         this.forward(record.current, target)
         return { moved: target }
       }
@@ -377,16 +455,17 @@ export class SessionRelay {
           return { refused: why }
         }
         // The switch and its record are one write, so no reader sees a current ID whose history is not durable.
+        const nextPrevious = [...previous.filter(id => id !== target && id !== fromSession), fromSession]
         store.atomic(() => {
-          store.set(KV.runtime.masterPrevious, [...previous, fromSession])
+          store.set(KV.runtime.masterPrevious, nextPrevious)
           store.set(KV.runtime.masterId, target)
+          store.set(KV.runtime.masterActivation, { target, generation })
         })
         this.host.setMaster?.(target)
-        this.routes.set(fromSession, target)
-        this.routes.delete(target)
+        this.recordRoutes(nextPrevious, fromSession, target)
         this.host.report(`main Session handed over to ${target} at ${Math.round(percent * 100)}% of its context window`)
         // Only now may the new Session start: before the switch it would be a second coordinator on the same work.
-        await this.activate('master', target, generation)
+        await this.activateMaster(target, generation)
         this.forward(fromSession, target)
         return { moved: target }
       } catch (error) {
@@ -453,14 +532,195 @@ export class SessionRelay {
   private async activate(ticketId: string, target: string, generation: number): Promise<void> {
     const requestId = `activate:${ticketId}:g${generation}`
     try {
-      if (await this.host.sessions.holds(target, requestId)) return
+      const clearPending = () => {
+        const current = this.host.store.get(KV.sessions.relay(ticketId))
+        if (current?.pendingActivation?.target === target && current.pendingActivation.generation === generation) {
+          this.save(ticketId, { ...current, pendingActivation: undefined })
+        }
+      }
+      if (await this.host.sessions.holds(target, requestId)) { clearPending(); return }
       await this.host.sessions.prompt(target, requestId,
         'The handover summary above is the state of this ticket. Continue from it; do not redo completed steps.', 'queue')
+      clearPending()
     } catch (error) {
       // The pointer is already committed, so a failed wake-up must not look like a failed move: the target keeps the
       // summary in its history and the operator is told, rather than the ticket silently staying idle.
       this.host.report(`handover for ${ticketId} committed to ${target}, but it could not be woken: ${describe(error)}`, 'error')
     }
+  }
+
+  private async activateMaster(target: string, generation: number): Promise<void> {
+    const requestId = `activate:master:g${generation}`
+    try {
+      if (!await this.host.sessions.holds(target, requestId)) {
+        await this.host.sessions.prompt(target, requestId,
+          'The handover summary above is the state of this ticket. Continue from it; do not redo completed steps.', 'queue')
+      }
+      const pending = this.host.store.get(KV.runtime.masterActivation)
+      if (pending?.target === target && pending.generation === generation) {
+        this.host.store.delete(KV.runtime.masterActivation)
+      }
+    } catch (error) {
+      this.host.report(`handover for master committed to ${target}, but it could not be woken: ${describe(error)}`, 'error')
+    }
+  }
+
+  private async activateSubagent(rootKey: string, target: string, generation: number): Promise<void> {
+    const requestId = `activate:subagent:${rootKey}:g${generation}`
+    try {
+      const clearPending = () => {
+        const current = this.host.store.get(KV.sessions.subagentRelay(rootKey))
+        if (current?.pendingActivation?.target === target && current.pendingActivation.generation === generation) {
+          this.host.store.set(KV.sessions.subagentRelay(rootKey), { ...current, pendingActivation: undefined })
+        }
+      }
+      if (await this.host.sessions.holds(target, requestId)) { clearPending(); return }
+      await this.host.sessions.prompt(target, requestId,
+        'The handover summary above is the state of this subagent task. Continue from it; do not redo completed steps.', 'queue')
+      clearPending()
+    } catch (error) {
+      this.host.report(`subagent handover for ${rootKey} committed to ${target}, but it could not be woken: ${describe(error)}`, 'error')
+    }
+  }
+
+  /**
+   * 子会话达到 60% 阈值时的接力迁移（M06）：保留父子关系、模型槽位、所属工单与共享状态，并在提交后更新路由。
+   */
+  moveSubagent(fromSession: string, percent: number): Promise<MoveResult> {
+    return this.serialize(`subagent:${fromSession}`, async () => {
+      const { store, sessions } = this.host
+      if (!sessions.ensureSubagent || !sessions.subagentContext) {
+        return { refused: 'subagent relay is unavailable on this host' }
+      }
+      const agent = this.host.context.agents.get(fromSession as SessionId)
+      if (!agent) return { refused: `subagent Session ${fromSession} is not loaded` }
+      if (agent.status !== 'idle') return { refused: `subagent Session is still ${agent.status}` }
+      const bound = this.bound(agent)
+      if (bound !== undefined) return { refused: bound }
+      const typed = this.typed(agent)
+      if (typed !== undefined) return { refused: `a message typed into the subagent Session has not been taken up: ${typed}` }
+
+      let rootKey = fromSession
+      let existing: Relay | undefined
+      for (const name of store.keys(KV.sessions.subagentRelay)) {
+        const candidate = store.get(name)
+        if (candidate?.current === fromSession) {
+          rootKey = name.slice(KV.sessions.subagentRelay.prefix.length)
+          existing = candidate
+          break
+        }
+      }
+      const subCtx = sessions.subagentContext(agent)
+      if (!subCtx.parentId) return { refused: `subagent ${fromSession} has no parent session` }
+      const previous = existing?.previous ?? []
+      const generation = (existing?.generation ?? 0) + 1
+      const target = `subagent-${key(rootKey, String(generation)).slice(0, 12)}-r${generation}`
+      const requestId = `handover:subagent:${rootKey}:g${generation}`
+      const summary = await this.digestSubagent(fromSession, percent, generation, subCtx)
+      if (summary === undefined) {
+        const why = "the subagent Session's transcript could not be read, so there is no summary to hand over"
+        this.host.report(`subagent handover refused — ${why}`, 'error')
+        return { refused: why }
+      }
+      try {
+        const cwd = (agent.session.header as { cwd?: string }).cwd ?? this.workingDirectory()
+        const rawTitle = (agent.session.header as { title?: string }).title
+        const title = rawTitle ? `${rawTitle} (r${generation})` : `Subagent ${rootKey.slice(0, 8)} (r${generation})`
+        await sessions.ensureSubagent(target, cwd, title, {
+          parentId: subCtx.parentId, ticketId: subCtx.ticketId, slot: subCtx.slot, model: subCtx.model, autoHard: subCtx.autoHard,
+        })
+        if (!await sessions.holds(target, requestId)) {
+          await sessions.prompt(target, requestId, summary, { inject: 'handover from the earlier subagent Session' })
+        }
+        if (!await sessions.holds(target, requestId)) {
+          const why = `the summary did not reach ${target}`
+          this.host.report(`subagent handover stopped: ${why}; it stays on ${fromSession}`, 'error')
+          return { refused: why }
+        }
+        const nextPrevious = [...previous.filter(id => id !== target && id !== fromSession), fromSession]
+        const committed: Relay = {
+          current: target, previous: nextPrevious, stage: 'committed', at: new Date().toISOString(),
+          generation, held: false, pendingActivation: { target, generation },
+        }
+        store.atomic(() => store.set(KV.sessions.subagentRelay(rootKey), committed))
+        this.recordRoutes(nextPrevious, fromSession, target)
+        this.host.report(`subagent ${fromSession} handed over to ${target} (slot ${subCtx.slot ?? 'none'}, parent ${subCtx.parentId})`)
+        await this.activateSubagent(rootKey, target, generation)
+        this.forward(fromSession, target)
+        return { moved: target }
+      } catch (error) {
+        const why = describe(error)
+        this.host.report(`subagent handover stopped: ${why}; it stays on ${fromSession}`, 'error')
+        return { refused: why }
+      }
+    })
+  }
+
+  /**
+   * 独立分工会话（M07）达到 60% 阈值时的接力迁移：保留同一槽位、模型、依赖与任务归属。
+   */
+  moveDivision(taskId: string, divisionId: string, fromSession: string, percent: number): Promise<MoveResult> {
+    return this.serialize(`division:${taskId}:${divisionId}`, async () => {
+      const { store, sessions } = this.host
+      if (!sessions.ensureDivision) return { refused: 'division relay is unavailable on this host' }
+      const plan = store.get(KV.sessions.divisions(taskId))
+      const div = plan?.divisions.find(item => item.divisionId === divisionId)
+      if (!plan || !div) return { refused: `division ${divisionId} no longer exists` }
+      if (div.sessionId !== fromSession) return { refused: `division already runs on ${div.sessionId}, not ${fromSession}` }
+      const agent = this.host.context.agents.get(fromSession as SessionId)
+      if (!agent) return { refused: `division Session ${fromSession} is not loaded` }
+      if (agent.status !== 'idle') return { refused: `division Session is still ${agent.status}` }
+      const bound = this.bound(agent)
+      if (bound !== undefined) return { refused: bound }
+      const typed = this.typed(agent)
+      if (typed !== undefined) return { refused: `a message typed into the division Session has not been taken up: ${typed}` }
+
+      const generation = div.generation + 1
+      const target = `div-${key(`${taskId}:${divisionId}`, String(generation)).slice(0, 12)}-r${generation}`
+      const requestId = `handover:division:${taskId}:${divisionId}:g${generation}`
+      const summary = await this.digestDivision(plan, div, fromSession, percent, generation)
+      if (summary === undefined) {
+        const why = "the division Session's transcript could not be read, so there is no summary to hand over"
+        this.host.report(`division handover refused — ${why}`, 'error')
+        return { refused: why }
+      }
+      try {
+        await sessions.ensureDivision(target, plan.directory, `${div.title} (r${generation})`, {
+          taskId, divisionId, model: div.model, autoHard: plan.complexity.hard,
+        })
+        if (!await sessions.holds(target, requestId)) {
+          await sessions.prompt(target, requestId, summary, { inject: 'handover from the earlier division Session' })
+        }
+        if (!await sessions.holds(target, requestId)) {
+          return { refused: `the summary did not reach ${target}` }
+        }
+        const nextPrevious = [...div.previousSessions.filter(id => id !== target && id !== fromSession), fromSession]
+        store.atomic(() => {
+          const latest = store.get(KV.sessions.divisions(taskId))
+          if (!latest) return
+          const targetDiv = latest.divisions.find(item => item.divisionId === divisionId)
+          if (!targetDiv) return
+          targetDiv.sessionId = target
+          targetDiv.previousSessions = nextPrevious
+          targetDiv.generation = generation
+          targetDiv.updatedAt = new Date().toISOString()
+          latest.updatedAt = targetDiv.updatedAt
+          store.set(KV.sessions.divisions(taskId), latest)
+          store.set(KV.sessions.divisionOwner(target), { taskId, divisionId })
+        })
+        this.recordRoutes(nextPrevious, fromSession, target)
+        this.host.report(`division ${divisionId} (${fromSession}) handed over to ${target} (slot ${div.slot}, gen ${generation})`)
+        await sessions.prompt(target, `activate:division:${taskId}:${divisionId}:g${generation}`,
+          'The handover summary above is the state of this division. Continue from it; do not redo completed steps.', 'queue')
+          .catch(error => this.host.report(`division ${divisionId} committed to ${target}, but wake-up failed: ${describe(error)}`, 'error'))
+        this.forward(fromSession, target)
+        return { moved: target }
+      } catch (error) {
+        const why = describe(error)
+        this.host.report(`division handover stopped: ${why}; it stays on ${fromSession}`, 'error')
+        return { refused: why }
+      }
+    })
   }
 
   /**
@@ -510,9 +770,12 @@ export class SessionRelay {
     // work behind with nobody reading it. Only a claimed task in an unfinished state is a reason to stay; a finished
     // one is recorded in the transcript like everything else.
     const tasks = this.openTasks(teams, agent)
-    if (tasks.length > 0) {
-      return `${tasks.length} shared task(s) are still unfinished in the old Session`
-        + ` (${tasks.slice(0, 3).map(task => `${task.subject || task.id}:${task.status}`).join(', ')})`
+    if (tasks.error !== undefined) {
+      return `the shared task board could not be read (${tasks.error})`
+    }
+    if (tasks.blocked.length > 0) {
+      return `${tasks.blocked.length} shared task(s) are still unfinished in the old Session`
+        + ` (${tasks.blocked.slice(0, 3).map(task => `${task.subject || task.id}:${task.status}`).join(', ')})`
     }
     return undefined
   }
@@ -524,16 +787,29 @@ export class SessionRelay {
    * says whether work is outstanding. Failing to read the board is not taken as "no tasks": a board that cannot be read
    * while a Team exists is reported, and the handover is refused, because the alternative is silently abandoning work.
    */
-  private openTasks(teams: TeamService | undefined, agent: Agent): TeamTask[] {
-    if (!teams?.listTasks) return []
+  private openTasks(teams: TeamService | undefined, agent: Agent): { blocked: TeamTask[]; unassigned: TeamTask[]; error?: string } {
+    if (!teams?.listTasks) return { blocked: [], unassigned: [] }
     let rows: readonly TeamTask[]
-    try { rows = teams.listTasks(agent) ?? [] } catch { return [] }
-    return [...rows].filter(task => {
-      if (task.status === undefined) return false
-      if (FINISHED_TASK.has(task.status)) return false
-      // A task with no owner is nobody's outstanding work: it is a slot, not a commitment.
-      return task.ownerId !== undefined || task.status === 'in_progress'
-    })
+    try { rows = teams.listTasks(agent) ?? [] } catch (error) { return { blocked: [], unassigned: [], error: describe(error) } }
+    const blocked: TeamTask[] = []
+    const unassigned: TeamTask[] = []
+    for (const task of rows) {
+      if (task.status === undefined || FINISHED_TASK.has(task.status)) continue
+      if (task.ownerId !== undefined || task.status === 'in_progress') blocked.push(task)
+      else unassigned.push(task)
+    }
+    return { blocked, unassigned }
+  }
+
+  /** 读取旧会话尚未认领的开放共享任务，以便在交接摘要中完整迁移（若读取失败则返回 undefined 阻断交接）。 */
+  private readUnassignedTasks(sessionId: string): TeamTask[] | undefined {
+    const agent = this.host.context.agents.get(sessionId as SessionId)
+    if (!agent) return []
+    let teams: TeamService | undefined
+    try { teams = this.service<TeamService>('agentTeams', agent.ctx) } catch { teams = undefined }
+    if (!teams?.listTasks) return []
+    const result = this.openTasks(teams, agent)
+    return result.error === undefined ? result.unassigned : undefined
   }
 
   /**
@@ -582,10 +858,12 @@ export class SessionRelay {
     for (const message of typed) {
       const text = message.content?.map(block => block.text ?? '').join('').trim()
       if (!text || message.id === undefined) continue
-      inbox?.remove?.(message.id)
+      const messageId = message.id
+      const dest = this.route(toSession)
       moved++
-      void this.host.sessions.prompt(toSession, `forward:${message.id}`, text, 'queue')
-        .catch(error => this.host.report(`could not forward a message from ${fromSession} to ${toSession}: ${describe(error)}`, 'error'))
+      void this.host.sessions.prompt(dest, `forward:${messageId}`, text, 'queue')
+        .then(() => { inbox?.remove?.(messageId) })
+        .catch(error => this.host.report(`could not forward a message from ${fromSession} to ${dest}: ${describe(error)}`, 'error'))
     }
     if (moved > 0) this.host.report(`${moved} message(s) typed into ${fromSession} were forwarded to ${toSession}`)
   }
@@ -612,6 +890,8 @@ export class SessionRelay {
       if (!body) continue
       recent.push(`${event.type === 'user/message' ? 'worker was told' : 'worker said'}: ${body}`)
     }
+    const unassigned = this.readUnassignedTasks(fromSession)
+    if (unassigned === undefined) return undefined
     const latest = ticket.assignments.at(-1)
     const report = latest?.report
     // Each part gets its own budget and is trimmed from its own old end. Slicing the assembled text instead is what
@@ -632,6 +912,8 @@ export class SessionRelay {
       `- mandate strength: ${ticket.mandate.strength}`,
       ...ticket.attention ? [`- waiting on a person: ${ticket.attention.question}`] : [],
       ...ticket.undelivered.length ? [`- messages not yet delivered: ${ticket.undelivered.length}`] : [],
+      ...unassigned.length ? ['', '## Unassigned shared tasks carried over',
+        ...unassigned.slice(0, 20).map(task => `- [${task.id}] ${task.subject || task.id} (${task.status ?? 'pending'})`)] : [],
       '',
       '## The earlier Session\'s recent history',
     ]
@@ -641,6 +923,66 @@ export class SessionRelay {
     const tail = fit(recent.slice(-TRANSCRIPT_MESSAGES).join('\n\n')
       || '(the earlier Session recorded no messages before the handover)', Math.max(1_000, budget), 'the end')
     return [...head, tail, ...foot].join('\n')
+  }
+
+  private async digestSubagent(fromSession: string, percent: number, generation: number, subCtx: {
+    parentId?: string; ticketId?: string; slot?: number; model: RoleModel | null
+  }): Promise<string | undefined> {
+    let events: readonly { type: string; data: unknown }[]
+    try { events = (await this.host.context.sessionController.inspect(fromSession as SessionId)).events } catch { return undefined }
+    const unassigned = this.readUnassignedTasks(fromSession)
+    if (unassigned === undefined) return undefined
+    const recent: string[] = []
+    for (const event of events) {
+      if (event.type !== 'user/message' && event.type !== 'assistant/message') continue
+      const data = event.data as { message?: { content?: unknown }; content?: unknown }
+      const body = textOf(event.type === 'user/message' ? data : data.message)
+      if (!body) continue
+      recent.push(`${event.type === 'user/message' ? 'parent/user said' : 'subagent said'}: ${body}`)
+    }
+    const ticket = subCtx.ticketId ? this.host.store.tickets.get(subCtx.ticketId) : undefined
+    const head = [
+      `This is subagent generation ${generation} continuing from ${fromSession} after it filled ${Math.round(percent * 100)}% of its context window.`,
+      `- parent session: ${subCtx.parentId ?? '(unknown)'}`,
+      ...subCtx.ticketId ? [`- ticket: ${subCtx.ticketId}${ticket ? ` ("${ticket.title}")` : ''}`] : [],
+      ...subCtx.slot !== undefined ? [`- model slot: ${subCtx.slot}${subCtx.model ? ` (${subCtx.model.provider}/${subCtx.model.model})` : ''}`] : [],
+      ...unassigned.length ? ['', '## Unassigned shared tasks carried over',
+        ...unassigned.slice(0, 20).map(task => `- [${task.id}] ${task.subject || task.id} (${task.status ?? 'pending'})`)] : [],
+      '',
+      '## The earlier subagent Session\'s recent history',
+    ]
+    const foot = ['', 'Continue from here and report findings/results to the parent session as instructed.']
+    const budget = TRANSCRIPT_CHARS - head.join(NL).length - foot.join(NL).length
+    const tail = fit(recent.slice(-TRANSCRIPT_MESSAGES).join(NL + NL) || '(the earlier subagent Session recorded no messages)', Math.max(1_000, budget), 'the end')
+    return [...head, tail, ...foot].join(NL)
+  }
+
+  private async digestDivision(plan: import('../kv.ts').TaskPlan, div: import('../kv.ts').DivisionRecord, fromSession: string, percent: number, generation: number): Promise<string | undefined> {
+    let events: readonly { type: string; data: unknown }[]
+    try { events = (await this.host.context.sessionController.inspect(fromSession as SessionId)).events } catch { return undefined }
+    const recent: string[] = []
+    for (const event of events) {
+      if (event.type !== 'user/message' && event.type !== 'assistant/message') continue
+      const data = event.data as { message?: { content?: unknown }; content?: unknown }
+      const body = textOf(event.type === 'user/message' ? data : data.message)
+      if (!body) continue
+      recent.push(`${event.type === 'user/message' ? 'user/coordinator said' : 'division said'}: ${body}`)
+    }
+    const head = [
+      `This Session continues division "${div.title}" (${div.divisionId}) of task ${plan.taskId} ("${plan.title}") generation ${generation}, because ${fromSession} filled ${Math.round(percent * 100)}% of its context window.`,
+      `- slot: ${div.slot}${div.model ? ` (${div.model.provider}/${div.model.model})` : ''}`,
+      `- working directory: ${plan.directory}`,
+      `- status before handover: ${div.status}${div.latestProgress ? ` — ${div.latestProgress}` : ''}`,
+      '',
+      '## Division brief',
+      fit(div.brief, ASSIGNMENT_CHARS, 'the start'),
+      '',
+      '## The earlier division Session\'s recent history',
+    ]
+    const foot = ['', 'Continue from here. Report progress and results using orchestrator_division_report.']
+    const budget = TRANSCRIPT_CHARS - head.join(NL).length - foot.join(NL).length
+    const tail = fit(recent.slice(-TRANSCRIPT_MESSAGES).join(NL + NL) || '(no messages recorded before handover)', Math.max(1_000, budget), 'the end')
+    return [...head, tail, ...foot].join(NL)
   }
 }
 
@@ -658,8 +1000,8 @@ interface TeamService {
   listMembers?(agent: Agent): readonly TeamMember[]
   listTasks?(agent: Agent): readonly TeamTask[]
 }
-/** Task states that mean the work is over; anything else with an owner is outstanding. */
-const FINISHED_TASK = new Set(['completed', 'done', 'failed', 'cancelled', 'canceled', 'archived'])
+/** Task states that mean the work is over; anything else is outstanding. */
+const FINISHED_TASK = new Set(['completed', 'done', 'failed', 'cancelled', 'canceled', 'archived', 'deleted'])
 /** The part of a Session's inbox this module reads: what is queued, and whether the agent could act on it. */
 interface Inbox {
   nextTurn: readonly InboxMessage[]

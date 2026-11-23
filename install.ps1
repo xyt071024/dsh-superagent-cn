@@ -13,7 +13,9 @@ function Install-SuperAgent {
         # 0 means "pick a free port": an install every user puts on the same number is one a scanner knows in advance, and
         # two such installs cannot coexist. $env:SUPERAGENT_PORT or -SaPort overrides it.
         [int]$SaPort = $(if ($env:SUPERAGENT_PORT) { [int]$env:SUPERAGENT_PORT } else { 0 }),
-        [string]$SaBundle = 'https://github.com/xyt071024/dsh-superagent-cn/releases/latest/download/Super-Agent-Plugin.tgz',
+        # Empty means "ask the release which file this run installs" (step 4). A value here is an explicit override
+        # for a mirror or a package built by hand, and it is used as given.
+        [string]$SaBundle = $(if ($env:SUPERAGENT_BUNDLE) { $env:SUPERAGENT_BUNDLE } else { '' }),
         [switch]$SaPurge
     )
 
@@ -82,28 +84,102 @@ function Install-SuperAgent {
     Write-Host ""
     Write-Host "[3/6] Preparing the profile"
 
-    $profileDir = Join-Path $env:USERPROFILE ".dsh\profiles\$SaProfile"
+    $dshRoot = if ($env:DSH_HOME -and $env:DSH_HOME.Trim()) { $env:DSH_HOME.Trim() } else { Join-Path $env:USERPROFILE '.dsh' }
+    $profileDir = Join-Path $dshRoot "profiles\$SaProfile"
     $isNew = -not (Test-Path $profileDir)
     if ($isNew) { New-Item -ItemType Directory -Force -Path $profileDir | Out-Null }
-    $stateDir = (Join-Path $env:USERPROFILE ".dsh\state\$SaProfile") -replace '\\', '/'
+    $stateDir = (Join-Path $dshRoot "state\$SaProfile") -replace '\\', '/'
     Ok "$profileDir"
 
     # ---------- 4. plugin ----------
     Write-Host ""
     Write-Host "[4/6] Installing the plugin"
 
-    # Purge swaps the build inside the name: `-Stable-` becomes `-Purge-`, version intact. Matching only a trailing
-    # `-stable.tgz` silently stopped working once the file name carried a version, so the switch names the segment it
-    # actually changes.
-    $bundle = if ($SaPurge) { $SaBundle -replace '-Stable-', '-Purge-' } else { $SaBundle }
+    # Releases name the package after its version: `Super-Agent-Plugin-v0.3.10.tgz`. An address that says only
+    # `releases/latest/download/Super-Agent-Plugin.tgz` resolves to the newest tag and then asks that tag for a file it
+    # does not contain, so every default install answered 404. The file name is read from the release instead.
+    function Format-SaAssetName([string]$name, [bool]$purge) {
+        if (-not $purge) { return $name }
+        # Older releases separated the two builds with a segment: `-Stable-` becomes `-Purge-`, version intact.
+        if ($name -like '*-Stable-*') { return ($name -replace '-Stable-', '-Purge-') }
+        # From v0.3.6 the stable name carries no build segment, so the segment is inserted before the version:
+        # `Super-Agent-Plugin-v1.2.3.tgz` -> `Super-Agent-Plugin-Purge-v1.2.3.tgz`. A name of neither shape returns
+        # nothing, so the caller stops instead of downloading the stable build under a purge label.
+        if ($name -match '^(Super-Agent-Plugin-)v([\d.]+)(\.tgz)$') { return "$($Matches[1])Purge-v$($Matches[2])$($Matches[3])" }
+        return ''
+    }
+
+    # The pinned address is the fallback for a run that cannot reach the API at all (offline, proxy, rate limit). It
+    # names one exact asset, so it moves together with the version and never guesses.
+    $SaPinnedVersion = '0.3.12'
+    $SaPinnedUrl = "https://github.com/xyt071024/dsh-superagent-cn/releases/download/v$SaPinnedVersion/Super-Agent-Plugin-v$SaPinnedVersion.tgz"
+
+    function Resolve-SaBundle([string]$given, [bool]$purge) {
+        # An address supplied by the operator is used as given; a purge run still renames its last segment.
+        if ($given) {
+            $leaf = Split-Path $given -Leaf
+            $renamed = Format-SaAssetName $leaf $purge
+            if (-not $renamed) { Fail "Cannot derive the purge package name from '$leaf'. Pass -SaBundle with the exact purge URL, or drop -SaPurge." }
+            if ($renamed -ne $leaf) {
+                return @{ Url = $given.Substring(0, $given.Length - $leaf.Length) + $renamed; Name = $renamed; Origin = 'given' }
+            }
+            return @{ Url = $given; Name = $leaf; Origin = 'given' }
+        }
+
+        $api = 'https://api.github.com/repos/xyt071024/dsh-superagent-cn/releases/latest'
+        try {
+            # `User-Agent` is required: the API answers 403 to a request without one, which then reads as a broken
+            # installer rather than the rejected request it is.
+            $release = Invoke-RestMethod -Uri $api -Headers @{
+                'User-Agent' = 'Super-Agent-Installer'
+                'Accept'     = 'application/vnd.github+json'
+            } -TimeoutSec 20
+        } catch {
+            Warn "could not read the release list: $($_.Exception.Message)"
+            $fallback = Format-SaAssetName (Split-Path $SaPinnedUrl -Leaf) $purge
+            if (-not $fallback) { Fail "Cannot derive a purge package name for v$SaPinnedVersion." }
+            return @{ Url = $SaPinnedUrl.Replace((Split-Path $SaPinnedUrl -Leaf), $fallback); Name = $fallback; Origin = "pinned v$SaPinnedVersion" }
+        }
+
+        # The stable name is exactly `Super-Agent-Plugin-v<version>.tgz`; the purge build carries `-Purge-` before the
+        # version. Matching the whole name keeps the two apart without depending on the order GitHub lists them in.
+        $pattern = if ($purge) { '^Super-Agent-Plugin-Purge-v[\d.]+\.tgz$' } else { '^Super-Agent-Plugin-v[\d.]+\.tgz$' }
+        $found = @($release.assets | Where-Object { $_.name -match $pattern })
+        if ($found.Count -eq 0) {
+            $present = (@($release.assets | ForEach-Object { $_.name }) -join ', ')
+            $want = if ($purge) { 'purge package' } else { 'plugin package' }
+            Fail "release $($release.tag_name) has no $want (looked for $pattern). Assets present: $present"
+        }
+        # Highest version wins, so a release that still carries an older asset installs the newer one.
+        $picked = $found | Sort-Object -Property { [version](($_.name -replace '^.*-v', '') -replace '\.tgz$', '') } -Descending | Select-Object -First 1
+        return @{ Url = $picked.browser_download_url; Name = $picked.name; Origin = "release $($release.tag_name)" }
+    }
+
+    $SaResolved = Resolve-SaBundle $SaBundle ([bool]$SaPurge)
     $work = Join-Path $env:TEMP ("sa-install-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
     New-Item -ItemType Directory -Force -Path $work | Out-Null
     try {
         $tgz = Join-Path $work 'dsh-superagent.tgz'
-        Say "downloading $bundle"
-        Invoke-WebRequest -Uri $bundle -OutFile $tgz -UseBasicParsing
-        $hash = (Get-FileHash -Path $tgz -Algorithm SHA256).Hash
-        Say "sha256 $hash"
+        Say "package $($SaResolved.Name) from $($SaResolved.Origin)"
+        Say "downloading $($SaResolved.Url)"
+        try {
+            Invoke-WebRequest -Uri $SaResolved.Url -OutFile $tgz -UseBasicParsing
+        } catch {
+            # Named here rather than left as a bare 404: with -SaPurge the release may simply not publish a purge
+            # build, and "file not found" alone does not say whether the address or the release is at fault.
+            Fail "could not download $($SaResolved.Name) from $($SaResolved.Url): $($_.Exception.Message)"
+        }
+
+        # A 404 arrives as an HTML or JSON body carrying the status; saved to disk that body is a plausible file which
+        # only fails later inside `dsh plugin add`. The gzip magic bytes are what a .tgz actually starts with.
+        $magic = New-Object byte[] 2
+        $stream = [System.IO.File]::OpenRead($tgz)
+        try { $read = $stream.Read($magic, 0, 2) } finally { $stream.Dispose() }
+        if ($read -lt 2 -or $magic[0] -ne 0x1f -or $magic[1] -ne 0x8b) {
+            Fail "the downloaded file is not a gzip package, so $($SaResolved.Url) did not return one. Check the address or run this again."
+        }
+        $hash = (Get-FileHash -Path $tgz -Algorithm SHA256).Hash.ToLower()
+        Ok "$($SaResolved.Name)  sha256 $hash"
 
         # The package is passed by path: a bare name would resolve to whatever npm or the registry calls
         # `dsh-superagent`, which is not this build.
@@ -115,7 +191,8 @@ function Install-SuperAgent {
         if ($LASTEXITCODE -ne 0) { throw ($out | Out-String) }
         Ok "plugin installed from the downloaded package"
     } finally {
-        # Kept on failure: the tarball is what someone needs to inspect or report a broken download.
+        # Removed on success and on failure both: a half-written tarball left behind is what a later run then installs
+        # by accident. The address and hash are printed above, so the download can always be repeated.
         if (Test-Path $work) { Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue }
     }
 
@@ -165,11 +242,19 @@ function Install-SuperAgent {
     Write-Host ""
     Write-Host "[6/6] Checking the install"
 
-    $installed = Join-Path $profileDir 'node_modules\dsh-superagent\lib\index.js'
+    $pluginDir = Join-Path $profileDir 'node_modules/dsh-superagent'
+    $installed = Join-Path $pluginDir 'lib\index.js'
     if (-not (Test-Path $installed)) {
         Fail "The plugin is not present at $installed. The install did not complete; nothing was started."
     }
-    Ok "plugin files present"
+    # The version is reported so the operator can see which build landed: `dsh plugin add` from a path succeeds whatever
+    # version that path holds, so "files present" on its own does not say the downloaded version is the installed one.
+    if (Test-Path (Join-Path $pluginDir 'package.json')) {
+        $installedVersion = (Get-Content -Raw (Join-Path $pluginDir 'package.json') | ConvertFrom-Json).version
+        Ok "plugin files present (version $installedVersion)"
+    } else {
+        Ok "plugin files present"
+    }
 
     Write-Host ""
     Write-Host "---------------------"

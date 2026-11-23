@@ -109,8 +109,9 @@ function stageNode(target, dest) {
 
   // 一个只跑 `dsh` 的运行时不需要编译器头文件、文档，也不需要 npm 自己（用户不在包里装东西）。
   for (const drop of ['include', 'share/doc', 'share/man', 'share/systemtap', 'CHANGELOG.md', 'README.md', 'LICENSE',
-    'lib/node_modules/npm', 'lib/node_modules/corepack', 'bin/npm', 'bin/npx', 'bin/corepack',
-    'npm', 'npx', 'corepack', 'npm.cmd', 'npx.cmd', 'corepack.cmd', 'install_tools.bat']) {
+    'lib/node_modules/npm', 'lib/node_modules/corepack', 'node_modules/npm', 'node_modules/corepack',
+    'bin/npm', 'bin/npx', 'bin/corepack',
+    'npm', 'npx', 'corepack', 'npm.cmd', 'npx.cmd', 'corepack.cmd', 'npm.ps1', 'npx.ps1', 'corepack.ps1', 'install_tools.bat']) {
     rmSync(join(dest, 'node', drop), { recursive: true, force: true })
   }
 }
@@ -329,8 +330,6 @@ function writeLaunchers(dest, target, build) {
   if (!built) return
 
   if (target.launcher === 'cmd') {
-  // v0.3.7 ships stable only; kept so the launcher templates below stay untouched.
-  const purgeNote = false
     writeFileSync(join(dest, 'start.cmd'), [
       '@echo off',
       'setlocal',
@@ -338,37 +337,14 @@ function writeLaunchers(dest, target, build) {
       'set "SA_NODE=%~dp0node\\node.exe"',
       'if not exist "%SA_NODE%" (echo The bundled Node runtime is missing from this package. Download it again. & exit /b 1)',
       '',
-      'rem The profile goes into the user profile, not next to this file: DSH looks it up by name.',
-      'set "TARGET=%USERPROFILE%\\.dsh\\profiles\\superagent"',
-      'rem Three cases: a complete profile starts as it is (also the everyday launcher), an incomplete one is',
-      'rem repaired, and nothing there is a first run. Closing the window and running this again must work.',
-      'if exist "%TARGET%\\package.json" goto :ready',
-      'if not exist "%TARGET%" goto :install',
-      'echo A partial profile was found at "%TARGET%" (an earlier run did not finish).',
-      'echo Repairing it; your existing settings are kept.',
-      'goto :install',
+      'set "SA_PROFILE=%DSH_PROFILE%"',
+      'if "%SA_PROFILE%"=="" set "SA_PROFILE=superagent"',
+      '"%SA_NODE%" "%~dp0tools\\windows-profile-bootstrap.mjs" --profile "%SA_PROFILE%"',
+      'if errorlevel 1 (echo Profile bootstrap failed; nothing was started. & exit /b 1)',
       '',
-      ':install',
-      'mkdir "%TARGET%" 2>nul',
-      'xcopy /E /I /Y "%~dp0payload\\profile\\*" "%TARGET%\\" >nul',
-      'xcopy /E /I /Y "%~dp0payload\\node_modules" "%TARGET%\\node_modules\\" >nul',
-      'copy /Y "%~dp0payload\\dsh-superagent.tgz" "%TARGET%\\dsh-superagent.tgz" >nul',
-      '',
-      'rem stateDir uses forward slashes because the plugin rejects a bare `~`.',
-      'set "SA_CFG=%TARGET%\\cordis.patch.yml"',
-      'set "SA_HOME=%USERPROFILE:\\=/%"',
-      `"%SA_NODE%" "%~dp0tools\\configure.mjs" "%SA_CFG%" "%SA_HOME%"`,
-      'if errorlevel 1 (echo Configuration failed; nothing was started. & exit /b 1)',
-      '',
-      'goto :run',
-      '',
-      ':ready',
-      'if not exist "%TARGET%\\cordis.patch.yml" goto :install',
-      '',
-      ':run',
       'echo Starting Super Agent.',
       'set "NODE_PATH=%~dp0runtime\\node_modules"',
-      '"%SA_NODE%" "%~dp0runtime\\node_modules\\@deepseek-ai\\dsh\\lib\\bin.js" --profile superagent --no-open',
+      '"%SA_NODE%" "%~dp0runtime\\node_modules\\@deepseek-ai\\dsh\\lib\\bin.js" --profile "%SA_PROFILE%" --no-open %*',
       '',
     ].join('\r\n'))
   } else {
@@ -381,67 +357,24 @@ function writeLaunchers(dest, target, build) {
       'SA_NODE="./node/bin/node"',
       '[ -x "$SA_NODE" ] || { echo "The bundled Node runtime is missing from this package. Download it again."; exit 1; }',
       '',
-      'TARGET="$HOME/.dsh/profiles/superagent"',
-      '# A complete profile starts as it is: this is also the everyday launcher, so closing the window and running',
-      '# the script again has to work. An incomplete one is repaired; nothing there at all is a first run.',
-      'if [ -f "$TARGET/package.json" ] && [ -f "$TARGET/cordis.patch.yml" ]; then',
-      '  :',
-      'else',
-      '  [ -d "$TARGET" ] && echo "A partial profile was found at $TARGET (an earlier run did not finish). Repairing it; existing settings are kept."',
-      '  mkdir -p "$TARGET"',
-      '  cp -R ./payload/profile/. "$TARGET"/',
-      '  cp -R ./payload/node_modules "$TARGET"/node_modules',
-      '  cp ./payload/dsh-superagent.tgz "$TARGET"/dsh-superagent.tgz',
-      '  "$SA_NODE" ./tools/configure.mjs "$TARGET/cordis.patch.yml" "$HOME" || { echo "Configuration failed; nothing was started."; exit 1; }',
-      'fi',
+      'SA_PROFILE="${DSH_PROFILE:-superagent}"',
+      '"$SA_NODE" ./tools/unix-profile-bootstrap.mjs --profile "$SA_PROFILE" || { echo "Profile bootstrap failed; nothing was started."; exit 1; }',
       '',
       'echo Starting Super Agent.',
       'NODE_PATH="./runtime/node_modules"',
       'export NODE_PATH',
-      'exec "$SA_NODE" ./runtime/node_modules/@deepseek-ai/dsh/lib/bin.js --profile superagent --no-open',
+      'exec "$SA_NODE" ./runtime/node_modules/@deepseek-ai/dsh/lib/bin.js --profile "$SA_PROFILE" --no-open "$@"',
       '',
     ].join('\n'))
-    // chmodSync 而不是 execFileSync('chmod')：后者在 PowerShell 的 PATH 里不存在。
-    // 0o755 在 NTFS 上不生效，但 zip 里保存的 unix 权限位由后续打包步骤写入（见 make-dist-zips）。
     chmodSync(join(dest, 'start.sh'), 0o755)
   }
 }
 
 /** 配置改写：把 stateDir 和端口换成这台机器的。 */
-function writeTools(dest) {
+function writeTools(dest, target) {
   mkdirSync(join(dest, 'tools'), { recursive: true })
-  writeFileSync(join(dest, 'tools', 'configure.mjs'), `#!/usr/bin/env node
-// Fill in the two values that cannot ship pre-set: an absolute stateDir and a free port.
-// The plugin rejects a bare "~", and a fixed port would be one every install shares.
-import { readFileSync, writeFileSync } from 'node:fs'
-import { createServer } from 'node:net'
-
-const [file, home] = process.argv.slice(2)
-if (file === undefined || home === undefined) {
-  console.error('usage: configure.mjs <cordis.patch.yml> <home>')
-  process.exit(1)
-}
-
-const free = port => new Promise(resolve => {
-  const server = createServer()
-  server.once('error', () => resolve(false))
-  server.once('listening', () => server.close(() => resolve(true)))
-  server.listen(port, '127.0.0.1')
-})
-
-let chosen = 0
-for (let i = 0; i < 60 && chosen === 0; i++) {
-  const candidate = 3082 + Math.floor(Math.random() * 101)
-  if (await free(candidate)) chosen = candidate
-}
-if (chosen === 0) chosen = 3082
-
-const text = readFileSync(file, 'utf8')
-  .replaceAll('__STATE_DIR__', home.replaceAll('\\\\', '/') + '/.dsh/state/superagent')
-  .replaceAll('__PORT__', String(chosen))
-writeFileSync(file, text)
-console.log('  port ' + chosen + ' — recorded in ' + file)
-`)
+  const scriptName = target.launcher === 'cmd' ? 'windows-profile-bootstrap.mjs' : 'unix-profile-bootstrap.mjs'
+  cpSync(join(PROTO, 'scripts', 'windows-profile-bootstrap.mjs'), join(dest, 'tools', scriptName))
 }
 
 /** 包内说明：中英双语，说清有什么、怎么装、占多大。 */
@@ -527,8 +460,9 @@ ${built ? `
                           DeepSeek Harness ${DSH_VERSION} and its dependencies
   payload/                Super Agent 插件本体 + profile 骨架 + 5 个依赖
                           the plugin, its profile skeleton, and its five dependencies
-  tools/configure.mjs     启动时填 stateDir 和端口
-                          fills in stateDir and a free port at first run
+  tools/${os === 'Windows' ? 'windows' : 'unix'}-profile-bootstrap.mjs
+                          检查/安装/无损升级 profile，保留已有配置与账号
+                          verifies, installs, or safely upgrades the profile while keeping user settings
   start.${os === 'Windows' ? 'cmd' : 'sh'}               启动器 / the launcher
 
   ⚠ 不需要事先装 Node.js，也不需要装 DSH —— 都在这了。
@@ -551,7 +485,7 @@ ${built ? `
   macOS / Linux  ./start.sh
 
   第一次运行会：
-  · 把 profile 装进 ~/.dsh/profiles/superagent（已存在则拒绝覆盖并退出）
+  · 把 profile 装进 ~/.dsh/profiles/superagent（若已存在则检查版本并无损升级，保留现有配置）
   · 用包里自带的 Node 挑一个空闲端口（3082–3182）
   · 启动，并打印带 token 的面板地址
   · 读打印出来的那一行，端口是你自己机器上挑的
@@ -560,7 +494,7 @@ ${built ? `
   macOS / Linux  ./start.sh
 
   The first run will:
-  · install the profile into ~/.dsh/profiles/superagent (refuses to overwrite an existing one)
+  · install or safely upgrade the profile in ~/.dsh/profiles/superagent (keeps your existing settings)
   · pick a free port (3082-3182) using the bundled Node
   · start, and print the panel address with its token
   · read that line — the port was chosen on your machine
@@ -649,7 +583,7 @@ for (const target of TARGETS) {
     }
     stagePayload(staging, build)
     writeLaunchers(staging, target, build)
-    writeTools(staging)
+    writeTools(staging, target)
     writeReadme(staging, { ...target, build, built: true })
 
     const bytes = dirBytes(staging)

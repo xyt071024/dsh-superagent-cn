@@ -48,7 +48,9 @@ import { mainTools, type MainToolsHost } from './tools/main.ts'
 import { executorTools, type ExecutorToolsHost } from './tools/executor.ts'
 import { UsageMeter } from './usage.ts'
 import { ContextArchiver } from './archive.ts'
+import { DivisionCoordinator } from './divisions.ts'
 import { SessionRelay } from './relay.ts'
+import { VersionTracker } from './version-info.ts'
 
 // Source plugins interact with dsh-superagent exclusively through the `SourceHost` service interface.
 declare module '@deepseek-ai/cordis' { interface Context { orchestrator: SourceHost } }
@@ -72,6 +74,10 @@ export class Runtime extends Service implements SourceHost {
   readonly archiver: ContextArchiver
   /** The Session handover: resumable, refused while state would be lost, committed once. */
   readonly relay: SessionRelay
+  /** 多会话分工规划协调器（M07）。 */
+  readonly divisions: DivisionCoordinator
+  /** 运行时加载版本与配置名追踪（M08）。 */
+  readonly versions: VersionTracker
   readonly settings: Settings
   readonly executor: DshExecutor
   readonly assessor: MasterAssessor
@@ -138,13 +144,18 @@ export class Runtime extends Service implements SourceHost {
       const links: LinkHost = { store, links: this.sourceLinks, commands, sources, lifetime: this.lifetime }
       const link = (trigger: Trigger, signal?: AbortSignal) => sourceLink(links, trigger, signal)
       const environment = (ticket: Ticket) => this.ticketEnvironment(ticket)
-      const resources: ResourceHost = { store, pages: new TextCache(4_000_000), prompts, commands, masterId, context: ctx,
+      this.versions = new VersionTracker(machine.stateDir)
+      const resources: ResourceHost = { store, pages: new TextCache(4_000_000), prompts, commands,
+        get masterId() { return runtime.masterId }, context: ctx,
         promptVersion: id => this.sessions.promptVersion(id), mayRead: (id, revision) => this.sessions.mayRead(id, revision),
         feishuPageSize: () => feishuSettings(sources).readPageSize, sourceLink: link }
-      const sessions = this.sessions = new Sessions({ context: ctx, store, prompts, effects, health: board.claim('models'), masterId,
+      const sessions = this.sessions = new Sessions({ context: ctx, store, prompts, effects, health: board.claim('models'),
+        get masterId() { return runtime.masterId },
         lifetime: this.lifetime, usage: this.usage,
         closing: () => this.closing(), environment,
-        tools: (agent, ticket) => ticket ? executorTools(this.toolHost, ticket) : mainTools(this.toolHost, agent) })
+        tools: (agent, ticket) => ticket ? executorTools(this.toolHost, ticket) : mainTools(this.toolHost, agent),
+        divisionTools: (agent, taskId, divisionId) => this.divisions.divisionTools(agent, taskId, divisionId),
+        observeModelCall: (sessionId, call) => this.divisions.observeModelCall(sessionId, call) })
       const archiveHealth = board.claim('archive')
       this.relay = new SessionRelay({ context: ctx, store, sessions, coordinatorCwd: machine.stateDir,
         report: (detail, state = 'ready') => archiveHealth.set({ state, detail, at: now() }),
@@ -155,7 +166,10 @@ export class Runtime extends Service implements SourceHost {
           store.set(KV.runtime.masterPrevious, this.masterPrevious)
           store.set(KV.runtime.masterId, to)
         } })
-      // Archiving covers every decorated Session, subagents included: only the ticket machinery is narrower.
+      this.divisions = new DivisionCoordinator({ context: ctx, store, sessions, relay: this.relay,
+        get masterId() { return runtime.masterId }, coordinatorCwd: machine.stateDir,
+        report: (detail, state = 'ready') => archiveHealth.set({ state, detail, at: now() }) })
+      // Archiving covers every decorated Session, subagents and division sessions included.
       this.archiver = new ContextArchiver({ context: ctx, managed: () => sessions.archivable(),
         budget: () => ({ enabled: store.settings().budget.archiveEnabled, percent: store.settings().budget.archivePercent }),
         steer: (id, requestId, text) => sessions.prompt(id, requestId, text, 'steer'),
@@ -168,7 +182,11 @@ export class Runtime extends Service implements SourceHost {
         // The main coordinator is a Session too, and it reaches the same threshold. Moving it is a different move: it
         // owns no ticket, so it is handed over by the coordinator relay below rather than through the ticket machinery.
         masterRelay: (fromSession, percent) => this.relay.moveCoordinator(fromSession, percent),
-        isMaster: session => session === this.masterCurrent })
+        isMaster: session => session === this.masterCurrent,
+        divisionOf: session => sessions.divisionOf(session),
+        divisionRelay: (taskId, divisionId, fromSession, percent) => this.relay.moveDivision(taskId, divisionId, fromSession, percent),
+        isSubagent: session => sessions.isSubagent(session),
+        subagentRelay: (fromSession, percent) => this.relay.moveSubagent(fromSession, percent) })
       const policyChanged: EngineForSettings['policyChanged'] = (from, to, effects) => { this.engine.policyChanged(from, to, effects) }
       this.settings = new Settings({ store, sources, engine: { policyChanged }, health: board, context: ctx, lifetime: this.lifetime, sessions,
         sourceHost: this, setup, requestPass: () => { this.passes.request() }, requestReview: ticket => this.executor.review(ticket) })
@@ -177,7 +195,7 @@ export class Runtime extends Service implements SourceHost {
         repliedTo: trigger => repliedTo({ store, sources }, trigger) })
       this.assessor = new MasterAssessor({ get engine() { return runtime.engine }, commands, get deployment() { return setup.deployment }, effects,
         settings: () => store.settings(), paused: () => this.paused(), threadContext: trigger => sources.threadContext(trigger),
-        deliver: (id, text) => sessions.prompt(masterId, id, text, 'steer'), candidateCard: candidate => candidateCard(links, candidate) })
+        deliver: (id, text) => sessions.prompt(runtime.masterId, id, text, 'steer'), candidateCard: candidate => candidateCard(links, candidate) })
       const outbox = this.outbox = new Outbox({ store, effects, sources, commands, paused: () => this.paused() })
       const { assessor, executor } = this
       const policy = () => settingsPolicy(store.settings(), sources)
@@ -207,6 +225,7 @@ export class Runtime extends Service implements SourceHost {
         get deployment() { return setup.deployment }, configured: () => setup.configured(),
         get setupProblem() { return setup.problem }, get feishuProblem() { return setup.feishuProblem }, receive: trigger => passes.receive(trigger) }
       this.toolHost = { context: ctx, engine, store, prompts, sessions, settings: this.settings, assessor, resources,
+        divisions: this.divisions,
         get github() { return runtime.context({ kind: 'github', health: ['github'] }) },
         requestPass: () => { passes.request() }, sendReplies: () => outbox.sent(),
         quietly: run => { this.quiet++; try { return run() } finally { this.quiet-- } } }
@@ -272,8 +291,9 @@ export class Runtime extends Service implements SourceHost {
   }
   private httpHost(): HttpHost {
     const runtime = this
-    const { store, sources, prompts, sessions, settings, engine, executor, health, machine, masterId, ready, sourceLinks, setup, passes } = this
-    return { store, sources, prompts, sessions, settings, engine, executor, effects: this.effects, health, machine, masterId, ready, sourceLinks,
+    const { store, sources, prompts, sessions, settings, engine, executor, health, machine, ready, sourceLinks, setup, passes, versions, divisions } = this
+    return { store, sources, prompts, sessions, settings, engine, executor, effects: this.effects, health, machine,
+      get masterId() { return runtime.masterId }, ready, sourceLinks, versions, divisions,
       get deployment() { return setup.deployment },
       get setupProblem() { return setup.problem }, get feishuProblem() { return setup.feishuProblem },
       configured: () => setup.configured(), links: () => runtime.links(), ticketEnvironment: ticket => runtime.ticketEnvironment(ticket),
@@ -287,7 +307,11 @@ export class Runtime extends Service implements SourceHost {
       this.assessor.stop()
       // Every main-coordinator generation still loaded is stopped, not only the current one: an old window that is
       // still open must not keep running turns on work that has moved.
-      const ids = [this.masterCurrent, ...this.masterPrevious, ...this.store.tickets.list().map(ticket => sessionOf(this.store, ticket.id))]
+      const divisionIds = this.divisions.list().flatMap(plan => [
+        ...plan.divisions.flatMap(div => [div.sessionId, ...div.previousSessions]),
+        ...(plan.review ? [plan.review.sessionId] : []),
+      ])
+      const ids = [this.masterCurrent, ...this.masterPrevious, ...this.store.tickets.list().map(ticket => sessionOf(this.store, ticket.id)), ...divisionIds]
       const agents = ids.map(id => this.ctx.agents.get(id as SessionId)).filter((agent): agent is Agent => agent !== undefined)
       for (const agent of agents) agent.cancel({ kind: 'user' }, { keepInbox: true })
       await Promise.allSettled([passes, archive, this.effects.drain(), ...agents.map(agent => agent.whenIdle())])

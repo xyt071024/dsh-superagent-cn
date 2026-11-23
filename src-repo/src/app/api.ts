@@ -11,6 +11,8 @@ import type { TicketListView } from './views/tickets.ts'
 import type { inspect, hygiene } from './self-inspect.ts'
 import type { SourceProbeResult } from './source-probe.ts'
 import type { UpdateCheck } from './update-check.ts'
+import type { RuntimeVersionInfo } from './version-info.ts'
+import type { TaskPlan } from '../kv.ts'
 
 export const TICKET_FILTERS = ['open', 'person', 'working', 'idle', 'ended'] as const
 export const THREAD_FILTERS = ['subscribed', 'evaluating', 'recent', 'all'] as const
@@ -25,7 +27,8 @@ export interface Api {
   'GET overview': { response: OverviewView }
   'GET effects/held': { response: { items: { kind: string; count: number }[] } }
   'POST effects/:kind/retry-held': { response: { retried: number } }
-  'GET self-inspect': { response: { inspection: ReturnType<typeof inspect>; hygiene: ReturnType<typeof hygiene> } }
+  'GET self-inspect': { response: { inspection: ReturnType<typeof inspect>; hygiene: ReturnType<typeof hygiene>; version?: RuntimeVersionInfo } }
+  'GET divisions': { response: { plans: TaskPlan[] } }
   'GET update-check': { response: UpdateCheck }
   'GET search': { query: { q: string }; response: SearchView }
   'GET sources': { response: SourceStatusView[] }

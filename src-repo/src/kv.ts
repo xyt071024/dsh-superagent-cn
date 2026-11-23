@@ -52,6 +52,79 @@ export interface Relay {
    * same task — two Sessions doing one job.
    */
   held?: boolean
+  /**
+   * 指针已提交但尚未确认完成激活的目标会话与代次。
+   * 仅在唤醒投递确认（或 holds 命中）后清除；若唤醒瞬态失败或进程崩溃，启动恢复时会用同一代次幂等重试。
+   */
+  pendingActivation?: { target: string; generation: number }
+}
+
+/** 复杂任务规划的分工会话状态。 */
+export type DivisionStatus = 'pending' | 'waiting_deps' | 'running' | 'blocked' | 'completed' | 'failed' | 'stopped'
+
+/** 分工会话在请求边界实际记录的模型与思考等级调用轨迹。 */
+export interface DivisionModelCall {
+  at: string
+  provider?: string
+  model?: string
+  reasoningEffort?: string
+}
+
+/** 任务难度与是否开启多会话的判定依据。 */
+export interface ComplexityVerdict {
+  hard: boolean
+  score: number
+  threshold: number
+  source: 'explicit' | 'planner' | 'heuristic'
+  reason: string
+  signals: string[]
+  extraSessionsAllowed: boolean
+  skipReason?: string
+}
+
+/** 单个独立可打开分工对话的持久记录。 */
+export interface DivisionRecord {
+  divisionId: string
+  title: string
+  brief: string
+  dependsOn: string[]
+  slot: number
+  sessionId: string
+  previousSessions: string[]
+  generation: number
+  model: { provider: string; model: string; reasoningEffort?: string } | null
+  modelCalls: DivisionModelCall[]
+  status: DivisionStatus
+  latestProgress?: string
+  result?: string
+  error?: string
+  /** 已处理的事件/回执 ID，用于去重并避免回报循环。 */
+  deliveredEventIds: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+/** 一次任务（工单或聊天派工）的多会话规划与运行记录。 */
+export interface TaskPlan {
+  taskId: string
+  title: string
+  originSessionId: string
+  originModel: { provider: string; model: string; reasoningEffort?: string } | null
+  planKey: string
+  directory: string
+  complexity: ComplexityVerdict
+  maxSessions: number
+  slots: Record<string, number>
+  divisions: DivisionRecord[]
+  review?: {
+    sessionId: string
+    round: number
+    state: 'pending' | 'passed' | 'failed'
+    summary?: string
+    findings?: string[]
+  }
+  createdAt: string
+  updatedAt: string
 }
 
 /** Key of a KV record whose value has type `V`; a plain string represents an untyped key. */
@@ -85,6 +158,8 @@ export const KV = {
    * Both are durable: a restart must not lose which Session the panel should be showing.
    */
   runtime: { masterId: record<string>('master-id'), masterPrevious: record<string[]>('master-previous'),
+    /** 主协调会话切换指针已提交但尚未确认激活时的持久记录，用于重启/恢复时幂等重唤醒。 */
+    masterActivation: record<{ target: string; generation: number }>('master-activation'),
     usage: record<{ day: string; tokens: number }>('daily-usage') },
   /** Sessions: prompt revisions each Session has worked under, ordered oldest first; the last entry (`.at(-1)`) is its active revision. */
   sessions: { prompts: family<number[], [session: string]>('session-prompts:'),
@@ -105,7 +180,15 @@ export const KV = {
      * the last step that completed, and a record a crash left at a middle stage is resumed from there rather than
      * restarted, which keeps the move idempotent.
      */
-    relay: family<Relay, [ticket: string]>('session-relay:') },
+    relay: family<Relay, [ticket: string]>('session-relay:'),
+    /** 子会话接班后持久保留的父会话、所属工单及接力状态。 */
+    subagentParent: family<string, [session: string]>('subagent-parent:'),
+    subagentTicket: family<string, [session: string]>('subagent-ticket:'),
+    subagentRelay: family<Relay, [rootSession: string]>('subagent-relay:'),
+    /** 多会话分工规划记录（M07），按 taskId / ticketId 索引。 */
+    divisions: family<TaskPlan, [taskId: string]>('task-divisions:'),
+    /** 反向索引：把独立分工会话 ID 映射到所属任务和分工 ID。 */
+    divisionOwner: family<{ taskId: string; divisionId: string }, [session: string]>('division-owner:') },
   /** Schema 11 migration: legacy main-Session queues imported into the effect table. */
   queues: { relays: record<{ id: string; text: string }[]>('relay-queue'), unsubscribed: record<string[]>('subscription-results'),
     prompts: record<number | null>('prompt-notification'), settings: record<number | null>('settings-notification') },

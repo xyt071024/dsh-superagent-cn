@@ -10,6 +10,7 @@ import type { Settings } from '../policy.ts'
 import type { Store } from './store.ts'
 import type { SourceRegistry } from '../sources/registry.ts'
 import type { HealthMap } from './views/sources.ts'
+import type { RuntimeVersionInfo } from './version-info.ts'
 
 /** One thing the installation lacks, stated as the concrete next action rather than a category of problem. */
 export interface Gap { code: string; detail: string; fix: string }
@@ -30,8 +31,15 @@ export interface Activity {
  * do, and that is the failure this function exists to avoid.
  */
 export function inspect(settings: Settings, sources: Pick<SourceRegistry, 'instances'>, health: HealthMap, store: Store,
-  days = 7): { gaps: Gap[]; activity: Activity; sources: { id: string; kind: string; enabled: boolean; state: string }[] } {
+  days = 7, version?: RuntimeVersionInfo): { gaps: Gap[]; activity: Activity; sources: { id: string; kind: string; enabled: boolean; state: string }[] } {
   const gaps: Gap[] = []
+  if (version?.reloadRequired) {
+    gaps.push({
+      code: 'reloadRequired',
+      detail: `Loaded plugin is ${version.loaded} on profile ${version.profileName ?? '(unknown)'}, while ${version.installed} is installed on disk.`,
+      fix: 'Reload or restart the current DSH profile so the newly installed plugin version takes effect.',
+    })
+  }
   const instances = sources.instances(settings)
   const list = instances.map(instance => {
     const entry = health[instance.id]

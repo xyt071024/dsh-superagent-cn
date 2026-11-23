@@ -123,20 +123,31 @@ function HeldEffects() {
 /** Read-only, user-triggered diagnostics; network checks and repairs are not implied. */
 function Inspection() {
   const { t, call } = usePanel()
+  const { state } = usePanelData()
   const [result, setResult] = useState<ApiResponse<'GET self-inspect'> | undefined>()
   const [update, setUpdate] = useState<ApiResponse<'GET update-check'> | undefined>()
   const action = useAction(async () => { setResult(await call('GET self-inspect')) })
   const checkUpdate = useAction(async () => { setUpdate(await call('GET update-check')) })
+  const version = result?.version ?? state?.version
   const problems = result?.inspection.gaps ?? []
   const missing = result?.hygiene.missing ?? []
   const labels: Record<string, DshSuperagentKey> = { noLiveSource: 'inspect.noLiveSource', noSource: 'inspect.noSource',
-    emptyAllowList: 'inspect.emptyAllowList', observeOnly: 'inspect.observeOnly', source_paused: 'inspect.source_paused', source_error: 'inspect.source_error' }
+    emptyAllowList: 'inspect.emptyAllowList', observeOnly: 'inspect.observeOnly', source_paused: 'inspect.source_paused',
+    source_error: 'inspect.source_error', reloadRequired: 'inspect.reloadRequired' }
   return <Section title={t('inspectTitle')} action={<Button variant="outline" size="sm" disabled={action.busy}
     onClick={() => { void action.run() }}>{t('inspectRun')}</Button>}>
     <Hint>{t('inspectScope')}</Hint>
+    {version && <div className="dt-row-meta">
+      <span>{t('versionProfile')}: {version.profileName ?? '—'}</span>
+      <span>{t('versionLoaded')}: {version.loaded ?? '—'}</span>
+      <span>{t('versionInstalled')}: {version.installed ?? '—'}</span>
+    </div>}
+    {version?.reloadRequired && <p className="dt-banner dt-danger">
+      {t('versionReloadRequired', { loaded: version.loaded ?? '?', installed: version.installed ?? '?' })}
+    </p>}
     {result && (problems.length || missing.length ? <ul className="dt-list">{problems.map((gap, index) =>
       <li className="dt-row" key={`${gap.code}-${index}`}><div className="dt-row-main">
-        <span>{labels[gap.code] ? t(labels[gap.code]!) : gap.detail}</span>{gap.code.startsWith('source_') && <p className="dt-hint">{gap.detail}</p>}
+        <span>{labels[gap.code] ? t(labels[gap.code]!) : gap.detail}</span>{(gap.code.startsWith('source_') || gap.code === 'reloadRequired') && <p className="dt-hint">{gap.detail}</p>}
       </div></li>)}{missing.map(item => <li key={item} className="dt-row"><span>{t('inspectMissingDirectory')}: {item}</span></li>)}</ul>
       : <Hint>{t('inspectClear')}</Hint>)}
     <div className="dt-row-meta dt-row-buttons">

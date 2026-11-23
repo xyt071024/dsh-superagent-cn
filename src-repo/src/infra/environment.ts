@@ -32,7 +32,8 @@ export const credentialHelper = (cli: string): string => `!${shellQuote(cli)} au
 
 export function sameDirectory(a: string, b: string): boolean {
   const real = (path: string): string => { try { return realpathSync(path) } catch { return resolve(path) } }
-  return real(a) === real(b)
+  const left = real(a), right = real(b)
+  return process.platform === 'win32' ? left.toLowerCase() === right.toLowerCase() : left === right
 }
 export function withoutDirectory(path: string, dir: string): string {
   return path.split(delimiter).filter(entry => !sameDirectory(entry, dir)).join(delimiter)
@@ -68,8 +69,9 @@ export function agentVariables(stateDir: string): Record<string, string | undefi
 /** True when a regular file starts with the dsh-superagent marker in its first two lines; a symbolic link, directory, or other non-regular file never counts as written by dsh-superagent. */
 async function written(file: string): Promise<boolean> {
   if (!(await lstat(file)).isFile()) return false
-  const head = (await readFile(file, 'utf8')).split('\n', 2)
-  return [MARKER, ...LEGACY_MARKERS].some(marker => head.includes(marker))
+  const head = (await readFile(file, 'utf8')).split(/\r?\n/, 2)
+  const markers = [MARKER, ...LEGACY_MARKERS]
+  return markers.some(marker => head.includes(marker) || head.includes(`rem ${marker}`))
 }
 async function own(file: string, text: string, mode = 0o644): Promise<void> {
   let foreign = false
@@ -92,11 +94,24 @@ export async function writeEnvironment(deployment: Pick<Deployment, 'stateDir' |
   for (const name of before) { const file = join(dir, name); if (!await written(file)) throw new SetupError('foreignFile', { file }) }
   // Workers may be running concurrently: write each shim to a temp file and atomically rename it so no command ever resolves past the shim directory.
   const kept = new Set<string>()
-  const shim = async (name: string, body: string): Promise<void> => {
+  const cmdQuote = (value: string): string => `"${value.replaceAll('"', '""')}"`
+  const winRunScript = 'const p=require("node:path"),fs=require("node:fs"),cp=require("node:child_process"),real=x=>{try{return fs.realpathSync(x)}catch{return p.resolve(x)}},self=real(process.argv[1]).toLowerCase(),rest=(process.env.PATH||"").split(p.delimiter).filter(e=>{try{return real(e).toLowerCase()!==self}catch{return true}}).join(p.delimiter),prog=process.argv[2],args=process.argv.slice(3),ext=/\\.(cmd|bat)$/i.test(prog),r=ext?cp.spawnSync(process.env.ComSpec||"cmd.exe",["/d","/s","/c",prog,...args],{stdio:"inherit",env:{...process.env,PATH:rest}}):cp.spawnSync(prog,args,{stdio:"inherit",env:{...process.env,PATH:rest}});if(r.error){console.error(r.error.message);process.exit(1)}process.exit(r.status??1)'
+  const winFailScript = 'console.error(process.argv[1]);process.exit(1)'
+  const shim = async (name: string, body: string, winSpec: { kind: 'run'; program: string } | { kind: 'fail'; message: string }): Promise<void> => {
     const temporary = join(dir, `.${name}.${process.pid}.tmp`)
     await writeFile(temporary, `#!/bin/sh\n${MARKER}\n${body}\n`, { mode: 0o755 })
     await rename(temporary, join(dir, name))
     kept.add(name)
+    if (process.platform === 'win32') {
+      const cmdName = `${name}.cmd`
+      const cmdTmp = join(dir, `.${cmdName}.${process.pid}.tmp`)
+      const invoke = winSpec.kind === 'run'
+        ? `${cmdQuote(process.execPath)} -e ${cmdQuote(winRunScript)} ${cmdQuote(dir)} ${cmdQuote(winSpec.program)} %*`
+        : `${cmdQuote(process.execPath)} -e ${cmdQuote(winFailScript)} ${cmdQuote(winSpec.message)}`
+      await writeFile(cmdTmp, `@echo off\r\nrem ${MARKER}\r\n${invoke}\r\n`)
+      await rename(cmdTmp, join(dir, cmdName))
+      kept.add(cmdName)
+    }
   }
   const withoutShims = [
     `self=${shellQuote(dir)}`, 'rest=', 'IFS=:', 'set -f',
@@ -105,10 +120,12 @@ export async function writeEnvironment(deployment: Pick<Deployment, 'stateDir' |
   ].join('\n')
   const run = (program: string): string => `${withoutShims}\nexec ${shellQuote(program)} "$@"`
   const fail = (message: string): string => `echo ${shellQuote(message)} >&2\nexit 1`
-  await shim('gh', run(github.cli))
-  await shim('lark-cli', feishu ? run(feishu.cli) : fail('lark-cli is unavailable: this installation has no Feishu bot.'))
+  await shim('gh', run(github.cli), { kind: 'run', program: github.cli })
+  await shim('lark-cli', feishu ? run(feishu.cli) : fail('lark-cli is unavailable: this installation has no Feishu bot.'),
+    feishu ? { kind: 'run', program: feishu.cli } : { kind: 'fail', message: 'lark-cli is unavailable: this installation has no Feishu bot.' })
   for (const name of new Set(blockedCommands.filter(name => !WORKER_COMMANDS.includes(name)))) {
-    await shim(name, fail(`${name} is blocked in this installation; use gh, which acts as ${github.login}.`))
+    const msg = `${name} is blocked in this installation; use gh, which acts as ${github.login}.`
+    await shim(name, fail(msg), { kind: 'fail', message: msg })
   }
   for (const name of before) if (!kept.has(name)) await unlink(join(dir, name))
   await own(workerGitConfig(stateDir), [
