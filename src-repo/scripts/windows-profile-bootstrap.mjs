@@ -119,9 +119,25 @@ async function freePort() {
   return fail('No free port found in 3082-3182.')
 }
 
+// Avoid fs.cpSync({ recursive: true }) because Node v22.19.0 on Windows aborts with 0xC0000409 (3221226505)
+// when copying deep trees under paths containing multibyte UTF-8 characters (such as Chinese Desktop directories).
+function copyDir(from, to) {
+  fs.mkdirSync(to, { recursive: true })
+  for (const entry of fs.readdirSync(from, { withFileTypes: true })) {
+    const src = path.join(from, entry.name)
+    const dst = path.join(to, entry.name)
+    if (entry.isDirectory()) copyDir(src, dst)
+    else if (entry.isSymbolicLink()) {
+      const real = fs.realpathSync(src)
+      if (fs.statSync(real).isDirectory()) copyDir(real, dst)
+      else fs.copyFileSync(real, dst)
+    } else fs.copyFileSync(src, dst)
+  }
+}
+
 // The dependency set is copied by name so a staged plugin is checked with exactly what the bundle ships beside it.
 function copyPluginTree(from, to) {
-  fs.cpSync(from, to, { recursive: true, dereference: true })
+  copyDir(from, to)
   if (!fs.existsSync(path.join(to, 'package.json'))) fail(`Copy did not produce ${path.join(to, 'package.json')}`)
 }
 
@@ -129,8 +145,8 @@ function installFresh(pluginInfo) {
   fs.mkdirSync(profiles, { recursive: true })
   const temp = fs.mkdtempSync(path.join(profiles, `.${profileName}-install-`))
   try {
-    fs.cpSync(sourceProfile, temp, { recursive: true })
-    fs.cpSync(sourceModules, path.join(temp, 'node_modules'), { recursive: true })
+    copyDir(sourceProfile, temp)
+    copyDir(sourceModules, path.join(temp, 'node_modules'))
     fs.copyFileSync(path.join(payload, 'dsh-superagent.tgz'), path.join(temp, 'dsh-superagent.tgz'))
     const patch = path.join(temp, 'cordis.patch.yml')
     const text = fs.readFileSync(patch, 'utf8')
@@ -195,12 +211,12 @@ function repair(pluginInfo) {
           if (!inner.isDirectory()) continue
           const from = path.join(sourceModules, entry.name, inner.name)
           const to = path.join(nodeModules, entry.name, inner.name)
-          if (!fs.existsSync(path.join(to, 'package.json'))) fs.cpSync(from, to, { recursive: true, dereference: true })
+          if (!fs.existsSync(path.join(to, 'package.json'))) copyDir(from, to)
         }
         continue
       }
       const to = path.join(nodeModules, entry.name)
-      if (!fs.existsSync(path.join(to, 'package.json'))) fs.cpSync(path.join(sourceModules, entry.name), to, { recursive: true, dereference: true })
+      if (!fs.existsSync(path.join(to, 'package.json'))) copyDir(path.join(sourceModules, entry.name), to)
     }
 
     if (fs.existsSync(installed)) {

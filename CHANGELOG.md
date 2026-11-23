@@ -8,6 +8,32 @@
 
 ## [Unreleased]
 
+## [0.3.13] - 2026-11-23
+
+本版针对独立复验中暴露的分工生命周期韧性、单子项委托、汇报通知回执事务、并发追问状态保持、多轮复查打回闭环、分工会话接班激活恢复以及 Windows 深层中文路径引导复制栈溢出（`0xC0000409`）进行了深度加固。
+
+### 修复与深度加固
+
+**1. 真实工单执行路径接入独立分工计划与单子项委托（M07-a / M07-e）**
+
+- `DshExecutor` 在 `multiSession` 开启且评估为高难度工单（`hard`）时，自动调用 `DivisionCoordinator.dispatch` 落盘持久化 `TaskPlan` 并创建真实可打开的分工会话（`GET /divisions` 与 `divisions.list()` 可见）。
+- 放宽 `DivisionCoordinator.dispatch` 对 `divisions.length === 1` 的拆分限制：当难度达标且显式传入 1 个独立委派子项时，允许开启 1 个独立分工会话处理并在原对话汇总；未传分工项时仍返回 `no-split-needed`（0 额外会话）。
+
+**2. 分工启动失败恢复、汇报通知回执分离与并发状态保护（M07-b / M07-c / M07-d）**
+
+- 新增 `reconcilePlan(taskId)` 与 `divisions.resume()`：同一 `(taskId, planKey)` 重放或宿主重启恢复时，自动核对每个依赖已就绪的分工，仅对 `failed`（无已交付汇报）或未成功持有 `division-start` 请求的分工按原会话 ID 与请求 ID 幂等补建，已运行或已完成成员不受影响。
+- 将“分工汇报落库”与“主协调窗口通知送达”分离：在同一 `store.atomic` 事务内记录分工进度并排入持久化 `pendingDeliveries`，仅在 `sessions.prompt` 成功送达目标会话后才写入 `deliveredNotificationIds` 并移除待投递项；瞬时失败后无论是重复汇报同一 `event_id` 还是调用 `resume()` 均会按稳定 `requestId` 补发，杜绝丢通知与重复轰炸。
+- 消除 `sendToDivision`、`launchDivision`、`reportDivision`、`startReview`、`submitReview`、`observeModelCall` 跨 `await` 写回旧快照的竞态：`sendToDivision` 在 `await sessions.prompt` 完成后于 `store.atomic` 内重新读取最新计划并仅合并 `deliveredEventIds`，不会覆盖并发发生的 `completed` 状态与成果。
+
+**3. 独立复查多轮打回重做闭环与分工会话接班恢复（M07-f / M06-a）**
+
+- `submitReview` 支持最多 3 轮（`MAX_REVIEW_ROUNDS = 3`）打回重做：当 `approved: false` 时，自动识别受影响分工（支持显式 `rework_division_ids` 或从 `summary`/`findings` 文本匹配分工 ID/标题），将其状态切回 `running`、记录 `reworkDivisionIds` / `findings` / `acceptanceCriteria` 并投递返工提示；待返工分工重新汇报 `completed` 后自动启动 `round + 1` 轮独立复查（`state: 'pending'`）；达到 3 轮上限时明确标记 `limitReached: true`。
+- `SessionRelay.moveDivision` 在提交事务中为接班分工持久化 `pendingActivation: { target, generation }`，并通过 `activateDivision` 确保新分工会话创建并投递 `activate:division:${taskId}:${divisionId}:g${generation}` 唤醒提示，成功后才清除 `pendingActivation`；若中途崩溃或瞬时失败，`relay.resume()` 会自动补建并唤醒新代分工会话，且连续多次接班（`r1 -> r2 -> r3`）及旧窗口残余输入转发均直达最新代次。
+
+**4. Windows 深层中文路径引导复制栈溢出修复**
+
+- 修复 `scripts/windows-profile-bootstrap.mjs` 在含中文的多层深路径（如 `_work/_stage`）下调用 Node.js v22.19.0 原生 `fs.cpSync(..., { recursive: true })` 触发 Windows `0xC0000409`（`3221226505` `STATUS_STACK_BUFFER_OVERRUN`）退出的问题，改用纯 JS 递归 `copyDir`（`mkdirSync` + `readdirSync` + `copyFileSync`），在深层中文路径与临时目录下一律稳定退出 `0`。
+
 ## [0.3.12] - 2026-11-23
 
 本版完成从 0.3.11 遗留缺陷修复、多会话独立分工、运行时版本识别到跨平台测试与快速安全打包发布链的全面补齐。

@@ -64,6 +64,8 @@ export interface RelayHost {
    * reports the outcome, so the two never disagree about which Session is current.
    */
   setMaster?(to: string): void
+  /** Optional hook to resume pending division launches/deliveries whenever relay.resume() runs. */
+  resumeDivisions?(): Promise<void>
   /** The directory every coordinator generation runs in (the state directory the runtime was started with). */
   readonly coordinatorCwd: string
 }
@@ -138,7 +140,9 @@ export class SessionRelay {
         // The claim means a turn has started on the superseded Session, so it is stopped before it can act; the message
         // itself is not taken from it because a cancelled turn may already own it.
         agent.cancel({ kind: 'user' }, { keepInbox: true })
-        void this.host.sessions.prompt(target, `forward:${message.id}`, text, 'queue')
+        const messageId = message.id
+        void this.host.sessions.prompt(target, `forward:${messageId}`, text, 'queue')
+          .then(() => { (agent as unknown as { inbox?: Inbox }).inbox?.remove?.(messageId) })
           .catch(error => this.host.report(`could not forward a message typed into ${agent.id} to ${target}: ${describe(error)}`, 'error'))
       }))
     } catch { /* No inbox event on this host: the commit-time forward stays the only path. */ }
@@ -302,6 +306,24 @@ export class SessionRelay {
         })
       }
     }
+    for (const name of store.keys(KV.sessions.divisions)) {
+      const plan = store.get(name)
+      if (!plan) continue
+      for (const div of plan.divisions) {
+        if (!div.pendingActivation) continue
+        const { target, generation } = div.pendingActivation
+        const taskId = plan.taskId
+        const divisionId = div.divisionId
+        await this.serialize(`division:${taskId}:${divisionId}`, async () => {
+          await this.activateDivision(taskId, divisionId, target, generation)
+        }).catch(error => {
+          this.host.report(`division activation for ${taskId}:${divisionId} could not be resumed: ${describe(error)}`, 'error')
+        })
+      }
+    }
+    await this.host.resumeDivisions?.().catch(error => {
+      this.host.report(`division plans could not be resumed: ${describe(error)}`, 'error')
+    })
   }
 
   /**
@@ -583,6 +605,39 @@ export class SessionRelay {
     }
   }
 
+  private async activateDivision(taskId: string, divisionId: string, target: string, generation: number): Promise<void> {
+    const requestId = `activate:division:${taskId}:${divisionId}:g${generation}`
+    try {
+      const clearPending = () => {
+        this.host.store.atomic(() => {
+          const latest = this.host.store.get(KV.sessions.divisions(taskId))
+          const div = latest?.divisions.find(item => item.divisionId === divisionId)
+          if (latest && div?.pendingActivation?.target === target && div.pendingActivation.generation === generation) {
+            delete div.pendingActivation
+            div.updatedAt = new Date().toISOString()
+            latest.updatedAt = div.updatedAt
+            this.host.store.set(KV.sessions.divisions(taskId), latest)
+          }
+        })
+      }
+      if (!this.host.context.agents.get(target as SessionId) && this.host.sessions.ensureDivision) {
+        const plan = this.host.store.get(KV.sessions.divisions(taskId))
+        const div = plan?.divisions.find(item => item.divisionId === divisionId)
+        if (plan && div) {
+          await this.host.sessions.ensureDivision(target, plan.directory, `${div.title} (r${generation})`, {
+            taskId, divisionId, model: div.model, autoHard: plan.complexity.hard,
+          })
+        }
+      }
+      if (await this.host.sessions.holds(target, requestId)) { clearPending(); return }
+      await this.host.sessions.prompt(target, requestId,
+        'The handover summary above is the state of this division. Continue from it; do not redo completed steps.', 'queue')
+      clearPending()
+    } catch (error) {
+      this.host.report(`division ${divisionId} committed to ${target}, but wake-up failed: ${describe(error)}`, 'error')
+    }
+  }
+
   /**
    * 子会话达到 60% 阈值时的接力迁移（M06）：保留父子关系、模型槽位、所属工单与共享状态，并在提交后更新路由。
    */
@@ -703,6 +758,7 @@ export class SessionRelay {
           targetDiv.sessionId = target
           targetDiv.previousSessions = nextPrevious
           targetDiv.generation = generation
+          targetDiv.pendingActivation = { target, generation }
           targetDiv.updatedAt = new Date().toISOString()
           latest.updatedAt = targetDiv.updatedAt
           store.set(KV.sessions.divisions(taskId), latest)
@@ -710,9 +766,7 @@ export class SessionRelay {
         })
         this.recordRoutes(nextPrevious, fromSession, target)
         this.host.report(`division ${divisionId} (${fromSession}) handed over to ${target} (slot ${div.slot}, gen ${generation})`)
-        await sessions.prompt(target, `activate:division:${taskId}:${divisionId}:g${generation}`,
-          'The handover summary above is the state of this division. Continue from it; do not redo completed steps.', 'queue')
-          .catch(error => this.host.report(`division ${divisionId} committed to ${target}, but wake-up failed: ${describe(error)}`, 'error'))
+        await this.activateDivision(taskId, divisionId, target, generation)
         this.forward(fromSession, target)
         return { moved: target }
       } catch (error) {

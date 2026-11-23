@@ -159,6 +159,7 @@ export class Runtime extends Service implements SourceHost {
       const archiveHealth = board.claim('archive')
       this.relay = new SessionRelay({ context: ctx, store, sessions, coordinatorCwd: machine.stateDir,
         report: (detail, state = 'ready') => archiveHealth.set({ state, detail, at: now() }),
+        resumeDivisions: () => this.divisions.resume(),
         // One place decides which Session the coordinator runs on, so a handover is visible to every reader at once.
         setMaster: to => {
           this.masterPrevious = [...this.masterPrevious.filter(id => id !== to), this.masterCurrent]
@@ -191,7 +192,7 @@ export class Runtime extends Service implements SourceHost {
       this.settings = new Settings({ store, sources, engine: { policyChanged }, health: board, context: ctx, lifetime: this.lifetime, sessions,
         sourceHost: this, setup, requestPass: () => { this.passes.request() }, requestReview: ticket => this.executor.review(ticket) })
       this.executor = new DshExecutor({ context: ctx, get engine() { return runtime.engine }, store, effects, health: board.claim('worker'), machine,
-        lifetime: this.lifetime, sessions, budgetExceeded: () => this.usage.exceeded(store.settings().budget.dailyTokens), closing: () => this.closing(), paused: () => this.paused(), environment, sourceLink: link,
+        lifetime: this.lifetime, sessions, divisions: this.divisions, budgetExceeded: () => this.usage.exceeded(store.settings().budget.dailyTokens), closing: () => this.closing(), paused: () => this.paused(), environment, sourceLink: link,
         repliedTo: trigger => repliedTo({ store, sources }, trigger) })
       this.assessor = new MasterAssessor({ get engine() { return runtime.engine }, commands, get deployment() { return setup.deployment }, effects,
         settings: () => store.settings(), paused: () => this.paused(), threadContext: trigger => sources.threadContext(trigger),

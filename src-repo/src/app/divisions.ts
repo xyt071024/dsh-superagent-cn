@@ -2,13 +2,14 @@
  * 多会话规划与独立分工会话协调器（M07，对应需求 R02–R05）。
  *
  * 将复杂任务拆分为带有稳定分工 ID、依赖关系和模型槽位的独立持久 DSH 会话（可在宿主会话列表直接打开），
- * 并支持依赖自动唤醒、事件 ID 去重回报、请求边界模型记录以及 60% 上下文接班后继续路由。
+ * 并支持依赖自动唤醒、事件 ID 去重回报、持久待投递队列、并发原子合并、退回多轮复查、请求边界模型记录及 60% 接班路由。
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { SessionId } from '@deepseek-ai/dsh-session'
 import { z } from 'zod'
 import { key } from '../core/index.ts'
-import { KV, type ComplexityVerdict, type DivisionModelCall, type DivisionRecord, type TaskPlan } from '../kv.ts'
+import { KV, type ComplexityVerdict, type DivisionModelCall, type DivisionRecord, type PendingDivisionDelivery, type TaskPlan } from '../kv.ts'
 import type { RoleModel } from '../policy.ts'
 import { assessComplexity, multiSession, reserveSessionSlot } from './routing.ts'
 import type { SessionRelay } from './relay.ts'
@@ -45,7 +46,12 @@ export interface DivisionsHost {
   report?(detail: string, state?: 'ready' | 'error'): void
 }
 
+const MAX_REVIEW_ROUNDS = 3
 const now = (): string => new Date().toISOString()
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
 
 function detectCycle(divisions: readonly DivisionSpec[]): string | undefined {
   const map = new Map(divisions.map(d => [d.divisionId, d.dependsOn ?? []]))
@@ -71,6 +77,22 @@ function detectCycle(divisions: readonly DivisionSpec[]): string | undefined {
   return undefined
 }
 
+function matchReworkDivisions(divisions: readonly DivisionRecord[], text: string, explicitIds?: readonly string[]): DivisionRecord[] {
+  if (explicitIds && explicitIds.length > 0) {
+    const set = new Set(explicitIds)
+    return divisions.filter(d => set.has(d.divisionId))
+  }
+  const normalized = text.trim()
+  if (!normalized) return []
+  return divisions.filter(div => {
+    const idToken = new RegExp(`(?:^|[^a-zA-Z0-9_-])${escapeRegExp(div.divisionId)}(?:$|[^a-zA-Z0-9_-])`, 'i')
+    if (idToken.test(normalized)) return true
+    const title = div.title.trim()
+    if (title.length >= 2 && normalized.toLowerCase().includes(title.toLowerCase())) return true
+    return false
+  })
+}
+
 /** Coordinates multi-session planning, independent division sessions, dependencies, and reviews. */
 export class DivisionCoordinator {
   constructor(private readonly host: DivisionsHost) {}
@@ -85,11 +107,74 @@ export class DivisionCoordinator {
       .filter((plan): plan is TaskPlan => plan !== undefined)
   }
 
+  /** 启动或恢复时扫描所有持久计划：补齐未创建/首次派工失败的分工、补发待投递通知、恢复待审复查会话。 */
+  async resume(): Promise<void> {
+    for (const plan of this.list()) {
+      await this.reconcilePlan(plan.taskId).catch(error => {
+        const reason = error instanceof Error ? error.message : String(error)
+        this.host.report?.(`division plan ${plan.taskId} could not be resumed: ${reason}`, 'error')
+      })
+    }
+  }
+
+  /**
+   * 核对已有计划的每个分工与待投递消息（M07-b / M07-c）：
+   * - 重试创建/首次派工失败或重启后缺失宿主会话的分工（复用稳定 sessionId 与投递 ID，保护正在运行及已完成成员）。
+   * - 重发尚未送达主会话或分工的待投递通知。
+   */
+  async reconcilePlan(taskId: string): Promise<TaskPlan> {
+    const { store, sessions } = this.host
+    await this.flushDeliveries(taskId)
+    const plan = store.get(KV.sessions.divisions(taskId))
+    if (!plan) throw new Error(`Task plan ${taskId} not found`)
+
+    for (const div of plan.divisions) {
+      const latest = store.get(KV.sessions.divisions(taskId)) ?? plan
+      const currentDiv = latest.divisions.find(d => d.divisionId === div.divisionId) ?? div
+      if (currentDiv.status === 'completed' || currentDiv.status === 'stopped' || currentDiv.status === 'blocked') continue
+      const depsReady = currentDiv.dependsOn.every(depId =>
+        latest.divisions.find(d => d.divisionId === depId)?.status === 'completed')
+      if (!depsReady) continue
+
+      const targetSession = this.host.relay.route(currentDiv.sessionId)
+      const startReqId = `division-start:${latest.taskId}:${currentDiv.divisionId}`
+      const hasAgent = !!this.host.context.agents.get(targetSession as SessionId)
+      const started = hasAgent && await sessions.holds(targetSession, startReqId)
+
+      const needsLaunch = (currentDiv.status === 'failed' && currentDiv.deliveredEventIds.length === 0)
+        || currentDiv.status === 'waiting_deps'
+        || currentDiv.status === 'pending'
+        || (currentDiv.status === 'running' && !started)
+      if (needsLaunch) {
+        const outputs = currentDiv.dependsOn.map(depId => {
+          const dep = latest.divisions.find(d => d.divisionId === depId)!
+          return { divisionId: dep.divisionId, title: dep.title, result: dep.result ?? dep.latestProgress ?? '(completed)' }
+        })
+        await this.launchDivision(latest, currentDiv, outputs)
+      }
+    }
+
+    const afterDivs = store.get(KV.sessions.divisions(taskId)) ?? plan
+    if (afterDivs.review?.state === 'pending') {
+      const reviewSessionId = afterDivs.review.sessionId
+      const round = afterDivs.review.round
+      const reviewReqId = `div-review-start:${afterDivs.taskId}:r${round}`
+      const hasReviewer = !!this.host.context.agents.get(reviewSessionId as SessionId)
+      const prompted = hasReviewer && await sessions.holds(reviewSessionId, reviewReqId)
+      if (!prompted) {
+        await this.startReview(afterDivs, round).catch(() => {})
+      }
+    }
+
+    await this.flushDeliveries(taskId)
+    return store.get(KV.sessions.divisions(taskId)) ?? afterDivs
+  }
+
   /**
    * 从用户对话或任务入口规划并派发工作：
    * - 简单任务或单会话模式：不开额外会话（extraSessions = 0），记录判定依据与未开原因。
-   * - 复杂多分工任务：按 maxSessions 预留槽位，绑定独立可打开会话与模型槽位，按依赖启动可执行分工。
-   * - 同一 (taskId, planKey) 重放幂等：直接返回已有计划，不重复开新会话。
+   * - 复杂任务（含单项独立委派 specs.length === 1 与多项并行分工）：按 maxSessions 预留槽位，绑定独立可打开会话与模型槽位。
+   * - 同一 (taskId, planKey) 重放：核对并恢复失败或未就绪的分工，保护正在运行及已完成成员。
    */
   async dispatch(request: DispatchRequest): Promise<{ plan: TaskPlan; reused: boolean; extraSessions: number }> {
     const { store, sessions } = this.host
@@ -98,7 +183,8 @@ export class DivisionCoordinator {
     const taskId = request.taskId?.trim() || `task-${key(request.originSessionId, planKey).slice(0, 12)}`
     const existing = store.get(KV.sessions.divisions(taskId))
     if (existing && existing.planKey === planKey) {
-      return { plan: existing, reused: true, extraSessions: existing.divisions.length }
+      const reconciled = await this.reconcilePlan(taskId)
+      return { plan: reconciled, reused: true, extraSessions: reconciled.divisions.length }
     }
 
     const specs = request.divisions ?? []
@@ -119,9 +205,9 @@ export class DivisionCoordinator {
     } else if (!assessment.hard) {
       extraSessionsAllowed = false
       skipReason = 'below-difficulty-threshold'
-    } else if (specs.length <= 1) {
+    } else if (specs.length === 0) {
       extraSessionsAllowed = false
-      skipReason = specs.length === 0 ? 'no-split-needed' : 'single-division'
+      skipReason = 'no-split-needed'
     }
 
     const complexity: ComplexityVerdict = {
@@ -205,6 +291,8 @@ export class DivisionCoordinator {
       maxSessions: routing.maxSessions,
       slots,
       divisions,
+      pendingDeliveries: [],
+      deliveredNotificationIds: [],
       createdAt: timestamp,
       updatedAt: timestamp,
     }
@@ -230,6 +318,7 @@ export class DivisionCoordinator {
   ): Promise<void> {
     const { store, sessions } = this.host
     const targetSession = this.host.relay.route(div.sessionId)
+    const startReqId = `division-start:${plan.taskId}:${div.divisionId}`
     try {
       await sessions.ensureDivision(targetSession, plan.directory, `[${plan.title}] ${div.title}`, {
         taskId: plan.taskId,
@@ -254,23 +343,95 @@ export class DivisionCoordinator {
         '',
         'Report progress, blockers, or final completion with orchestrator_division_report (include a unique event_id).',
       ].join('\n')
-      await sessions.prompt(targetSession, `division-start:${plan.taskId}:${div.divisionId}`, promptText, 'queue')
+      if (!await sessions.holds(targetSession, startReqId)) {
+        await sessions.prompt(targetSession, startReqId, promptText, 'queue')
+      }
+      store.atomic(() => {
+        const latest = store.get(KV.sessions.divisions(plan.taskId))
+        const row = latest?.divisions.find(item => item.divisionId === div.divisionId)
+        if (latest && row && row.status !== 'completed') {
+          row.status = 'running'
+          delete row.error
+          row.updatedAt = now()
+          latest.updatedAt = row.updatedAt
+          store.set(KV.sessions.divisions(plan.taskId), latest)
+        }
+      })
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error)
-      const latest = store.get(KV.sessions.divisions(plan.taskId))
-      const row = latest?.divisions.find(item => item.divisionId === div.divisionId)
-      if (latest && row) {
-        row.status = 'failed'
-        row.error = reason
-        row.updatedAt = now()
-        latest.updatedAt = row.updatedAt
-        store.set(KV.sessions.divisions(plan.taskId), latest)
-      }
+      store.atomic(() => {
+        const latest = store.get(KV.sessions.divisions(plan.taskId))
+        const row = latest?.divisions.find(item => item.divisionId === div.divisionId)
+        if (latest && row && row.status !== 'completed') {
+          row.status = 'failed'
+          row.error = reason
+          row.updatedAt = now()
+          latest.updatedAt = row.updatedAt
+          store.set(KV.sessions.divisions(plan.taskId), latest)
+        }
+      })
       this.host.report?.(`division ${div.divisionId} (${targetSession}) could not start: ${reason}`, 'error')
     }
   }
 
-  /** 记录分工汇报、去重并回执、通知主协调者、并唤醒依赖方或触发独立复查。 */
+  /** 按接收方投递所有尚未送达的分工通知；仅在投递成功后在同一事务内记录收件回执并移除待投递项（M07-c）。 */
+  private async flushDeliveries(taskId: string): Promise<void> {
+    const { store, sessions } = this.host
+    const snapshot = store.get(KV.sessions.divisions(taskId))
+    const queue = [...(snapshot?.pendingDeliveries ?? [])]
+    if (!snapshot || queue.length === 0) return
+
+    for (const item of queue) {
+      const currentPlan = store.get(KV.sessions.divisions(taskId))
+      if (!currentPlan) return
+      if ((currentPlan.deliveredNotificationIds ?? []).includes(item.id)) {
+        store.atomic(() => {
+          const latest = store.get(KV.sessions.divisions(taskId))
+          if (!latest) return
+          latest.pendingDeliveries = (latest.pendingDeliveries ?? []).filter(p => p.id !== item.id)
+          store.set(KV.sessions.divisions(taskId), latest)
+        })
+        continue
+      }
+      let target: string
+      if (item.kind === 'origin') {
+        target = this.host.relay.route(currentPlan.originSessionId)
+      } else {
+        const d = currentPlan.divisions.find(x => x.divisionId === item.divisionId)
+        target = this.host.relay.route(d?.sessionId ?? item.targetSessionId)
+      }
+      try {
+        if (item.kind === 'division') {
+          const d = currentPlan.divisions.find(x => x.divisionId === item.divisionId)
+          if (d && !this.host.context.agents.get(target as SessionId)) {
+            await sessions.ensureDivision(target, currentPlan.directory, `[${currentPlan.title}] ${d.title}`, {
+              taskId: currentPlan.taskId,
+              divisionId: d.divisionId,
+              model: d.model,
+              autoHard: currentPlan.complexity.hard,
+            })
+          }
+        }
+        if (!await sessions.holds(target, item.requestId)) {
+          await sessions.prompt(target, item.requestId, item.text, 'queue')
+        }
+        store.atomic(() => {
+          const latest = store.get(KV.sessions.divisions(taskId))
+          if (!latest) return
+          latest.pendingDeliveries = (latest.pendingDeliveries ?? []).filter(p => p.id !== item.id)
+          const delivered = latest.deliveredNotificationIds ?? []
+          if (!delivered.includes(item.id)) {
+            latest.deliveredNotificationIds = [...delivered.slice(-399), item.id]
+          }
+          store.set(KV.sessions.divisions(taskId), latest)
+        })
+      } catch {
+        // 接收方暂时离线或投递失败：保留在 pendingDeliveries 中，下次汇报、重放或 resume 时按同一 requestId 重试。
+      }
+    }
+  }
+
+  /** 记录分工汇报、去重并回执、通知主协调者、并唤醒依赖方或触发独立复查（含退回修复后的下一轮复查）。 */
   async reportDivision(input: {
     taskId: string
     divisionId: string
@@ -279,76 +440,138 @@ export class DivisionCoordinator {
     result?: string | undefined
     eventId: string
   }): Promise<{ deduplicated: boolean; status: string; unblocked: string[]; reviewSessionId?: string }> {
-    const { store, sessions } = this.host
-    const plan = store.get(KV.sessions.divisions(input.taskId))
-    if (!plan) throw new Error(`Task plan ${input.taskId} not found`)
-    const div = plan.divisions.find(item => item.divisionId === input.divisionId)
-    if (!div) throw new Error(`Division ${input.divisionId} not found in ${input.taskId}`)
-    if (div.deliveredEventIds.includes(input.eventId)) {
-      return { deduplicated: true, status: div.status, unblocked: [], ...(plan.review ? { reviewSessionId: plan.review.sessionId } : {}) }
+    const { store } = this.host
+    let alreadyRecorded = false
+    let recordedStatus = ''
+    const toWakeIds: string[] = []
+
+    store.atomic(() => {
+      const plan = store.get(KV.sessions.divisions(input.taskId))
+      if (!plan) throw new Error(`Task plan ${input.taskId} not found`)
+      const div = plan.divisions.find(item => item.divisionId === input.divisionId)
+      if (!div) throw new Error(`Division ${input.divisionId} not found in ${input.taskId}`)
+
+      alreadyRecorded = div.deliveredEventIds.includes(input.eventId)
+      const nextStatus = input.state === 'progress' ? 'running' : input.state
+      const notifyId = `notify:${plan.taskId}:${div.divisionId}:${input.eventId}`
+      const notifyReqId = `div-notify:${plan.taskId}:${div.divisionId}:${input.eventId}`
+      const notifyText = `[division_report] task=${plan.taskId} division=${div.divisionId} (${div.title}) state=${nextStatus} event_id=${input.eventId}\n${input.summary}`
+
+      if (!alreadyRecorded) {
+        div.deliveredEventIds = [...div.deliveredEventIds.slice(-199), input.eventId]
+        div.status = nextStatus
+        div.latestProgress = input.summary
+        if (input.result !== undefined) div.result = input.result
+        else if (input.state === 'completed' && div.result === undefined) div.result = input.summary
+        if (input.state === 'failed') div.error = input.summary
+        div.updatedAt = now()
+        plan.updatedAt = div.updatedAt
+
+        if (div.status === 'completed') {
+          if (plan.review?.state === 'failed' && !plan.review.limitReached) {
+            const pendingRework = plan.review.reworkDivisionIds ?? []
+            plan.review.reworkDivisionIds = pendingRework.filter(id => id !== div.divisionId)
+          }
+          for (const candidate of plan.divisions) {
+            if (candidate.status !== 'waiting_deps') continue
+            const ready = candidate.dependsOn.every(depId =>
+              plan.divisions.find(d => d.divisionId === depId)?.status === 'completed')
+            if (ready) {
+              candidate.status = 'running'
+              candidate.updatedAt = now()
+              toWakeIds.push(candidate.divisionId)
+            }
+          }
+        }
+      }
+
+      recordedStatus = div.status
+      const deliveredIds = plan.deliveredNotificationIds ?? []
+      const pendingList = plan.pendingDeliveries ?? []
+      if (!deliveredIds.includes(notifyId) && !pendingList.some(p => p.id === notifyId)) {
+        const delivery: PendingDivisionDelivery = {
+          id: notifyId,
+          kind: 'origin',
+          targetSessionId: plan.originSessionId,
+          requestId: notifyReqId,
+          text: notifyText,
+        }
+        plan.pendingDeliveries = [...pendingList, delivery]
+      }
+      store.set(KV.sessions.divisions(input.taskId), plan)
+    })
+
+    await this.flushDeliveries(input.taskId)
+
+    for (const wakeId of toWakeIds) {
+      const currentPlan = store.get(KV.sessions.divisions(input.taskId))
+      const nextDiv = currentPlan?.divisions.find(d => d.divisionId === wakeId)
+      if (!currentPlan || !nextDiv) continue
+      const outputs = nextDiv.dependsOn.map(depId => {
+        const dep = currentPlan.divisions.find(d => d.divisionId === depId)!
+        return { divisionId: dep.divisionId, title: dep.title, result: dep.result ?? dep.latestProgress ?? '(completed)' }
+      })
+      await this.launchDivision(currentPlan, nextDiv, outputs)
     }
 
-    div.deliveredEventIds = [...div.deliveredEventIds.slice(-199), input.eventId]
-    div.status = input.state === 'progress' ? 'running' : input.state
-    div.latestProgress = input.summary
-    if (input.result !== undefined) div.result = input.result
-    else if (input.state === 'completed' && div.result === undefined) div.result = input.summary
-    if (input.state === 'failed') div.error = input.summary
-    div.updatedAt = now()
-    plan.updatedAt = div.updatedAt
-
-    const toWake: DivisionRecord[] = []
-    if (div.status === 'completed') {
-      for (const candidate of plan.divisions) {
-        if (candidate.status !== 'waiting_deps') continue
-        const ready = candidate.dependsOn.every(depId => plan.divisions.find(d => d.divisionId === depId)?.status === 'completed')
-        if (ready) {
-          candidate.status = 'running'
-          candidate.updatedAt = now()
-          toWake.push(candidate)
+    const afterPlan = store.get(KV.sessions.divisions(input.taskId))
+    let reviewSessionId = afterPlan?.review?.sessionId
+    const allDone = !!afterPlan && afterPlan.divisions.length > 0 && afterPlan.divisions.every(d => d.status === 'completed')
+    if (allDone && afterPlan && store.settings().executor.reviewEnabled) {
+      if (!afterPlan.review) {
+        reviewSessionId = await this.startReview(afterPlan, 1).catch(() => afterPlan.review?.sessionId)
+      } else if (afterPlan.review.state === 'failed' && !afterPlan.review.limitReached && !(afterPlan.review.reworkDivisionIds?.length)) {
+        if (afterPlan.review.round < MAX_REVIEW_ROUNDS) {
+          reviewSessionId = await this.startReview(afterPlan, afterPlan.review.round + 1).catch(() => afterPlan.review?.sessionId)
+        } else {
+          store.atomic(() => {
+            const latest = store.get(KV.sessions.divisions(input.taskId))
+            if (latest?.review) {
+              latest.review.limitReached = true
+              latest.review.summary = `Independent review reached its ${MAX_REVIEW_ROUNDS}-round limit.`
+              latest.updatedAt = now()
+              store.set(KV.sessions.divisions(input.taskId), latest)
+            }
+          })
         }
       }
     }
-    store.set(KV.sessions.divisions(input.taskId), plan)
 
-    const originTarget = this.host.relay.route(plan.originSessionId)
-    const notifyText = `[division_report] task=${plan.taskId} division=${div.divisionId} (${div.title}) state=${div.status} event_id=${input.eventId}\n${input.summary}`
-    await sessions.prompt(originTarget, `div-notify:${plan.taskId}:${div.divisionId}:${input.eventId}`, notifyText, 'queue')
-      .catch(() => { /* 主会话可能未加载；报告已持久写入任务板 */ })
-
-    for (const nextDiv of toWake) {
-      const outputs = nextDiv.dependsOn.map(depId => {
-        const dep = plan.divisions.find(d => d.divisionId === depId)!
-        return { divisionId: dep.divisionId, title: dep.title, result: dep.result ?? dep.latestProgress ?? '(completed)' }
-      })
-      await this.launchDivision(plan, nextDiv, outputs)
+    if (alreadyRecorded) {
+      return {
+        deduplicated: true,
+        status: recordedStatus,
+        unblocked: [],
+        ...(reviewSessionId ? { reviewSessionId } : {}),
+      }
     }
 
-    let reviewSessionId = plan.review?.sessionId
-    const allDone = plan.divisions.length > 0 && plan.divisions.every(d => d.status === 'completed')
-    if (allDone && !plan.review && store.settings().executor.reviewEnabled) {
-      reviewSessionId = await this.startReview(plan)
-    }
     return {
       deduplicated: false,
-      status: div.status,
-      unblocked: toWake.map(d => d.divisionId),
+      status: recordedStatus,
+      unblocked: toWakeIds,
       ...(reviewSessionId ? { reviewSessionId } : {}),
     }
   }
 
-  /** 启动绑定真实可打开会话的独立复查。 */
+  /** 启动绑定真实可打开会话的独立复查（同一轮重启幂等复用）。 */
   async startReview(plan: TaskPlan, round = 1): Promise<string> {
     const { store, sessions } = this.host
-    const reviewSessionId = `div-review-${key(plan.taskId, String(round)).slice(0, 12)}-r${round}`
+    const existing = store.get(KV.sessions.divisions(plan.taskId)) ?? plan
+    const reviewSessionId = existing.review?.round === round && existing.review.sessionId
+      ? existing.review.sessionId
+      : `div-review-${key(plan.taskId, String(round)).slice(0, 12)}-r${round}`
     const reviewDivisionId = `__review_r${round}`
-    const updated = store.get(KV.sessions.divisions(plan.taskId)) ?? plan
-    updated.review = { sessionId: reviewSessionId, round, state: 'pending' }
-    updated.updatedAt = now()
+
+    let updated!: TaskPlan
     store.atomic(() => {
+      updated = store.get(KV.sessions.divisions(plan.taskId)) ?? plan
+      updated.review = { sessionId: reviewSessionId, round, state: 'pending' }
+      updated.updatedAt = now()
       store.set(KV.sessions.divisions(plan.taskId), updated)
       store.set(KV.sessions.divisionOwner(reviewSessionId), { taskId: plan.taskId, divisionId: reviewDivisionId })
     })
+
     const evalModel = store.settings().eval.model ?? updated.originModel
     await sessions.ensureDivision(reviewSessionId, updated.directory, `[复查 R${round}] ${updated.title}`, {
       taskId: plan.taskId,
@@ -356,70 +579,165 @@ export class DivisionCoordinator {
       model: evalModel,
       autoHard: true,
     })
-    const summaryLines = updated.divisions.map(d => `- ${d.title} (${d.divisionId}, session ${d.sessionId}): ${d.result ?? d.latestProgress ?? d.status}`)
-    await sessions.prompt(reviewSessionId, `div-review-start:${plan.taskId}:r${round}`, [
-      `Independently review task ${plan.taskId} ("${updated.title}") in ${updated.directory}.`,
-      '## Division deliverables',
-      ...summaryLines,
-      '',
-      'Inspect files and deliverables, then call orchestrator_division_review_submit with approved, summary, and findings.',
-    ].join('\n'), 'queue')
+    const reqId = `div-review-start:${plan.taskId}:r${round}`
+    if (!await sessions.holds(reviewSessionId, reqId)) {
+      const summaryLines = updated.divisions.map(d =>
+        `- ${d.title} (${d.divisionId}, session ${d.sessionId}): ${d.result ?? d.latestProgress ?? d.status}`)
+      await sessions.prompt(reviewSessionId, reqId, [
+        `Independently review task ${plan.taskId} ("${updated.title}") in ${updated.directory} (round ${round} of ${MAX_REVIEW_ROUNDS}).`,
+        '## Division deliverables',
+        ...summaryLines,
+        '',
+        'Inspect files and deliverables, then call orchestrator_division_review_submit with approved, summary, and findings.',
+      ].join('\n'), 'queue')
+    }
     return reviewSessionId
   }
 
-  async submitReview(input: { taskId: string; approved: boolean; summary: string; findings?: string[] | undefined }): Promise<TaskPlan> {
-    const { store, sessions } = this.host
-    const plan = store.get(KV.sessions.divisions(input.taskId))
-    if (!plan || !plan.review) throw new Error(`No active division review for ${input.taskId}`)
-    plan.review = {
-      ...plan.review,
-      state: input.approved ? 'passed' : 'failed',
-      summary: input.summary,
-      ...(input.findings ? { findings: input.findings } : {}),
-    }
-    plan.updatedAt = now()
-    store.set(KV.sessions.divisions(input.taskId), plan)
-    const originTarget = this.host.relay.route(plan.originSessionId)
-    await sessions.prompt(originTarget, `div-review-result:${plan.taskId}:r${plan.review.round}`,
-      `[division_review] task=${plan.taskId} round=${plan.review.round} state=${plan.review.state}\n${input.summary}`, 'queue')
-      .catch(() => {})
-    return plan
+  /** 提交独立复查结论：若退回则持久记录需返工项与负责人并派回，待修复完成后自动进入下一轮复查（M07-f）。 */
+  async submitReview(input: {
+    taskId: string
+    approved: boolean
+    summary: string
+    findings?: string[] | undefined
+    reworkDivisionIds?: string[] | undefined
+    acceptanceCriteria?: string | undefined
+  }): Promise<TaskPlan> {
+    const { store } = this.host
+    store.atomic(() => {
+      const plan = store.get(KV.sessions.divisions(input.taskId))
+      if (!plan || !plan.review) throw new Error(`No active division review for ${input.taskId}`)
+      const round = plan.review.round
+      const timestamp = now()
+      const pendingList = [...(plan.pendingDeliveries ?? [])]
+      const deliveredIds = plan.deliveredNotificationIds ?? []
+
+      if (input.approved) {
+        plan.review = {
+          ...plan.review,
+          state: 'passed',
+          summary: input.summary,
+          ...(input.findings ? { findings: input.findings } : {}),
+          reworkDivisionIds: [],
+        }
+      } else if (round >= MAX_REVIEW_ROUNDS) {
+        plan.review = {
+          ...plan.review,
+          state: 'failed',
+          limitReached: true,
+          summary: `Independent review reached its ${MAX_REVIEW_ROUNDS}-round limit: ${input.summary}`,
+          ...(input.findings ? { findings: input.findings } : {}),
+          reworkDivisionIds: [],
+        }
+      } else {
+        const searchText = [input.summary, ...(input.findings ?? [])].join('\n')
+        const matched = matchReworkDivisions(plan.divisions, searchText, input.reworkDivisionIds)
+        const reworkIds = matched.length > 0
+          ? matched.map(d => d.divisionId)
+          : plan.divisions.map(d => d.divisionId)
+
+        if (matched.length > 0) {
+          for (const d of matched) {
+            d.status = 'running'
+            d.updatedAt = timestamp
+          }
+        }
+
+        plan.review = {
+          ...plan.review,
+          state: 'failed',
+          summary: input.summary,
+          acceptanceCriteria: input.summary,
+          ...(input.findings ? { findings: input.findings } : {}),
+          reworkDivisionIds: reworkIds,
+        }
+
+        const findingsLines = input.findings?.length ? `\nFindings:\n${input.findings.map(f => `- ${f}`).join('\n')}` : ''
+        for (const divId of reworkIds) {
+          const d = plan.divisions.find(x => x.divisionId === divId)
+          if (!d) continue
+          const reworkNotifyId = `rework:${plan.taskId}:r${round}:${divId}`
+          if (!deliveredIds.includes(reworkNotifyId) && !pendingList.some(p => p.id === reworkNotifyId)) {
+            pendingList.push({
+              id: reworkNotifyId,
+              kind: 'division',
+              divisionId: divId,
+              targetSessionId: d.sessionId,
+              requestId: `div-rework:${plan.taskId}:r${round}:${divId}`,
+              text: `[Independent review round ${round} rejected]\n${input.summary}${findingsLines}\nFix the reported issues and call orchestrator_division_report with state="completed" and a new event_id.`,
+            })
+          }
+        }
+      }
+
+      const resultNotifyId = `review-result:${plan.taskId}:r${round}:${plan.review.state}`
+      if (!deliveredIds.includes(resultNotifyId) && !pendingList.some(p => p.id === resultNotifyId)) {
+        pendingList.push({
+          id: resultNotifyId,
+          kind: 'origin',
+          targetSessionId: plan.originSessionId,
+          requestId: `div-review-result:${plan.taskId}:r${round}`,
+          text: `[division_review] task=${plan.taskId} round=${round} state=${plan.review.state}\n${plan.review.summary ?? input.summary}`,
+        })
+      }
+
+      plan.pendingDeliveries = pendingList
+      plan.updatedAt = timestamp
+      store.set(KV.sessions.divisions(input.taskId), plan)
+    })
+
+    await this.flushDeliveries(input.taskId)
+    return store.get(KV.sessions.divisions(input.taskId))!
   }
 
-  /** 由协调者或用户向指定分工对话投递补充指令，自动跟随 60% 接班路由并按 requestId 去重。 */
+  /**
+   * 由协调者或用户向指定分工对话投递补充指令，自动跟随 60% 接班路由并按 requestId 去重。
+   * 投递完成后在事务内重新读取最新计划并仅合并本次 requestId 回执，绝不覆盖并发上报的完成状态或模型调用记录（M07-d）。
+   */
   async sendToDivision(input: { taskId: string; divisionId: string; message: string; requestId: string }): Promise<{
     sent: boolean; deduplicated: boolean; sessionId: string
   }> {
     const { store, sessions } = this.host
-    const plan = store.get(KV.sessions.divisions(input.taskId))
-    const div = plan?.divisions.find(item => item.divisionId === input.divisionId)
-    if (!plan || !div) throw new Error(`Division ${input.divisionId} not found in ${input.taskId}`)
-    if (div.deliveredEventIds.includes(input.requestId)) {
-      return { sent: false, deduplicated: true, sessionId: this.host.relay.route(div.sessionId) }
+    const snapshot = store.get(KV.sessions.divisions(input.taskId))
+    const divSnapshot = snapshot?.divisions.find(item => item.divisionId === input.divisionId)
+    if (!snapshot || !divSnapshot) throw new Error(`Division ${input.divisionId} not found in ${input.taskId}`)
+    if (divSnapshot.deliveredEventIds.includes(input.requestId)) {
+      return { sent: false, deduplicated: true, sessionId: this.host.relay.route(divSnapshot.sessionId) }
     }
-    const target = this.host.relay.route(div.sessionId)
-    await sessions.ensureDivision(target, plan.directory, `[${plan.title}] ${div.title}`, {
-      taskId: plan.taskId, divisionId: div.divisionId, model: div.model, autoHard: plan.complexity.hard,
+    const target = this.host.relay.route(divSnapshot.sessionId)
+    await sessions.ensureDivision(target, snapshot.directory, `[${snapshot.title}] ${divSnapshot.title}`, {
+      taskId: snapshot.taskId, divisionId: divSnapshot.divisionId, model: divSnapshot.model, autoHard: snapshot.complexity.hard,
     })
     await sessions.prompt(target, `div-send:${input.taskId}:${input.divisionId}:${input.requestId}`, input.message, 'queue')
-    div.deliveredEventIds = [...div.deliveredEventIds.slice(-199), input.requestId]
-    div.updatedAt = now()
-    plan.updatedAt = div.updatedAt
-    store.set(KV.sessions.divisions(input.taskId), plan)
+
+    store.atomic(() => {
+      const latest = store.get(KV.sessions.divisions(input.taskId))
+      const latestDiv = latest?.divisions.find(item => item.divisionId === input.divisionId)
+      if (!latest || !latestDiv) return
+      if (!latestDiv.deliveredEventIds.includes(input.requestId)) {
+        latestDiv.deliveredEventIds = [...latestDiv.deliveredEventIds.slice(-199), input.requestId]
+      }
+      latestDiv.updatedAt = now()
+      latest.updatedAt = latestDiv.updatedAt
+      store.set(KV.sessions.divisions(input.taskId), latest)
+    })
     return { sent: true, deduplicated: false, sessionId: target }
   }
 
   /** 在请求边界记录该分工对话实际使用的供应商、模型与思考等级。 */
   observeModelCall(sessionId: string, call: Omit<DivisionModelCall, 'at'>): void {
-    const owner = this.host.store.get(KV.sessions.divisionOwner(sessionId))
+    const { store } = this.host
+    const owner = store.get(KV.sessions.divisionOwner(sessionId))
     if (!owner) return
-    const plan = this.host.store.get(KV.sessions.divisions(owner.taskId))
-    const div = plan?.divisions.find(item => item.divisionId === owner.divisionId)
-    if (!plan || !div) return
-    div.modelCalls = [...div.modelCalls.slice(-49), { at: now(), ...call }]
-    div.updatedAt = now()
-    plan.updatedAt = div.updatedAt
-    this.host.store.set(KV.sessions.divisions(owner.taskId), plan)
+    store.atomic(() => {
+      const plan = store.get(KV.sessions.divisions(owner.taskId))
+      const div = plan?.divisions.find(item => item.divisionId === owner.divisionId)
+      if (!plan || !div) return
+      div.modelCalls = [...div.modelCalls.slice(-49), { at: now(), ...call }]
+      div.updatedAt = now()
+      plan.updatedAt = div.updatedAt
+      store.set(KV.sessions.divisions(owner.taskId), plan)
+    })
   }
 
   /** 为独立分工会话及独立复查会话注册的工具集。 */
@@ -451,9 +769,18 @@ export class DivisionCoordinator {
           approved: z.boolean(),
           summary: z.string().min(1).max(4000),
           findings: z.array(z.string().min(1)).optional(),
+          rework_division_ids: z.array(z.string().min(1)).optional(),
+          acceptance_criteria: z.string().max(4000).optional(),
         }).strict(),
         execute: async args => {
-          const updated = await coordinator.submitReview({ taskId, approved: args.approved, summary: args.summary, findings: args.findings })
+          const updated = await coordinator.submitReview({
+            taskId,
+            approved: args.approved,
+            summary: args.summary,
+            findings: args.findings,
+            reworkDivisionIds: args.rework_division_ids,
+            acceptanceCriteria: args.acceptance_criteria,
+          })
           return { recorded: true, review: updated.review }
         },
       }))

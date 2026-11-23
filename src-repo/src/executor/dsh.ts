@@ -143,6 +143,8 @@ export interface ExecutorHost {
   readonly lifetime: AbortSignal
   /** Session manager for worker sessions and for relaying worker reports to the main Session. */
   readonly sessions: Pick<Sessions, 'ensure' | 'prompt' | 'promptedId' | 'relay' | 'holds'>
+  /** Optional persistent division coordinator for complex multi-session tickets (M07-a). */
+  readonly divisions?: Pick<import('../app/divisions.ts').DivisionCoordinator, 'dispatch'> | undefined
   closing(): boolean
   /** Hold new assignments once the observed daily token limit is reached. */
   budgetExceeded(): boolean
@@ -677,9 +679,28 @@ export class DshExecutor implements Executor {
       () => { this.host.engine.assignmentStarted(ticket.id, assignment.id) })
     this.host.engine.assignmentStarted(ticket.id, assignment.id)
     if (!told && multiSession(reading) && hard) {
+      const taskText = source?.text ?? assignmentText
+      if (this.host.divisions) {
+        await this.host.divisions.dispatch({
+          taskId: ticket.id,
+          originSessionId: sessionId,
+          directory: workspace,
+          title: ticket.title,
+          brief: taskText,
+          difficulty: ticket.execution?.difficulty ?? Math.max(reading.difficultyThreshold, 80),
+          planKey: `ticket:${ticket.id}`,
+          divisions: [{
+            divisionId: 'investigate',
+            title: `Independent investigation: ${ticket.title}`,
+            brief: `Investigate this task independently without changing files or external state. Report concrete findings and risks using orchestrator_division_report. Task: ${taskText.slice(0, 4000)}`,
+          }],
+        }).catch(error => {
+          if (!this.host.closing()) this.host.health.set({ state: 'error', detail: `Division could not start: ${error instanceof Error ? error.message : String(error)}` })
+        })
+      }
       // A real child is started for complex work; it independently investigates and reports to the lead.
       // Its stable name makes re-delivery after restart idempotent.
-      void this.startInvestigator(agent, ticket, source?.text ?? assignmentText).catch(error => {
+      void this.startInvestigator(agent, ticket, taskText).catch(error => {
         if (!this.host.closing()) this.host.health.set({ state: 'error', detail: `Team member could not start: ${error instanceof Error ? error.message : String(error)}` })
       })
     }

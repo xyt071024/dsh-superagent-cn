@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/xyt071024/dsh-superagent-cn/releases"><img src="https://img.shields.io/badge/release-v0.3.12-2ea44f" alt="release"></a>
+  <a href="https://github.com/xyt071024/dsh-superagent-cn/releases"><img src="https://img.shields.io/badge/release-v0.3.13-2ea44f" alt="release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="license"></a>
   <a href="https://xyt071024.github.io/dsh-superagent-cn/"><img src="https://img.shields.io/badge/docs-中文%20%7C%20EN%20%7C%20日本語-6f42c1" alt="docs"></a>
   <img src="https://img.shields.io/badge/Node-22.19%2B%20%7C%2024%2B-339933" alt="node">
@@ -47,7 +47,14 @@
 
 ---
 
-## v0.3.12 更新内容
+## v0.3.13 更新内容
+
+详见 [CHANGELOG.md](CHANGELOG.md)。核心改进包括：
+- **M07 分工韧性与单子项委托深度闭环**：高难度工单在 `DshExecutor` 自动落入持久化 `TaskPlan` 并创建真实可打开分工会话（`M07-a`）；支持高难度单子项独立委派开 1 个分工会话（`M07-e`）；重放同一 `planKey` 或重启 `resume()` 自动按原会话与请求 ID 补建恢复瞬时失败的分工而不影响已运行/已完成成员（`M07-b`）；汇报进度落盘与协调窗口通知回执分离为持久化待投递队列，瞬时失败后重复汇报或恢复自动补发（`M07-c`）；消除 `sendToDivision` 等跨 `await` 写回旧快照的竞态，并发追问与汇报共存不丢完成态（`M07-d`）；独立复查支持最多 3 轮打回重做并自动推进第 2/3 轮复查（`M07-f`）。
+- **M06-a 分工会话多代接班与激活恢复**：`moveDivision` 持久化 `pendingActivation`，崩溃或唤醒瞬时失败后由 `relay.resume()` 幂等补建并唤醒新代分工会话，连续多代接班（`r1→r2→r3`）与旧窗口输入转发直达最新代次。
+- **Windows 深层中文路径引导复制加固**：`windows-profile-bootstrap.mjs` 改用纯 JS 递归 `copyDir` 替代 Node v22.19.0 在深层中文路径下存在栈溢出（`0xC0000409`）的原生 `fs.cpSync`。
+
+## 历史记录：v0.3.12 更新内容
 
 详见 [CHANGELOG.md](CHANGELOG.md)。核心改进包括：
 - **M07 多会话独立分工与复查**：`orchestrator_dispatch` 按任务复杂度分流（简单 0 额外会话；复杂拆分独立可打开的持久化 DSH 会话）、`maxSessions` 与混用/继承模型槽位、DAG 依赖唤醒、`event_id` 去重及独立复查入口。
@@ -125,17 +132,17 @@
 
 | 你的情况 | 选这个 |
 |---|---|
-| 已装 DSH | `Super-Agent-Plugin-v0.3.12.tgz` |
-| 未装 Node / 未装 DSH（Windows） | `Super-Agent-Bundled-Windows-x64-v0.3.12.zip` |
-| 未装 Node / 未装 DSH（macOS Apple 芯片） | `Super-Agent-Bundled-macOS-arm64-v0.3.12.zip` |
-| 未装 Node / 未装 DSH（macOS Intel） | `Super-Agent-Bundled-macOS-x64-v0.3.12.zip` |
-| 未装 Node / 未装 DSH（Linux） | `Super-Agent-Bundled-Linux-x64-v0.3.12.zip` |
+| 已装 DSH | `Super-Agent-Plugin-v0.3.13.tgz` |
+| 未装 Node / 未装 DSH（Windows） | `Super-Agent-Bundled-Windows-x64-v0.3.13.zip` |
+| 未装 Node / 未装 DSH（macOS Apple 芯片） | `Super-Agent-Bundled-macOS-arm64-v0.3.13.zip` |
+| 未装 Node / 未装 DSH（macOS Intel） | `Super-Agent-Bundled-macOS-x64-v0.3.13.zip` |
+| 未装 Node / 未装 DSH（Linux） | `Super-Agent-Bundled-Linux-x64-v0.3.13.zip` |
 
 内置包解压后双击 `start.cmd`（Windows）或 `./start.sh`，自动把 profile 装到 `~/.dsh/profiles/superagent`（若已存在则无损升级并保留配置）并选空闲端口启动。
 
 ```bash
 # 插件版安装
-dsh plugin add ./Super-Agent-Plugin-v0.3.12.tgz
+dsh plugin add ./Super-Agent-Plugin-v0.3.13.tgz
 ```
 
 ---
@@ -174,7 +181,7 @@ dsh plugin add ./Super-Agent-Plugin-v0.3.12.tgz
 
 **各通道未做真实收发验收。** 已通过本地模拟服务器验证 OneBot / IMAP / SMTP 的协议行为与错误映射；真实账号的登录、收发、断线恢复、重启去重未验证。
 
-**Windows 上 36 项测试失败。** 测试脚本依赖 POSIX 命令、符号链接、POSIX 权限位，以及无扩展名脚本模拟 CLI。另 1 项（git config 引号转义）存疑待确认。这不是功能故障，但不等于「测试全过」。
+**Windows 与 Linux 测试全绿。** Windows 原生环境下 75 个测试文件（1350 项用例）全部通过，仅 `service-script.spec.ts`（15 项 POSIX 守护脚本测试）在 Windows 下按平台条件跳过并在 Linux CI 中完整执行通过。
 
 ---
 
@@ -189,9 +196,9 @@ dsh plugin add ./Super-Agent-Plugin-v0.3.12.tgz
         ▼
    执行会话（worker）── 缺少能力？自己装插件
         │
-        ├─ 难度够了 → Agent Teams 拆多人协作
+        ├─ 难度够了 → DivisionCoordinator / Agent Teams 拆独立可打开分工会话
         │
-        └─ 复杂工单 → 独立复查员（只读、看不到执行过程）
+        └─ 复杂工单 → 独立复查员（只读、看不到执行过程，支持最多 3 轮打回重做）
 ```
 
 **四条设计约束**：
@@ -208,10 +215,9 @@ dsh plugin add ./Super-Agent-Plugin-v0.3.12.tgz
 ```
 typecheck        0 错
 build            0 错
-测试             1349 项 / 1314 通过 / 35 失败
+测试（Windows）  75 文件通过 / 1 文件按平台跳过（1350 通过 / 15 跳过 / 0 失败）
+测试（Linux CI） 76 文件全部通过
 ```
-
-失败项原因见上文「已知限制」。
 
 ---
 

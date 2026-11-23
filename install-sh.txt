@@ -146,7 +146,7 @@ sa_purge_name() {
 
 # The pinned address is the fallback for a run that cannot reach the API at all (offline, proxy, rate limit). It names
 # one exact asset, so it moves together with the version and never guesses.
-SA_PINNED_VERSION='0.3.12'
+SA_PINNED_VERSION='0.3.13'
 SA_PINNED_URL="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v$SA_PINNED_VERSION/Super-Agent-Plugin-v$SA_PINNED_VERSION.tgz"
 SA_API="https://api.github.com/repos/xyt071024/dsh-superagent-cn/releases/latest"
 

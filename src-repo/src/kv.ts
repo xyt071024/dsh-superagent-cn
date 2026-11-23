@@ -100,8 +100,20 @@ export interface DivisionRecord {
   error?: string
   /** 已处理的事件/回执 ID，用于去重并避免回报循环。 */
   deliveredEventIds: string[]
+  /** 指针已切换但尚未确认完成唤醒的目标分工会话与代次（M06-a）。 */
+  pendingActivation?: { target: string; generation: number } | undefined
   createdAt: string
   updatedAt: string
+}
+
+/** 待投递的分工通知（进度回报、退回返工、复查结果），与状态变更同事务写入并在恢复时按接收方幂等重发（M07-c）。 */
+export interface PendingDivisionDelivery {
+  id: string
+  kind: 'origin' | 'division'
+  divisionId?: string | undefined
+  targetSessionId: string
+  requestId: string
+  text: string
 }
 
 /** 一次任务（工单或聊天派工）的多会话规划与运行记录。 */
@@ -116,13 +128,18 @@ export interface TaskPlan {
   maxSessions: number
   slots: Record<string, number>
   divisions: DivisionRecord[]
+  pendingDeliveries?: PendingDivisionDelivery[] | undefined
+  deliveredNotificationIds?: string[] | undefined
   review?: {
     sessionId: string
     round: number
     state: 'pending' | 'passed' | 'failed'
-    summary?: string
-    findings?: string[]
-  }
+    summary?: string | undefined
+    acceptanceCriteria?: string | undefined
+    findings?: string[] | undefined
+    reworkDivisionIds?: string[] | undefined
+    limitReached?: boolean | undefined
+  } | undefined
   createdAt: string
   updatedAt: string
 }

@@ -290,6 +290,219 @@ describe('M07: 复杂度判定与多独立可打开分工对话', () => {
       })).rejects.toThrow(/maxSessions limit is 5/)
     } finally { await h.stop() }
   })
+
+  it('M07-a/e: 高难度 Ticket 自动落入持久化分工计划，且单子项委托允许开 1 个独立会话', async () => {
+    const h = await startRuntime(store => {
+      const s = store.settings()
+      store.saveSettings(SettingsSchema.parse({
+        ...s,
+        routing: { ...s.routing, multiSession: 'auto', maxSessions: 5, difficultyThreshold: 40 },
+      }))
+    })
+    try {
+      const { ticket, sessionId } = await h.acceptedTicket(feishu(
+        'gh-hard-1',
+        'Refactor auth architecture, database migration, and security audit across services\n' +
+        'Critical security and schema migration across 12 modules with rollback verification and breaking API changes.\n'.repeat(12),
+      ))
+      const plans = h.runtime.divisions.list()
+      expect(plans.length).toBeGreaterThanOrEqual(1)
+      const ticketPlan = plans.find(p => p.taskId === ticket.id || p.originSessionId === sessionId)
+      expect(ticketPlan).toBeDefined()
+      expect(ticketPlan!.divisions.length).toBeGreaterThanOrEqual(1)
+      for (const div of ticketPlan!.divisions) {
+        expect(h.agents.has(div.sessionId)).toBe(true)
+      }
+
+      // 单子项高难度委托开 1 个独立分工会话
+      const master = h.runtime.masterId
+      const single = await h.runTool(master, 'orchestrator_dispatch', {
+        task_id: 'single-div-task',
+        title: '独立长耗时日志审计与安全扫描',
+        brief: '单独委托给 1 个独立分工对话处理并汇报',
+        difficulty: 85,
+        plan_key: 'single-div-key',
+        divisions: [{ division_id: 'audit', title: '安全审计', brief: '执行全量扫描' }],
+      }) as { extra_sessions: number; divisions: Array<{ session_id: string }> }
+      expect(single.extra_sessions).toBe(1)
+      expect(h.agents.has(single.divisions[0]!.session_id)).toBe(true)
+    } finally { await h.stop() }
+  })
+
+  it('M07-b/c/d/f & M06-a: 启动失败重放恢复、汇报通知重试、并发追问不丢完成态、多轮打回重做及多代分工接班恢复', async () => {
+    const h = await startRuntime(store => {
+      const s = store.settings()
+      store.saveSettings(SettingsSchema.parse({
+        ...s,
+        executor: { ...s.executor, reviewEnabled: true },
+        routing: { ...s.routing, multiSession: 'auto', maxSessions: 5 },
+      }))
+    })
+    try {
+      const master = h.runtime.masterId
+
+      // M07-b: 某个分工首次启动失败，重放同 plan_key 时仅补建失败分工并恢复至 running
+      let failOnce = true
+      const origPrompt = h.runtime.sessions.prompt.bind(h.runtime.sessions)
+      const promptSpy = vi.spyOn(h.runtime.sessions, 'prompt').mockImplementation(async (...args) => {
+        if (failOnce && args[1] === 'division-start:recover-task:b') {
+          failOnce = false
+          throw new Error('simulated transient launch error')
+        }
+        return origPrompt(...args)
+      })
+
+      const first = await h.runTool(master, 'orchestrator_dispatch', {
+        task_id: 'recover-task',
+        title: '启动失败恢复验证',
+        brief: 'A 与 B 并行',
+        difficulty: 80,
+        plan_key: 'recover-key',
+        divisions: [
+          { division_id: 'a', title: 'A', brief: 'Task A' },
+          { division_id: 'b', title: 'B', brief: 'Task B', depends_on: ['a'] },
+        ],
+      }) as { divisions: Array<{ division_id: string; session_id: string; status: string }> }
+      const divA = first.divisions.find(d => d.division_id === 'a')!
+
+      // M07-c: A 汇报时若通知主窗口瞬时失败，不应提前写入已投递回执，重复汇报应补发通知并推进 B
+      let failNotifyOnce = true
+      promptSpy.mockImplementation(async (...args) => {
+        if (failNotifyOnce && args[1]?.startsWith('div-notify:recover-task:a:')) {
+          failNotifyOnce = false
+          throw new Error('simulated notify transient failure')
+        }
+        if (failOnce && args[1] === 'division-start:recover-task:b') {
+          failOnce = false
+          throw new Error('simulated transient launch error')
+        }
+        return origPrompt(...args)
+      })
+
+      await h.runTool(divA.session_id, 'orchestrator_division_report', {
+        state: 'completed',
+        summary: 'A done',
+        result: 'A_RES',
+        event_id: 'evt-a-1',
+      })
+      // 通知主窗口失败时，未写入 deliveredNotificationIds，保留在 pendingDeliveries；且 B 首次启动失败标为 failed
+      expect(h.runtime.divisions.get('recover-task')?.deliveredNotificationIds ?? []).not.toContain('notify:recover-task:a:evt-a-1')
+      expect((h.runtime.divisions.get('recover-task')?.pendingDeliveries ?? []).length).toBeGreaterThan(0)
+      expect(h.runtime.divisions.get('recover-task')?.divisions.find(d => d.divisionId === 'b')?.status).toBe('failed')
+
+      // 重复调用同 event_id：通知补发成功并写入 deliveredNotificationIds
+      const dupRep = await h.runTool(divA.session_id, 'orchestrator_division_report', {
+        state: 'completed',
+        summary: 'A done',
+        result: 'A_RES',
+        event_id: 'evt-a-1',
+      }) as { deduplicated: boolean }
+      expect(dupRep.deduplicated).toBe(true)
+      expect(h.runtime.divisions.get('recover-task')?.deliveredNotificationIds ?? []).toContain('notify:recover-task:a:evt-a-1')
+      expect(h.runtime.divisions.get('recover-task')?.pendingDeliveries ?? []).toHaveLength(0)
+      expect(h.runtime.divisions.get('recover-task')?.divisions.find(d => d.divisionId === 'b')?.status).toBe('failed')
+
+      const replayed = await h.runTool(master, 'orchestrator_dispatch', {
+        task_id: 'recover-task',
+        title: '启动失败恢复验证',
+        brief: 'A 与 B 并行',
+        difficulty: 80,
+        plan_key: 'recover-key',
+        divisions: [
+          { division_id: 'a', title: 'A', brief: 'Task A' },
+          { division_id: 'b', title: 'B', brief: 'Task B', depends_on: ['a'] },
+        ],
+      }) as { reused: boolean; divisions: Array<{ division_id: string; session_id: string; status: string }> }
+      expect(replayed.reused).toBe(true)
+      const divB = replayed.divisions.find(d => d.division_id === 'b')!
+      expect(divB.status).toBe('running')
+
+      // M07-d: sendToDivision 慢投递期间 B 并发汇报 completed，不得回滚 completed 状态
+      let releaseSend!: () => void
+      const sendGate = new Promise<void>(r => { releaseSend = r })
+      promptSpy.mockImplementation(async (...args) => {
+        if (args[1] === 'div-send:recover-task:b:concurrent-msg-1') await sendGate
+        return origPrompt(...args)
+      })
+
+      const pendingSend = h.runtime.divisions.sendToDivision({
+        taskId: 'recover-task',
+        divisionId: 'b',
+        message: '补充说明',
+        requestId: 'concurrent-msg-1',
+      })
+      await new Promise(r => setTimeout(r, 15))
+      await h.runTool(divB.session_id, 'orchestrator_division_report', {
+        state: 'completed',
+        summary: 'B done concurrently',
+        result: 'B_RES',
+        event_id: 'evt-b-1',
+      })
+      releaseSend()
+      await pendingSend
+
+      const afterConcurrent = h.runtime.divisions.get('recover-task')!
+      const bRow = afterConcurrent.divisions.find(d => d.divisionId === 'b')!
+      expect(bRow.status).toBe('completed')
+      expect(bRow.result).toBe('B_RES')
+      expect(bRow.deliveredEventIds).toContain('concurrent-msg-1')
+      expect(bRow.deliveredEventIds).toContain('evt-b-1')
+
+      // M07-f: 复查打回 -> 分工返工重提 -> 自动进入第 2 轮复查并通过
+      const reviewSession1 = afterConcurrent.review!.sessionId
+      await h.runTool(reviewSession1, 'orchestrator_division_review_submit', {
+        approved: false,
+        summary: 'Fix B edge case',
+        findings: ['B needs retry logic'],
+        rework_division_ids: ['b'],
+        acceptance_criteria: 'Must cover retry logic',
+      })
+      expect(h.runtime.divisions.get('recover-task')?.divisions.find(d => d.divisionId === 'b')?.status).toBe('running')
+
+      await h.runTool(divB.session_id, 'orchestrator_division_report', {
+        state: 'completed',
+        summary: 'B fixed retry logic',
+        result: 'B_RES_V2',
+        event_id: 'evt-b-2',
+      })
+      const round2Review = h.runtime.divisions.get('recover-task')!.review!
+      expect(round2Review.round).toBe(2)
+      expect(round2Review.state).toBe('pending')
+
+      await h.runTool(round2Review.sessionId, 'orchestrator_division_review_submit', {
+        approved: true,
+        summary: 'Round 2 passed',
+      })
+      expect(h.runtime.divisions.get('recover-task')!.review!.state).toBe('passed')
+
+      // M06-a: 分工会话连续两次接班 (gen0 -> gen1 -> gen2) 且唤醒瞬时失败后由 relay.resume() 恢复
+      let failWakeOnce = true
+      promptSpy.mockImplementation(async (...args) => {
+        if (failWakeOnce && args[1]?.startsWith('activate:division:recover-task:a:')) {
+          failWakeOnce = false
+          throw new Error('simulated division wake failure')
+        }
+        return origPrompt(...args)
+      })
+
+      h.agents.get(divA.session_id)!.status = 'idle'
+      h.controller.inspect.mockResolvedValue({ events: [{ type: 'assistant/message', data: { message: { content: 'gen1 summary' } } }] } as never)
+      const gen1Move = await h.runtime.relay.moveDivision('recover-task', 'a', divA.session_id, 0.7)
+      expect(gen1Move).toHaveProperty('moved')
+      const gen1 = (gen1Move as { moved: string }).moved
+      expect(h.runtime.divisions.get('recover-task')?.divisions.find(d => d.divisionId === 'a')?.pendingActivation).toBeDefined()
+
+      await h.runtime.relay.resume()
+      expect(h.runtime.divisions.get('recover-task')?.divisions.find(d => d.divisionId === 'a')?.pendingActivation).toBeUndefined()
+
+      h.agents.get(gen1)!.status = 'idle'
+      const gen2Move = await h.runtime.relay.moveDivision('recover-task', 'a', gen1, 0.7)
+      expect(gen2Move).toHaveProperty('moved')
+      const gen2 = (gen2Move as { moved: string }).moved
+      expect(h.runtime.relay.route(divA.session_id)).toBe(gen2)
+      expect(h.runtime.relay.route(gen1)).toBe(gen2)
+    } finally { await h.stop() }
+  })
 })
 
 describe('M08 & 设置保存接口: 版本/配置识别与 routing/budget 保存', () => {
