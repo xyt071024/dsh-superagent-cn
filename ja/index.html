@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Super Agent for DeepSeek Harness</title>
+<title>Super Agent v0.3.16 · DeepSeek Harness 向け自律型マルチセッション開発エージェント</title>
 <link rel="stylesheet" href="../assets/style.css">
 </head>
 <body>
@@ -13,7 +13,7 @@
     <div class="brand">
       <span class="logo">◆</span>
       <span class="brand-name">Super Agent</span>
-      <span class="brand-sub">for DeepSeek Harness</span>
+      <span class="brand-sub">v0.3.16 · for DeepSeek Harness</span>
     </div>
 
     <nav class="lang-switch" aria-label="Language">
@@ -27,73 +27,91 @@
 <main>
 
 <section class="hero">
-  <h1>自ら仕事を探すエージェント</h1>
+  <h1>常時稼働・自律型マルチセッション開発エージェント</h1>
   <p class="hero-sub">
-    あらゆる入口から仕事を受け取り · 引き受けるべきかを判断し · 難しい課題を複数モデルに分割し · 完了後に報告します。
+    7チャネル受信 · 3層コード権限ゲート · 独立分担セッション＆スロット別モデル選択 · 60% 無損失コンテキストリレー · 独立レビュー
   </p>
   <div class="hero-actions">
-    <a href="docs/ja/01-overview.html" class="btn btn-primary">読み始める</a>
-    <a href="https://github.com/xyt071024/dsh-superagent-cn" class="btn btn-ghost">GitHub リポジトリ</a>
+    <a href="install.html" class="btn btn-primary">v0.3.16 を導入</a>
+    <a href="../docs/ja/01-overview.html" class="btn btn-ghost">ドキュメントを読む</a>
+    <a href="https://github.com/xyt071024/dsh-superagent-cn/releases/latest" class="btn btn-ghost">リリース一覧</a>
   </div>
+  <p style="margin-top:2rem;text-align:center;">
+    <img src="../assets/hero-cover.jpg" alt="Super Agent Overview" style="max-width:100%;border-radius:12px;border:1px solid rgba(148,163,184,0.2);">
+  </p>
 </section>
 
 <section class="cards">
   <div class="card">
     <div class="card-icon">⇄</div>
-    <h3>マルチソース受信</h3>
-    <p>GitHub、Feishu、WeCom、メール、QQ、WeChat を統一エントリで。</p>
+    <h3>マルチチャネル受信</h3>
+    <p>GitHub、Feishu、個人 QQ、公式 QQBot、WeChat、WeCom、IMAP/SMTP メール（Gmail 対応）、ローカル対話を統合。</p>
   </div>
   <div class="card">
     <div class="card-icon">⛊</div>
-    <h3>3 層の権限モデル</h3>
-    <p>ゲート（コード）→ 評価（モデル）→ 委任（資格情報）。メッセージ内容では権限を変更できません。</p>
+    <h3>3層の厳格な権限管理</h3>
+    <p>コードゲート → 意味評価 → スコープ付き資格情報。外部メッセージで権限を昇格させることは不可能です。</p>
   </div>
   <div class="card">
     <div class="card-icon">⋔</div>
-    <h3>マルチセッション協調</h3>
-    <p>難しいタスクを複数のサブセッションに分割し、異なるモデルが並行して補完し合います。詰まったら相互に救済。</p>
+    <h3>柔軟な分担セッション＆モデル</h3>
+    <p>既定で最大 5 つの独立分担セッション（固定上限なしで自由に増減可能）、スロットごとのモデル指定または自動継承に対応。</p>
   </div>
   <div class="card">
     <div class="card-icon">↻</div>
-    <h3>自己進化</h3>
-    <p>振り返り → 経験を記録 → 自己最適化。同じタスクを回を重ねるごとに上手くこなします。</p>
+    <h3>60% コンテキストリレー</h3>
+    <p>メイン・ワーカー・サブエージェント・分担セッションのすべてで 60% 到達時に要約を抽出し新世代へ無損失で引き継ぎます。</p>
   </div>
 </section>
 
 <section class="doc-index">
-  <h2>ドキュメント</h2>
+  <h2>アーキテクチャ</h2>
+  <p style="margin:1rem 0;text-align:center;">
+    <img src="../assets/architecture-flow.svg" alt="Super Agent Architecture" style="max-width:100%;border-radius:12px;">
+  </p>
+</section>
+
+<section class="doc-index">
+  <h2>はじめに</h2>
   <ol class="toc">
-    <li><a href="docs/ja/01-overview.html"><span class="num">01</span><span class="title">位置づけと中核概念</span><span class="desc">何であるか、3 層権限、設計思想</span></a></li>
-    <li><a href="docs/ja/02-flow.html"><span class="num">02</span><span class="title">タスクフロー全体</span><span class="desc">メッセージ受信から返信までの全ステップ</span></a></li>
-    <li><a href="docs/ja/03-collaboration.html"><span class="num">03</span><span class="title">マルチセッション協調</span><span class="desc">分割・救済・検証の仕組み</span></a></li>
-    <li><a href="docs/ja/04-settings.html"><span class="num">04</span><span class="title">設定 UI 設計</span><span class="desc">8 つのグループ、項目ごとの説明</span></a></li>
-    <li><a href="docs/ja/05-sources.html"><span class="num">05</span><span class="title">ソースと安定性</span><span class="desc">7 つの入口と接続維持の方法</span></a></li>
-    <li><a href="docs/ja/06-proxy.html"><span class="num">06</span><span class="title">プロキシ設計</span><span class="desc">3 層構成と切り替え戦略</span></a></li>
-    <li><a href="docs/ja/07-evolution.html"><span class="num">07</span><span class="title">自己進化</span><span class="desc">どのように自己改善するか</span></a></li>
-    <li><a href="docs/ja/08-cost.html"><span class="num">08</span><span class="title">コスト管理</span><span class="desc">API 使用量が多い場合の対応</span></a></li>
-    <li><a href="docs/ja/09-deployment.html"><span class="num">09</span><span class="title">デプロイ</span><span class="desc">導入手順と所要期間</span></a></li>
+    <li><a href="install.html"><span class="num">→</span><span class="title">導入と無損失アップグレード（v0.3.16）</span><span class="desc">ワンライナー導入、同梱バンドル ZIP、単体プラグイン</span></a></li>
+  </ol>
+</section>
+
+<section class="doc-index">
+  <h2>ドキュメント目次</h2>
+  <ol class="toc">
+    <li><a href="../docs/ja/01-overview.html"><span class="num">01</span><span class="title">位置づけと中核概念</span><span class="desc">何であるか、3層権限、設計思想</span></a></li>
+    <li><a href="../docs/ja/02-flow.html"><span class="num">02</span><span class="title">タスクフロー全体</span><span class="desc">メッセージ受信から返信までの全ステップ</span></a></li>
+    <li><a href="../docs/ja/03-collaboration.html"><span class="num">03</span><span class="title">マルチセッション協調</span><span class="desc">分割・連携・独立レビューの仕組み</span></a></li>
+    <li><a href="../docs/ja/04-settings.html"><span class="num">04</span><span class="title">設定 UI 設計</span><span class="desc">ルーティング・モデルスロット・予算設定</span></a></li>
+    <li><a href="../docs/ja/05-sources.html"><span class="num">05</span><span class="title">ソースと安定性</span><span class="desc">7つの入口と接続維持の方法</span></a></li>
+    <li><a href="../docs/ja/06-proxy.html"><span class="num">06</span><span class="title">プロキシ設計</span><span class="desc">3層構成と切り替え戦略</span></a></li>
+    <li><a href="../docs/ja/07-evolution.html"><span class="num">07</span><span class="title">自己進化</span><span class="desc">プロンプトとスキルの安全な版管理</span></a></li>
+    <li><a href="../docs/ja/08-cost.html"><span class="num">08</span><span class="title">コスト管理</span><span class="desc">日次トークン予算と効率的なセッション運用</span></a></li>
+    <li><a href="../docs/ja/09-deployment.html"><span class="num">09</span><span class="title">デプロイ</span><span class="desc">ブートストラップ・自己診断・サービス運用</span></a></li>
   </ol>
 </section>
 
 <section class="quickfacts">
-  <h2>概要</h2>
+  <h2>v0.3.16 概要</h2>
   <table>
     <tr><th>項目</th><th>内容</th></tr>
-    <tr><td>形態</td><td>統合版（既存 DSH に導入）/ スタンドアロン版（空の DSH）</td></tr>
-    <tr><td>状態</td><td>対話状態（表示）/ サイレント状態（バックグラウンド、メッセージで起動）</td></tr>
-    <tr><td>ソース</td><td>7 つ、それぞれ個別に有効化・無効化可能</td></tr>
-    <tr><td>並行数</td><td>既定 3 チケット + 人間用に 1 つ予約</td></tr>
-    <tr><td>サブセッション</td><td>最大 6 つ、それぞれモデルと思考深度を設定可能</td></tr>
-    <tr><td>メッセージ上限</td><td>IM 返信は 100 語（厳格な上限）</td></tr>
-    <tr><td>ライセンス</td><td>MIT</td></tr>
+    <tr><td>配布形態</td><td>単体プラグイン（<code>.tgz</code>） / Node+DSH 同梱 4 プラットフォーム版（<code>.zip</code>）</td></tr>
+    <tr><td>分担セッション上限</td><td>既定 <strong>5</strong>（固定 16 上限なし、任意の正整数に設定可能）・スロット別モデル設定／継承対応</td></tr>
+    <tr><td>チケット並行数</td><td>既定 3 チケット + 人間の追撃用に 1 枠を予約</td></tr>
+    <tr><td>コンテキストリレー</td><td>60% 到達で世代交代リレー（メイン / ワーカー / サブエージェント / 分担すべて対応）</td></tr>
+    <tr><td>レビュー＆スキル</td><td>最大 3 ラウンドの独立レビュー + 内蔵 14 スキル + 永続チェックリストツール</td></tr>
+    <tr><td>品質検証</td><td>自動テスト 1,354 件合格、独立検収 37/37 件合格、プリフライト検査 0 件検出</td></tr>
+    <tr><td>ライセンス</td><td>MIT License</td></tr>
   </table>
 </section>
 
 </main>
 
 <footer>
-  <p>Super Agent for DeepSeek Harness · MIT License</p>
-  <p class="footer-note">DeepSeek Harness 上に構築。コアフローは公式実装をそのまま再利用しています。</p>
+  <p>Super Agent v0.3.16 for DeepSeek Harness · MIT License</p>
+  <p class="footer-note">DeepSeek Harness 上に構築されたコミュニティ版オープンソース配布物です。</p>
 </footer>
 
 </body>

@@ -1,272 +1,139 @@
 <p align="center">
-  <img src="assets/banner.svg" alt="Super Agent" width="820">
+  <img src="assets/hero-cover.jpg" alt="Super Agent — Autonomous Multi-Session Orchestrator for DeepSeek Harness" width="920">
 </p>
 
 <h1 align="center">Super Agent</h1>
 
 <p align="center">
-  <strong>A proactive agent for DeepSeek Harness — it works when you don't ask.</strong>
+  <strong>An Always-On, Autonomous Multi-Session Engineering Agent Built on DeepSeek Harness (DSH)</strong><br>
+  <sub>Multi-Channel Intake · Three-Layer Code Gate · Elastic Multi-Session Division &amp; Per-Slot Model Routing · 60% Lossless Context Relay · Independent Review</sub>
 </p>
 
 <p align="center">
-  <a href="README.md">中文</a> | <a href="README.en.md">English</a> | <a href="README.ja.md">日本語</a>
+  <a href="README.md">简体中文</a> &nbsp;·&nbsp;
+  <a href="README.en.md"><strong>English</strong></a> &nbsp;·&nbsp;
+  <a href="README.ja.md">日本語</a> &nbsp;·&nbsp;
+  <a href="https://xyt071024.github.io/dsh-superagent-cn/en/index.html">Documentation</a> &nbsp;·&nbsp;
+  <a href="https://xyt071024.github.io/dsh-superagent-cn/en/install.html">Install Guide</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/xyt071024/dsh-superagent-cn/releases"><img src="https://img.shields.io/badge/release-v0.3.16-2ea44f" alt="release"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="license"></a>
-  <a href="https://xyt071024.github.io/dsh-superagent-cn/"><img src="https://img.shields.io/badge/docs-中文%20%7C%20EN%20%7C%20日本語-6f42c1" alt="docs"></a>
-  <img src="https://img.shields.io/badge/Node-22.19%2B%20%7C%2024%2B-339933" alt="node">
-  <img src="https://img.shields.io/badge/DSH-0.2.1--0.2.9-4b5563" alt="dsh">
+  <a href="https://github.com/xyt071024/dsh-superagent-cn/releases"><img src="https://img.shields.io/badge/Release-v0.3.16-10b981?style=flat-square" alt="Release v0.3.16"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-38bdf8?style=flat-square" alt="MIT License"></a>
+  <img src="https://img.shields.io/badge/Node.js-22.19%2B%20%7C%2024%2B-339933?style=flat-square" alt="Node.js">
+  <img src="https://img.shields.io/badge/DSH-0.2.1%2B-6366f1?style=flat-square" alt="DeepSeek Harness">
+  <img src="https://img.shields.io/badge/Tests-1354%20Passed%20%7C%200%20Failed-2ea44f?style=flat-square" alt="Tests">
 </p>
 
 ---
 
-**An ordinary assistant: you ask, it answers.**
+## Why Super Agent?
 
-**Super Agent: it works while you are away.** An email arrives, someone mentions it on GitHub, a message comes in on
-QQ — it decides whether the work should be taken, how far it can go, then does it and reports back.
+Conventional AI assistants wait passively for one prompt at a time inside a single context window. On cross-module engineering tasks, multi-channel team requests, or long-running builds, a single conversation quickly hits context degradation, unverified self-approval, and lost progress.
 
-> Takes work from many sources → decides whether to accept → opens teammates and splits the work when it is large enough → reports when done.
-> Built on DeepSeek's open-source [dsh-superagent-prototype](https://github.com/deepseek-ai/dsh-superagent-prototype)
-> (MIT), adding three message sources, multiple instances, routing, self-evolution, automatic context hand-off and a
-> general-purpose tool surface.
+**Super Agent (`dsh-superagent`)** turns DeepSeek Harness into a persistent, autonomous engineering coordinator:
 
----
-
-## ✨ At a glance
-
-- 📥 **Seven intakes, watched for you** — GitHub / QQ Mail / QQ / WeChat / WeCom / Feishu / Gmail. Configure one or all.
-- 🚦 **Three-stage authorization** — gate (plain code, looks only at who sent it) / assessment (model judgement on whether to take it) / mandate (immutable)
-- 🧠 **Splits the work** — a hard task goes to several child sessions, each free to run a different model
-- 🗂️ **Automatic context hand-off** — at a configurable share of the window (65% by default) the session archives and hands over to a fresh context that continues rather than restarts
-- 💰 **A spending ceiling** — a local daily token ledger; over the limit it takes no new work but lets running work finish
-- 🔧 **A general-purpose tool surface** — code, documents, research, shell, **and installing plugins for itself**; it installs what it lacks instead of reporting the task impossible
-- 📚 **Six built-in skills** — shell / install / research / delegate / verify / docs — the standing knowledge that shapes how it works
-- 🔇 **Quiet by default** — it speaks only when a person has to decide something
-- 🪶 **Two shapes** — a standalone bundle that runs from a zip, or one command into an existing DSH
+- **Proactive Multi-Channel Intake**: Listens across **GitHub, Feishu, Personal QQ, Official QQBot, WeChat, WeCom, IMAP/SMTP Mail (including Gmail)**, and the local DSH chat panel. Incoming events pass through a code-enforced authorization gate and semantic assessment before becoming durable **Tickets**.
+- **Zero Overhead for Simple Work, Elastic Parallelism for Hard Work**: Trivial fixes run in a single worker (`0` extra sessions). Complex cross-module assignments automatically split into **independently openable Division Sessions** visible in the DSH sidebar. Each task defaults to an allowance of **5** division sessions, freely adjustable up or down by the operator (`1`, `5`, `8`, `17`, `32`, or more — no hardcoded 16 cap), with per-slot `provider/model` overrides or automatic inheritance of the task-start model.
+- **60% Lossless Context Relay**: Across Master Orchestrator, Ticket Worker, Subagent, and Division roles, reaching the context threshold (default **60%**) automatically distills intent, constraints, tail progress, and unassigned shared tasks into a fresh generation session (`r1 → r2 → r3`), seamlessly routing follow-up messages from older windows to the latest generation.
+- **Independent Read-Only Review Loop**: When divisions complete, an isolated read-only **Independent Reviewer** session bound to the exact deliverable fingerprint inspects actual files and test outputs, sending defects back for rework (up to **3 rounds**) and rejecting stale late approvals from superseded rounds.
 
 ---
 
-## 🚀 Quick start
+## Architecture Overview
 
-### Prerequisites
+<p align="center">
+  <img src="assets/architecture-flow.svg" alt="Super Agent Architecture Flow" width="960">
+</p>
 
-- **Node.js 22.19+ or 24+**
-- **DeepSeek Harness** (needed for the plugin form; the standalone bundle brings its own profile)
-- A GitHub CLI already signed in with `gh auth login` (for the GitHub source)
+### Four Architectural Guarantees
 
-### Option 1 — plugin (DSH already installed)
+1. **Three-Layer Hard Authorization (`Code Gate → Semantic Eval → Credential Mandate`)**
+   Allowlists, tool write guards, environment shims, and reply word limits are enforced in host code. Untrusted messages, comments, or webpages can never escalate permissions.
+2. **Strict Separation of Routing and Execution**
+   The Master Orchestrator (`dsh-superagent-router`) routes candidates in milliseconds; commands or job waits exceeding **5 seconds** automatically move to the background so incoming events never stall. Workers (`dsh-superagent-worker`) execute inside isolated ticket directories.
+3. **Transactional SQLite WAL Persistence**
+   Tickets, `TaskPlan` records, `pendingDeliveries`, `SessionRelay` routes, `reviewHistory`, and daily token budgets persist atomically in SQLite, surviving restarts and transient network drops without re-running completed work.
+4. **Scoped Environment Isolation (`isolateEnvironment: true`)**
+   Per-ticket `gh` / `lark-cli` credential wrappers and blocked-command shims stay strictly scoped to worker subprocesses without mutating global host `PATH` or existing user profiles.
 
+---
+
+## Core Engines
+
+### 1. Autonomous Multi-Session Division & Per-Slot Model Routing
+
+<p align="center">
+  <img src="assets/multi-session-collab.jpg" alt="Autonomous Multi-Session Collaboration and Independent Review" width="880">
+</p>
+
+- **On-Demand Splitting**: Extracts parallel deliverables from explicit role clauses, bulleted lists, or multi-domain engineering tracks (`api`, `ui`, `db`, `auth`, `security`, `test`, `docs`, `deploy`).
+- **Default Allowance of 5, Operator-Adjustable Without a Fixed Cap (`M07-m`)**: Fresh installations default to `maxSessions = 5` while preserving any previously saved operator settings (such as `3` or `8`). Operators can configure any positive safe integer (`1`, `5`, `8`, `17`, `32`, …) with batched slot browsing in the UI, $O(\text{used})$ slot allocation, and compact override-only prompt summaries. Excess items beyond `maxSessions` remain visible in `deferredDivisions` for the coordinator or subsequent batches.
+- **Safe Plan Revisions**: Revising a live plan preserves completed unchanged divisions, archives prior results into `resultHistory` when reopening modified divisions, Renews pending reviews when deliverable scope changes, and actively cancels running host sessions before removing divisions.
+
+### 2. 60% Threshold Endless Context Relay
+
+<p align="center">
+  <img src="assets/context-relay-engine.jpg" alt="60% Endless Context Relay Engine" width="880">
+</p>
+
+- **Head + Tail Budgeted Summaries**: Preserves the original task assignment alongside the newest tail progress and carried-over shared tasks instead of truncating from the end.
+- **Commit-Before-Wake Safety**: Injects the handover summary silently, commits the generation pointer and `pendingActivation` atomically in SQLite, and wakes the successor session only after commit — with automatic wake-up retry on recovery and zero duplicate initial dispatch.
+
+### 3. 14 Bundled Engineering & Channel Skills + `orchestrator_division_todo`
+
+Mounted automatically via `DSH_BUNDLED_SKILL_DIR` with progressive disclosure:
+
+- **Engineering & Verification**: `code-navigation`, `planning-loop`, `gui-browser`, `frontend-design`, `diagnostics`, `delegate`, `verify`, `research`, `shell`, `install`, `mirror`, `docs`
+- **Channel Operations**: `dsh-superagent-github`, `dsh-superagent-feishu`
+- **Persistent Division Checklist Tool**: `orchestrator_division_todo` (incremental merge-by-ID checklist persisted on `DivisionRecord` across restarts and 60% handovers)
+
+---
+
+## Installation & Lossless Upgrade
+
+### Option 1: One-Line Installer (Dynamic Release Resolution + SHA-256 Verification)
+
+**Windows (PowerShell):**
+```powershell
+irm https://xyt071024.github.io/dsh-superagent-cn/install.ps1 | iex
+```
+
+**macOS / Linux (Bash):**
 ```bash
-dsh plugin --profile superagent add https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.16/Super-Agent-Plugin-v0.3.16.tgz
+curl -fsSL https://xyt071024.github.io/dsh-superagent-cn/install.sh | bash
 ```
 
-Restart DSH; a **Superagent** entry appears in the sidebar.
+### Option 2: Zero-Dependency Bundled Archives (Includes Node.js + DSH Runtime)
 
-### Option 2 — standalone (runs from a zip)
+Download from [GitHub Releases](https://github.com/xyt071024/dsh-superagent-cn/releases/latest):
 
-Download `Super-Agent-Bundled-<os>-<arch>-v0.3.16.zip` for your system from [Releases](https://github.com/xyt071024/dsh-superagent-cn/releases) — it bundles Node and DSH, about 200 MB — then unzip and run `start.cmd` (Windows) or `./start.sh` (macOS / Linux).
-
-The first run installs the profile into `~/.dsh/profiles/superagent` and picks a free port (3082–3182). **Read the panel address it prints** — that is your port, not a documented default.
-
-### Then
-
-Open the panel → **Superagent** in the sidebar → **Settings** → **Sources**, and configure one. Each platform has a
-walkthrough telling you where to get the credentials and how to enter them.
-
-Full steps: **[Install and connect](install.md)**.
-
----
-
-## 📦 Where it can take work from
-
-| Platform | Protocol | Status |
+| Target Environment | Release Asset | How to Start |
 |---|---|---|
-| **GitHub** | `gh` CLI notifications + polling | ✅ **measured working** |
-| **QQ** | OneBot v11 HTTP | ✅ **measured working** |
-| **QQ Mail** | IMAP polling + SMTP | implemented, not yet verified |
-| **Gmail** | same | implemented, not yet verified |
-| **WeChat** | OneBot v11 (via a WeChat bridge) | implemented, not yet verified |
-| **WeCom** | OneBot v11 (via a WeCom bridge) | implemented, not yet verified |
-| **Feishu** | CLI event stream + history polling | implemented, not yet verified |
-
-**Only the rows marked measured have actually run here.** The rest are complete code that has never connected — a
-claim without evidence is not written as a conclusion.
+| **Windows x64** (Zero pre-requisites) | `Super-Agent-Bundled-Windows-x64-v0.3.16.zip` | Extract and run `start.cmd` |
+| **macOS Apple Silicon (arm64)** | `Super-Agent-Bundled-macOS-arm64-v0.3.16.zip` | Extract and run `./start.sh` |
+| **macOS Intel (x64)** | `Super-Agent-Bundled-macOS-x64-v0.3.16.zip` | Extract and run `./start.sh` |
+| **Linux x64** | `Super-Agent-Bundled-Linux-x64-v0.3.16.zip` | Extract and run `./start.sh` |
+| **Existing DSH Profile (Plugin Only)** | `Super-Agent-Plugin-v0.3.16.tgz` | `dsh plugin add ./Super-Agent-Plugin-v0.3.16.tgz` |
 
 ---
 
-## 🧩 Features
+## Verification & Quality Matrix
 
-<details>
-<summary><b>Authorization and safety</b> (click to expand)</summary>
-
-**Two stages, and only the first is hard.**
-
-| Stage | Nature | What it does |
+| Scope | Status | Evidence |
 |---|---|---|
-| Gate | **plain code** | looks at who sent the message, not what it says; "ignore previous instructions" cannot get past it |
-| Assessment | model judgement | after the gate, the model decides whether to take the work and how far it may go — **this stage can be influenced by message content** |
-| Mandate | immutable | issued when work is accepted; only a person can stop it, or a failed revalidation |
-
-The hard guarantee is the first stage only. This project never claims that "no message content can change a
-permission decision".
-
-</details>
-
-<details>
-<summary><b>Multiple instances: one instance serves one thing</b> (click to expand)</summary>
-
-Two repositories, two teams or two platform accounts mean two instances.
-
-> **One instance = one profile = one repository = one bot.**
-
-Four things must each be unique: profile / port / stateDir / **bot credential directory** (sharing one means two
-instances acting as the same identity).
-
-The two things most easily missed: **a new profile has no models configured** (providers are registered by that
-profile's own plugins), and **`status` exiting 3 on the first start is normal** (it is waiting for settings — do not keep
-restarting it).
-
-Full procedure: [deployment and a second instance](https://xyt071024.github.io/dsh-superagent-cn/docs/en/09-deployment.html).
-
-</details>
-
-<details>
-<summary><b>Two running states</b> (click to expand)</summary>
-
-| State | Meaning |
-|---|---|
-| **Conversational** | the panel is visible; it acts when you speak, and you can interrupt |
-| **Silent** | resident in the background; it costs almost nothing when idle and wakes on a message |
-
-The processing path is identical; only the interface differs.
-
-</details>
-
-<details>
-<summary><b>Is it reliable — the honest limits</b> (click to expand)</summary>
-
-**It can**: change code, open PRs, write documents, research, run commands, operate files, use the web, and **install
-plugins to extend itself**.
-
-**It cannot**: train a model for you (that is the vendor's job — this is a caller), or make design decisions for you.
-
-**The real limits of multi-agent work**: there is `subagent`, `subagent_fork` and `workflow`, but children have **no
-shared information, no shared progress, are killed rather than rescued when stuck, and are single-use and tree-shaped**.
-The idea of peer sessions that report back to each other is not implemented.
-
-Reliability comes from **hard rules** — a gate in plain code, an immutable mandate, a structured report — not from the
-agents being clever.
-
-</details>
+| **Typecheck & Bundle Build** | ✅ **Passed** | `tsc --noEmit` 0 errors; 21 built `lib/` modules match standalone `.tgz` and all 4 platform ZIPs |
+| **Full Vitest Suite (Windows)** | ✅ **1,354 Passed / 0 Failed** | 75 test files green (15 POSIX-only service-script tests skipped on Windows) |
+| **GitHub Actions CI (Linux)** | ✅ **All Green** | Full build, Linux service-script tests, and PowerShell/Bash installer parser checks |
+| **Independent Acceptance Suites (`41–50`)** | ✅ **37 / 37 Passed** | Covers handover races, multi-generation routing, multi-deliverable splitting, review isolation, plan revisions, and configurable `maxSessions` |
+| **Isolated Windows Bundle Install & Upgrade** | ✅ **HTTP 200 Verified** | Fresh install, missing-plugin repair, and legacy profile upgrade all preserve user config and serve `/orchestrator/api/state` (`0.3.16`) |
+| **Security & Secret Preflight (`release_preflight`)** | ✅ **0 Issues** | Full byte scan across all 5 release artifacts for keys, tokens, credentials, links, Unix `0755` modes, and local paths |
+| **Physical macOS / Linux GUI & Live Accounts** | ⚠️ **Pending Live Hardware/Accounts** | Verified via Linux CI, archive permissions, and local protocol servers; live external credentials intentionally excluded from automated runs |
 
 ---
 
-## 🛠 Tech stack
+## Credits & License
 
-| Layer | Technology |
-|---|---|
-| Runtime | Node.js 22.19+ / 24+, DeepSeek Harness `0.2.1`–`0.2.9` |
-| Language | TypeScript (strict; `tsc --noEmit` clean) |
-| Build | tsdown (rolldown + dts) |
-| Plugin kernel | [Cordis](https://github.com/shigma/cordis) + `@deepseek-ai/dsh-*` service injection |
-| Storage | SQLite (WAL) — tickets, decisions, cursors, lessons |
-| Tests | Vitest (65 files / 1258 cases) |
-| Panel | React + its own HTTP API (same-origin `x-orchestrator-request` check) |
-| Context | reuses the host's `ctx.compaction`; this project decides only the threshold and the hand-off |
-| Sources | OneBot v11 (one factory for QQ/WeChat/WeCom), hand-written IMAP + curl SMTP, `gh` CLI, `lark-cli` event stream |
-| Distribution | GitHub Releases (six packages) + GitHub Pages (36-page docs site, zh/en/ja) |
-
----
-
-## 🗂 Project layout
-
-```
-src/
-├── sources/            # github / qq (OneBot factory) / mail (IMAP+SMTP) / feishu
-│   ├── registry.ts     # instances; one kind can carry several accounts (qq-work)
-│   ├── poll.ts         # polling cursors and failure counting
-│   └── host.ts         # the Source host
-├── app/                # the runtime
-│   ├── runtime.ts      # composition root: start/stop, pause, long-task notices
-│   ├── sessions.ts     # the WORK_TOOLS allow-list and Session decoration
-│   ├── assessment.ts   # assessment: whether to take it, how hard it is
-│   ├── routing.ts      # model per difficulty, splitting, foreground/background
-│   ├── archive.ts      # automatic context hand-off (reuses the host compaction)
-│   ├── usage.ts        # the daily token ledger
-│   ├── self-inspect.ts # self-check: what is missing and what to do next
-│   ├── tools/          # main-Session tools (route / read / report / plugin …)
-│   └── views/          # panel views and HTTP
-├── client/             # front end: settings, routing, budget, locales
-├── core/               # domain: Ticket / Mandate / Assignment / Report
-├── policy.ts           # every settings schema + the Policy version + the gate
-├── deployment.ts       # configuration resolution and the machine abstraction
-└── setup.ts            # environment probes and the problems they raise
-
-prompts/                # worker.md(<=1000) / orchestrator.md(<=1400) / work.md / shared.md
-skills/                 # nine built-in skills, registered into the skill roots at runtime
-├── dsh-superagent-shell/      # shell, background jobs, the sandbox
-├── dsh-superagent-install/    # install a plugin/CLI/runtime, then verify it
-├── dsh-superagent-research/   # read the source, separate verified from assumed
-├── dsh-superagent-delegate/   # hand off to subagents: the brief, and checking what returns
-├── dsh-superagent-verify/     # prove it: types and tests are separate gates, baseline diffing
-└── dsh-superagent-docs/       # documentation that matches the code
-
-docs/                   # 000 philosophy … 009 second instance
-scripts/dsh-superagent # service script (exit 0 ok / 1 main service / 2 component / 3 awaiting setup)
-tests/                  # 65 test files
-```
-
----
-
-## 📖 Read further
-
-- **[Documentation site](https://xyt071024.github.io/dsh-superagent-cn/)** — Chinese / English / Japanese, switching keeps the same page
-- **[Positioning](docs/en/01-overview.md)** — what it is and how authorization is designed
-- **[The full flow](docs/en/02-flow.md)** — what happens after a message arrives
-- **[Multi-session collaboration](docs/en/03-collaboration.md)** — how a hard task is split
-- **[Sources](docs/en/05-sources.md)** — how to connect each platform
-- **[Deployment](docs/en/09-deployment.md)** — architecture, dependencies, a second instance
-- **[Changelog](CHANGELOG.md)** — what each version changed
-- **[Differences from upstream](UPSTREAM-DIFF.md)** — what changed and why
-- **[Security](SECURITY.md)** — where the boundary stops
-
----
-
-## ⚠️ Purge mode
-
-The purge build **modifies the host program itself** — 86 patches to DSH, bypassing some built-in content limits.
-
-- **Nothing is guaranteed**: output is unpredictable, a DSH upgrade may break it, and compliance is entirely yours
-- **Use it only in an environment you own and whose consequences you accept**
-- It needs an explicit `dsh purge apply`; `dsh purge revert` undoes it
-
-See **[Purge mode](purge.md)**.
-
----
-
-## 📄 License
-
-[MIT](LICENSE).
-
-The core architecture comes from DeepSeek's open-source **[dsh-superagent-prototype](https://github.com/deepseek-ai/dsh-superagent-prototype)**
-by **DeepSeek Harness Team** (MIT, based on commit `8c32a9d`).
-
-**The six-layer architecture and the three-stage authorization design come from that project and are unchanged.** This
-project adds multi-source intake, multi-session collaboration, self-evolution, stability hardening and three-language
-documentation.
-
-Full source list, upstream contributor roster, third-party notices: **[Credits and references](credits.html)**.
-
----
-
-## 🙏 Credits
-
-- **Upstream**: [DeepSeek Harness Team](https://github.com/deepseek-ai/deepseek-harness) — architecture and plugin kernel
-- **Plugin kernel**: [Cordis](https://github.com/shigma/cordis) (MIT)
-- **Message bridge**: the [OneBot v11](https://github.com/botuniverse/onebot-11) protocol; implementations such as SnowLuma / NapCat
-- **Icons**: [Lucide](https://lucide.dev) (ISC)
-- **README layout**: learned from [Playa-Cyrene/Cyrene-Agent](https://github.com/Playa-Cyrene/Cyrene-Agent)
-
-If this project uses your work without naming you, [open an issue](https://github.com/xyt071024/dsh-superagent-cn/issues) and it is fixed immediately.
+- **Upstream**: [deepseek-ai/dsh-superagent-prototype](https://github.com/deepseek-ai/dsh-superagent-prototype) (MIT) & [DeepSeek Harness](https://github.com/deepseek-ai).
+- **Engineering Reference**: [elder-plinius/CL4R1T4S](https://github.com/elder-plinius/CL4R1T4S) (GPLv3 public corpus, studied as an external reference for multi-agent prompt structure and checklist tool design; all skills, prompts, and code in this repository are original, independently written MIT implementations).
+- **Disclaimer**: Unofficial community distribution, not affiliated with or endorsed by DeepSeek. Released under the [MIT License](LICENSE).

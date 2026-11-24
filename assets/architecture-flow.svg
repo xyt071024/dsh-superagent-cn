@@ -1,0 +1,178 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 520" width="1120" height="520" role="img" aria-label="Super Agent Architecture Flow">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#090d16"/>
+      <stop offset="50%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#090d16"/>
+    </linearGradient>
+    <linearGradient id="cardBlue" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1e293b" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#0f172a" stop-opacity="0.95"/>
+    </linearGradient>
+    <linearGradient id="accentCyan" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#0ea5e9"/>
+      <stop offset="100%" stop-color="#38bdf8"/>
+    </linearGradient>
+    <linearGradient id="accentEmerald" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#059669"/>
+      <stop offset="100%" stop-color="#10b981"/>
+    </linearGradient>
+    <linearGradient id="accentIndigo" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#818cf8"/>
+    </linearGradient>
+    <linearGradient id="accentAmber" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#d97706"/>
+      <stop offset="100%" stop-color="#fbbf24"/>
+    </linearGradient>
+    <marker id="arrowCyan" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#38bdf8"/>
+    </marker>
+    <marker id="arrowEmerald" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#10b981"/>
+    </marker>
+    <marker id="arrowAmber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#fbbf24"/>
+    </marker>
+  </defs>
+
+  <!-- Background & Subtle Grid -->
+  <rect width="1120" height="520" rx="18" fill="url(#bg)" stroke="#1e293b" stroke-width="2"/>
+  <g stroke="#1e293b" stroke-width="0.7" opacity="0.45">
+    <line x1="0" y1="80" x2="1120" y2="80"/>
+    <line x1="0" y1="180" x2="1120" y2="180"/>
+    <line x1="0" y1="280" x2="1120" y2="280"/>
+    <line x1="0" y1="380" x2="1120" y2="380"/>
+    <line x1="220" y1="0" x2="220" y2="520"/>
+    <line x1="480" y1="0" x2="480" y2="520"/>
+    <line x1="780" y1="0" x2="780" y2="520"/>
+  </g>
+
+  <!-- Title Bar -->
+  <text x="36" y="42" fill="#f8fafc" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="18" font-weight="700">
+    Super Agent (dsh-superagent v0.3.16) · 全链路自治执行与多会话协作架构
+  </text>
+  <text x="36" y="64" fill="#94a3b8" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12">
+    Multi-Channel Intake → Three-Layer Policy Gate → Autonomous Division Coordinator → 60% Context Relay → Independent Review
+  </text>
+
+  <!-- Column 1: Multi-Source Channels -->
+  <g transform="translate(28, 92)">
+    <rect width="176" height="316" rx="12" fill="url(#cardBlue)" stroke="#334155" stroke-width="1.5"/>
+    <rect width="176" height="5" rx="2.5" fill="url(#accentCyan)"/>
+    <text x="18" y="30" fill="#38bdf8" font-family="system-ui, sans-serif" font-size="13" font-weight="700">1. 多源异步接入 (Sources)</text>
+    <g font-family="system-ui, sans-serif" font-size="12" fill="#e2e8f0">
+      <rect x="14" y="46" width="148" height="34" rx="7" fill="#0b1120" stroke="#1e293b"/>
+      <text x="26" y="68">GitHub Issues / PR / Review</text>
+      <rect x="14" y="88" width="148" height="34" rx="7" fill="#0b1120" stroke="#1e293b"/>
+      <text x="26" y="110">飞书 (Feishu Bot &amp; CLI)</text>
+      <rect x="14" y="130" width="148" height="34" rx="7" fill="#0b1120" stroke="#1e293b"/>
+      <text x="26" y="152">个人 QQ / 官方 QQBot</text>
+      <rect x="14" y="172" width="148" height="34" rx="7" fill="#0b1120" stroke="#1e293b"/>
+      <text x="26" y="194">微信 / 企业微信 (OneBot)</text>
+      <rect x="14" y="214" width="148" height="34" rx="7" fill="#0b1120" stroke="#1e293b"/>
+      <text x="26" y="236">邮件 IMAP / SMTP (Gmail)</text>
+      <rect x="14" y="256" width="148" height="42" rx="7" fill="#0b1120" stroke="#0ea5e9" stroke-dasharray="4 3"/>
+      <text x="26" y="275" fill="#7dd3fc" font-weight="600">DSH 聊天窗口与管理面板</text>
+      <text x="26" y="291" fill="#94a3b8" font-size="10.5">同一窗口直接对话派活</text>
+    </g>
+  </g>
+
+  <!-- Arrow 1 -> 2 -->
+  <line x1="206" y1="250" x2="236" y2="250" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrowCyan)"/>
+
+  <!-- Column 2: Gate, Router & Ticket Engine -->
+  <g transform="translate(242, 92)">
+    <rect width="218" height="316" rx="12" fill="url(#cardBlue)" stroke="#334155" stroke-width="1.5"/>
+    <rect width="218" height="5" rx="2.5" fill="url(#accentIndigo)"/>
+    <text x="18" y="30" fill="#818cf8" font-family="system-ui, sans-serif" font-size="13" font-weight="700">2. 准入网关与主协调器</text>
+
+    <rect x="16" y="48" width="186" height="68" rx="8" fill="#0b1120" stroke="#334155"/>
+    <text x="28" y="70" fill="#f8fafc" font-family="system-ui, sans-serif" font-size="12" font-weight="600">三层权限网关 (Policy Gate)</text>
+    <text x="28" y="88" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="11">代码白名单 → 语义评估 → 凭证隔离</text>
+    <text x="28" y="104" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="11">外部消息永远无法越权修改规则</text>
+
+    <rect x="16" y="128" width="186" height="82" rx="8" fill="#0b1120" stroke="#6366f1"/>
+    <text x="28" y="150" fill="#c7d2fe" font-family="system-ui, sans-serif" font-size="12" font-weight="600">主会话 (Master Orchestrator)</text>
+    <text x="28" y="168" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="11">• 复杂度精准识别 (简单 0 额外会话)</text>
+    <text x="28" y="185" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="11">• 提取多交付物自动规划或显式派工</text>
+    <text x="28" y="202" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="11">• 已订阅讨论串后续消息直通工单</text>
+
+    <rect x="16" y="222" width="186" height="78" rx="8" fill="#0b1120" stroke="#334155"/>
+    <text x="28" y="244" fill="#f8fafc" font-family="system-ui, sans-serif" font-size="12" font-weight="600">SQLite 持久引擎与 Outbox</text>
+    <text x="28" y="262" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="11">• 原子事务保存 Ticket / TaskPlan</text>
+    <text x="28" y="279" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="11">• 每日 Token 预算与重投回执幂等</text>
+  </g>
+
+  <!-- Arrow 2 -> 3 -->
+  <line x1="462" y1="250" x2="494" y2="250" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrowCyan)"/>
+
+  <!-- Column 3: Parallel Division Sessions -->
+  <g transform="translate(500, 92)">
+    <rect width="320" height="316" rx="12" fill="url(#cardBlue)" stroke="#38bdf8" stroke-width="1.5"/>
+    <rect width="320" height="5" rx="2.5" fill="url(#accentCyan)"/>
+    <text x="18" y="30" fill="#38bdf8" font-family="system-ui, sans-serif" font-size="13" font-weight="700">3. 独立分工会话池 (默认上限 5，用户可调 N)</text>
+    <text x="18" y="48" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="11">每个分工均为真实可独立点开的 DSH 会话 · 支持混合槽位模型或留空继承</text>
+
+    <!-- Slot 1 -->
+    <rect x="16" y="62" width="288" height="48" rx="8" fill="#0b1120" stroke="#1e293b"/>
+    <text x="28" y="82" fill="#f8fafc" font-family="system-ui, sans-serif" font-size="12" font-weight="600">分工 1 · API 与后端实现</text>
+    <text x="204" y="82" fill="#38bdf8" font-family="monospace" font-size="11">[Slot 1: DeepSeek / Claude]</text>
+    <text x="28" y="99" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="10.5">独立可打开对话 · orchestrator_division_todo 清单追踪</text>
+
+    <!-- Slot 2 -->
+    <rect x="16" y="118" width="288" height="48" rx="8" fill="#0b1120" stroke="#1e293b"/>
+    <text x="28" y="138" fill="#f8fafc" font-family="system-ui, sans-serif" font-size="12" font-weight="600">分工 2 · 前端界面与交互</text>
+    <text x="204" y="138" fill="#38bdf8" font-family="monospace" font-size="11">[Slot 2: 留空继承主模型]</text>
+    <text x="28" y="155" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="10.5">隔离写文件范围避免覆盖 · 实时汇报进度与成果版本</text>
+
+    <!-- Slot N -->
+    <rect x="16" y="174" width="288" height="48" rx="8" fill="#0b1120" stroke="#1e293b"/>
+    <text x="28" y="194" fill="#f8fafc" font-family="system-ui, sans-serif" font-size="12" font-weight="600">分工 3..N · 联调测试与验证</text>
+    <text x="204" y="194" fill="#38bdf8" font-family="monospace" font-size="11">[Slot N: DAG 依赖自动唤醒]</text>
+    <text x="28" y="211" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="10.5">支持修订计划无损保留已完成项 · 超限任务保持可见待后续批次</text>
+
+    <!-- 14 Bundled Skills Bar -->
+    <rect x="16" y="232" width="288" height="68" rx="8" fill="#0b1120" stroke="#334155"/>
+    <text x="28" y="252" fill="#e2e8f0" font-family="system-ui, sans-serif" font-size="11.5" font-weight="600">内置 14 项工程与渠道技能包 (DSH_BUNDLED_SKILL_DIR)</text>
+    <text x="28" y="270" fill="#94a3b8" font-family="monospace" font-size="10.5">code-navigation · planning-loop · gui-browser · verify</text>
+    <text x="28" y="286" fill="#94a3b8" font-family="monospace" font-size="10.5">frontend-design · diagnostics · delegate · github · feishu …</text>
+  </g>
+
+  <!-- Arrow 3 -> 4 -->
+  <line x1="822" y1="250" x2="854" y2="250" stroke="#10b981" stroke-width="2" marker-end="url(#arrowEmerald)"/>
+
+  <!-- Column 4: Independent Review & Delivery -->
+  <g transform="translate(860, 92)">
+    <rect width="232" height="316" rx="12" fill="url(#cardBlue)" stroke="#10b981" stroke-width="1.5"/>
+    <rect width="232" height="5" rx="2.5" fill="url(#accentEmerald)"/>
+    <text x="18" y="30" fill="#10b981" font-family="system-ui, sans-serif" font-size="13" font-weight="700">4. 独立复查与结果交付</text>
+
+    <rect x="16" y="48" width="200" height="118" rx="8" fill="#0b1120" stroke="#059669"/>
+    <text x="26" y="70" fill="#6ee7b7" font-family="system-ui, sans-serif" font-size="12" font-weight="600">独立复查对话 (Read-Only)</text>
+    <text x="26" y="89" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="11">• 持久绑定轮次与成果集指纹</text>
+    <text x="26" y="106" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="11">• 修订新增分工自动换新复查</text>
+    <text x="26" y="123" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="11">• 拦截旧轮迟到审批防串轮</text>
+    <text x="26" y="140" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="11">• 打回自动派回返工 (最多 3 轮)</text>
+    <text x="26" y="156" fill="#fbbf24" font-family="system-ui, sans-serif" font-size="10.5">↺ 未通过 → 精准退回责任分工修复</text>
+
+    <rect x="16" y="182" width="200" height="118" rx="8" fill="#0b1120" stroke="#334155"/>
+    <text x="26" y="204" fill="#f8fafc" font-family="system-ui, sans-serif" font-size="12" font-weight="600">诚实交付与跨渠道回报</text>
+    <text x="26" y="223" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="11">• 双门禁：类型检查 + 实测输出</text>
+    <text x="26" y="240" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="11">• 区分已完成成果与受阻草稿</text>
+    <text x="26" y="257" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="11">• Outbox 原会话幂等回传用户</text>
+    <text x="26" y="276" fill="#34d399" font-family="system-ui, sans-serif" font-size="11" font-weight="600">✓ PR / 结论已核验就绪</text>
+  </g>
+
+  <!-- Bottom Cross-Cutting Bar: 60% Context Relay -->
+  <g transform="translate(28, 424)">
+    <rect width="1064" height="72" rx="12" fill="#0b1120" stroke="#d97706" stroke-width="1.5"/>
+    <rect width="1064" height="4" rx="2" fill="url(#accentAmber)"/>
+    <text x="22" y="28" fill="#fbbf24" font-family="system-ui, sans-serif" font-size="13" font-weight="700">
+      全角色 60% 阈值无损上下文接力引擎 (SessionRelay · 覆盖主协调会话 / 工单执行会话 / 子代理 / 独立分工会话)
+    </text>
+    <text x="22" y="50" fill="#cbd5e1" font-family="system-ui, sans-serif" font-size="11.5">
+      窗口达 60% 自动蒸馏「原始意图 + 约束 + 最新尾部进度 + 未认领共享任务 + 模型槽位」→ 原子切换指针后唤醒新代会话 (r1 → r2 → r3)，旧窗口追问自动路由至最新代次，重启幂等续作不重做已完成项。
+    </text>
+  </g>
+</svg>

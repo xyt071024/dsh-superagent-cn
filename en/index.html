@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Super Agent for DeepSeek Harness</title>
+<title>Super Agent v0.3.16 · Autonomous Multi-Session Orchestrator for DeepSeek Harness</title>
 <link rel="stylesheet" href="../assets/style.css">
 </head>
 <body>
@@ -13,7 +13,7 @@
     <div class="brand">
       <span class="logo">◆</span>
       <span class="brand-name">Super Agent</span>
-      <span class="brand-sub">for DeepSeek Harness</span>
+      <span class="brand-sub">v0.3.16 · for DeepSeek Harness</span>
     </div>
 
     <nav class="lang-switch" aria-label="Language">
@@ -27,73 +27,91 @@
 <main>
 
 <section class="hero">
-  <h1>An agent that looks for work</h1>
+  <h1>An Always-On Multi-Session Engineering Agent</h1>
   <p class="hero-sub">
-    Receives work from any source · decides whether to take it · splits hard problems across models · reports back when done.
+    Multi-channel intake · Three-layer code authorization · Elastic division sessions with per-slot model routing · 60% lossless context relay · Independent review
   </p>
   <div class="hero-actions">
-    <a href="docs/en/01-overview.html" class="btn btn-primary">Start reading</a>
-    <a href="https://github.com/xyt071024/dsh-superagent-cn" class="btn btn-ghost">GitHub repository</a>
+    <a href="install.html" class="btn btn-primary">Install v0.3.16</a>
+    <a href="../docs/en/01-overview.html" class="btn btn-ghost">Read Documentation</a>
+    <a href="https://github.com/xyt071024/dsh-superagent-cn/releases/latest" class="btn btn-ghost">GitHub Releases</a>
   </div>
+  <p style="margin-top:2rem;text-align:center;">
+    <img src="../assets/hero-cover.jpg" alt="Super Agent Overview" style="max-width:100%;border-radius:12px;border:1px solid rgba(148,163,184,0.2);">
+  </p>
 </section>
 
 <section class="cards">
   <div class="card">
     <div class="card-icon">⇄</div>
-    <h3>Multi-source intake</h3>
-    <p>GitHub, Feishu, WeCom, email, QQ, WeChat — one unified entry point.</p>
+    <h3>Multi-Source Intake</h3>
+    <p>GitHub, Feishu, Personal QQ, Official QQBot, WeChat, WeCom, IMAP/SMTP Mail (Gmail), and local DSH chat.</p>
   </div>
   <div class="card">
     <div class="card-icon">⛊</div>
-    <h3>Three-layer authorization</h3>
-    <p>Gate (code) → Assessment (model) → Mandate (credential). Message content cannot change permissions.</p>
+    <h3>Three-Layer Code Gate</h3>
+    <p>Allowlist gate → semantic assessment → scoped credential wrappers. Untrusted messages never alter permissions.</p>
   </div>
   <div class="card">
     <div class="card-icon">⋔</div>
-    <h3>Multi-session collaboration</h3>
-    <p>Hard tasks split into sub-sessions with different models, running in parallel and rescuing each other when stuck.</p>
+    <h3>Elastic Divisions &amp; Models</h3>
+    <p>Defaults to 5 independent division sessions per task (freely adjustable with no fixed cap), per-slot model overrides or task-start inheritance.</p>
   </div>
   <div class="card">
     <div class="card-icon">↻</div>
-    <h3>Self-evolution</h3>
-    <p>Reflect → record lessons → optimize itself. Better at the same task each time.</p>
+    <h3>60% Context Relay</h3>
+    <p>Main, worker, subagent, and division sessions hand over cleanly at 60% context with head+tail summaries and live follow-up routing.</p>
   </div>
+</section>
+
+<section class="doc-index">
+  <h2>Architecture Flow</h2>
+  <p style="margin:1rem 0;text-align:center;">
+    <img src="../assets/architecture-flow.svg" alt="Super Agent Architecture" style="max-width:100%;border-radius:12px;">
+  </p>
+</section>
+
+<section class="doc-index">
+  <h2>Getting Started</h2>
+  <ol class="toc">
+    <li><a href="install.html"><span class="num">→</span><span class="title">Install &amp; Lossless Upgrade (v0.3.16)</span><span class="desc">One-line installer, zero-dependency platform ZIPs, and standalone plugin</span></a></li>
+  </ol>
 </section>
 
 <section class="doc-index">
   <h2>Documentation</h2>
   <ol class="toc">
-    <li><a href="docs/en/01-overview.html"><span class="num">01</span><span class="title">Positioning and core concepts</span><span class="desc">What it is, three-layer authorization, design philosophy</span></a></li>
-    <li><a href="docs/en/02-flow.html"><span class="num">02</span><span class="title">Complete task flow</span><span class="desc">Every step from incoming message to reply</span></a></li>
-    <li><a href="docs/en/03-collaboration.html"><span class="num">03</span><span class="title">Multi-session collaboration</span><span class="desc">How tasks split, rescue, and verify</span></a></li>
-    <li><a href="docs/en/04-settings.html"><span class="num">04</span><span class="title">Settings UI design</span><span class="desc">Eight groups, field by field</span></a></li>
-    <li><a href="docs/en/05-sources.html"><span class="num">05</span><span class="title">Sources and stability</span><span class="desc">Seven entry points and how they stay connected</span></a></li>
-    <li><a href="docs/en/06-proxy.html"><span class="num">06</span><span class="title">Proxy architecture</span><span class="desc">Three layers and switching strategy</span></a></li>
-    <li><a href="docs/en/07-evolution.html"><span class="num">07</span><span class="title">Self-evolution</span><span class="desc">How it improves itself</span></a></li>
-    <li><a href="docs/en/08-cost.html"><span class="num">08</span><span class="title">Cost control</span><span class="desc">Coping with high API usage</span></a></li>
-    <li><a href="docs/en/09-deployment.html"><span class="num">09</span><span class="title">Deployment</span><span class="desc">How to install, how long it takes</span></a></li>
+    <li><a href="../docs/en/01-overview.html"><span class="num">01</span><span class="title">Positioning and core concepts</span><span class="desc">What it is, three-layer authorization, design philosophy</span></a></li>
+    <li><a href="../docs/en/02-flow.html"><span class="num">02</span><span class="title">Complete task flow</span><span class="desc">Every step from incoming message to reply</span></a></li>
+    <li><a href="../docs/en/03-collaboration.html"><span class="num">03</span><span class="title">Multi-session collaboration</span><span class="desc">How tasks split, coordinate, and run independent reviews</span></a></li>
+    <li><a href="../docs/en/04-settings.html"><span class="num">04</span><span class="title">Settings UI design</span><span class="desc">Routing, model slots, budgets, and policy groups</span></a></li>
+    <li><a href="../docs/en/05-sources.html"><span class="num">05</span><span class="title">Sources and stability</span><span class="desc">Seven entry points and connection resilience</span></a></li>
+    <li><a href="../docs/en/06-proxy.html"><span class="num">06</span><span class="title">Proxy architecture</span><span class="desc">Three layers and switching strategy</span></a></li>
+    <li><a href="../docs/en/07-evolution.html"><span class="num">07</span><span class="title">Self-evolution</span><span class="desc">Versioned prompts, skills, and safe overrides</span></a></li>
+    <li><a href="../docs/en/08-cost.html"><span class="num">08</span><span class="title">Cost control</span><span class="desc">Zero extra sessions for simple work and daily token caps</span></a></li>
+    <li><a href="../docs/en/09-deployment.html"><span class="num">09</span><span class="title">Deployment</span><span class="desc">Profile bootstrap, self-inspection, and service scripts</span></a></li>
   </ol>
 </section>
 
 <section class="quickfacts">
-  <h2>At a glance</h2>
+  <h2>v0.3.16 At a Glance</h2>
   <table>
     <tr><th>Item</th><th>Detail</th></tr>
-    <tr><td>Forms</td><td>Integrated (into existing DSH) / Standalone (blank DSH)</td></tr>
-    <tr><td>States</td><td>Interactive (visible) / Silent (background, wakes on message)</td></tr>
-    <tr><td>Sources</td><td>7, each independently switchable</td></tr>
-    <tr><td>Concurrency</td><td>3 tickets by default + 1 reserved for humans</td></tr>
-    <tr><td>Sub-sessions</td><td>Up to 6, each with its own model and thinking depth</td></tr>
-    <tr><td>Message limit</td><td>100 words for IM replies (hard ceiling)</td></tr>
-    <tr><td>License</td><td>MIT</td></tr>
+    <tr><td>Deliverables</td><td>Standalone plugin (<code>.tgz</code>) / 4 zero-dependency bundled platform archives (<code>.zip</code>)</td></tr>
+    <tr><td>Division Sessions</td><td>Default allowance of <strong>5</strong> per task, operator-adjustable without a fixed cap; per-slot model selection or inheritance</td></tr>
+    <tr><td>Ticket Concurrency</td><td>3 concurrent tickets by default + 1 reserved slot for human follow-ups</td></tr>
+    <tr><td>Context Relay</td><td>60% context threshold generational handover across orchestrator, worker, subagent, and division sessions</td></tr>
+    <tr><td>Review &amp; Skills</td><td>Up to 3-round read-only independent review + 14 bundled operational/channel skills + persistent division todo tool</td></tr>
+    <tr><td>Verification</td><td>1,354 automated tests passed, 37/37 acceptance tests green, 0 release-preflight issues</td></tr>
+    <tr><td>License</td><td>MIT License</td></tr>
   </table>
 </section>
 
 </main>
 
 <footer>
-  <p>Super Agent for DeepSeek Harness · MIT License</p>
-  <p class="footer-note">Built on DeepSeek Harness; core flow reuses the official implementation entirely.</p>
+  <p>Super Agent v0.3.16 for DeepSeek Harness · MIT License</p>
+  <p class="footer-note">Community-maintained open-source distribution built on DeepSeek Harness.</p>
 </footer>
 
 </body>

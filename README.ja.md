@@ -1,260 +1,106 @@
 <p align="center">
-  <img src="assets/banner.svg" alt="Super Agent" width="820">
+  <img src="assets/hero-cover.jpg" alt="Super Agent — DeepSeek Harness 向け自律型マルチセッション・エージェント" width="920">
 </p>
 
 <h1 align="center">Super Agent</h1>
 
 <p align="center">
-  <strong>DeepSeek Harness 上で動く自律型エージェント —— 頼まれなくても働きます。</strong>
+  <strong>DeepSeek Harness (DSH) 上で稼働する常時自律型マルチセッション開発エージェント</strong><br>
+  <sub>マルチチャネル受信 · 3層コード権限ゲート · 自律タスク分割＆スロット別モデル編成 · 60% 無損失コンテキストリレー · 独立レビュー</sub>
 </p>
 
 <p align="center">
-  <a href="README.md">中文</a> | <a href="README.en.md">English</a> | <a href="README.ja.md">日本語</a>
+  <a href="README.md">简体中文</a> &nbsp;·&nbsp;
+  <a href="README.en.md">English</a> &nbsp;·&nbsp;
+  <a href="README.ja.md"><strong>日本語</strong></a> &nbsp;·&nbsp;
+  <a href="https://xyt071024.github.io/dsh-superagent-cn/ja/index.html">ドキュメント</a> &nbsp;·&nbsp;
+  <a href="https://xyt071024.github.io/dsh-superagent-cn/ja/install.html">導入ガイド</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/xyt071024/dsh-superagent-cn/releases"><img src="https://img.shields.io/badge/release-v0.3.16-2ea44f" alt="release"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="license"></a>
-  <a href="https://xyt071024.github.io/dsh-superagent-cn/"><img src="https://img.shields.io/badge/docs-中文%20%7C%20EN%20%7C%20日本語-6f42c1" alt="docs"></a>
-  <img src="https://img.shields.io/badge/Node-22.19%2B%20%7C%2024%2B-339933" alt="node">
-  <img src="https://img.shields.io/badge/DSH-0.2.1--0.2.9-4b5563" alt="dsh">
+  <a href="https://github.com/xyt071024/dsh-superagent-cn/releases"><img src="https://img.shields.io/badge/Release-v0.3.16-10b981?style=flat-square" alt="Release v0.3.16"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-38bdf8?style=flat-square" alt="MIT License"></a>
+  <img src="https://img.shields.io/badge/Node.js-22.19%2B%20%7C%2024%2B-339933?style=flat-square" alt="Node.js">
+  <img src="https://img.shields.io/badge/DSH-0.2.1%2B-6366f1?style=flat-square" alt="DeepSeek Harness">
+  <img src="https://img.shields.io/badge/Tests-1354%20Passed%20%7C%200%20Failed-2ea44f?style=flat-square" alt="Tests">
 </p>
 
 ---
 
-**普通の AI アシスタント：あなたが聞けば、答えます。**
+## Super Agent とは？
 
-**Super Agent：あなたが不在の間も働きます。** メールが届いた、GitHub でメンションされた、QQ にメッセージが来た——
-その仕事を引き受けるべきか、どこまでできるかを自分で判断し、実行して報告します。
+従来の対話型 AI は「1 問 1 答・単一ウィンドウ」の受動的な仕組みであり、大規模な改修や複数チャネルからの依頼、長時間タスクではコンテキスト溢れや自己承認による品質低下が避けられませんでした。
 
-> 複数の入口から仕事を受け取り → 引き受けるか判断し → 十分に大きければメンバーを開いて分担し → 完了を報告するエージェント。
-> DeepSeek のオープンソース [dsh-superagent-prototype](https://github.com/deepseek-ai/dsh-superagent-prototype)（MIT）を基に、
-> 三つのメッセージ入口、複数インスタンス、ルーティング、自己進化、コンテキストの自動引き継ぎ、汎用ツール群を追加しています。
+**Super Agent (`dsh-superagent`)** は DeepSeek Harness を自律型エンジニアリング協調基盤へと拡張します：
 
----
-
-## ✨ 概要
-
-- 📥 **七つの入口を自動で監視** — GitHub / QQメール / QQ / WeChat / WeCom / Feishu / Gmail。一つだけでも動きます
-- 🚦 **三段階の認可** — ゲート（純粋なコード、送信者が誰かだけを見る）/ 評価（引き受けるかをモデルが判断）/ マンデート（不変）
-- 🧠 **仕事を本当に分割** — 実行セッション自身が名前付きメンバーを開き、書き込み範囲を分けて切り分け、結果をまとめます
-- 🗂️ **コンテキストの自動引き継ぎ** — 設定した割合（既定 65%）に達するとアーカイブし、新しいコンテキストへ引き継いで続行
-- 💰 **支出の上限** — 日次のトークン台帳。超過すると新しい仕事は受けず、実行中のものは完走させます
-- 🔧 **汎用ツール群** — コード、文書、調査、シェル、そして**自分でプラグインを導入**。足りないものは入れます
-- 📚 **六つの内蔵スキル** — shell / install / research / delegate / verify / docs
-- 🔇 **既定では静か** — 人が判断すべきときだけ口を出します
-- 🪶 **二つの形態** — zip からそのまま動くスタンドアロン版、または既存の DSH に一行で入るプラグイン版
+- **マルチチャネル自律受付**：**GitHub、Feishu（飛書）、個人 QQ、公式 QQBot、WeChat、WeCom、IMAP/SMTP メール（Gmail 対応）**、および DSH ローカル画面を一元監視。コード強制の権限ゲートと意味評価を通過した依頼のみを永続的な **チケット（Ticket）** として起票します。
+- **簡単な作業は即時処理、複雑な課題は複数セッションへ自律分割**：軽微な修正は追加セッション `0` で高速完了。複雑なタスクは DSH サイドバーから個別に開いて対話できる **独立分担セッション（Division Sessions）** を自動生成します。タスクあたりの既定上限は **5**（固定 16 上限を撤廃し、`1`、`5`、`8`、`17`、`32` など任意の正整数に調整可能）。各スロットに個別モデルを指定するか、空欄で開始時モデルを継承できます。
+- **60% 閾値の無損失コンテキストリレー**：メイン協調・ワーカー・サブエージェント・分担セッションのすべてで、コンテキスト使用率が既定 **60%** に達すると意図・制約・最新進捗・未割当タスクを抽出し、新世代セッション（`r1 → r2 → r3`）へ原子的に引き継ぎます。
+- **読み取り専用の独立レビュー閉鎖ループ**：全分担完了後、成果物フィンガープリントに紐づく独立レビューセッションが実ファイルとテスト結果を検証し、不備があれば最大 **3 ラウンド** まで差し戻し修正を行います。
 
 ---
 
-## 🚀 クイックスタート
+## アーキテクチャ全体像
 
-### 前提
+<p align="center">
+  <img src="assets/architecture-flow.svg" alt="Super Agent アーキテクチャ図" width="960">
+</p>
 
-- **Node.js 22.19+ または 24+**
-- **DeepSeek Harness**（プラグイン版で必要。スタンドアロン版は自前の profile を持ち込みます）
-- `gh auth login` 済みの GitHub CLI（GitHub ソースを使う場合）
+### 1. マルチセッション自律協調＆スロット別モデル選択
 
-### 方法 1 — プラグイン版（DSH 導入済み）
+<p align="center">
+  <img src="assets/multi-session-collab.jpg" alt="マルチセッション並列協調と独立レビュー" width="880">
+</p>
 
+### 2. 60% コンテキストリレー＆SQLite 永続化
+
+<p align="center">
+  <img src="assets/context-relay-engine.jpg" alt="60% コンテキストリレーエンジン" width="880">
+</p>
+
+### 3. 内蔵 14 スキル＆構造化チェックリスト（`orchestrator_division_todo`）
+
+`DSH_BUNDLED_SKILL_DIR` により `code-navigation`、`planning-loop`、`gui-browser`、`frontend-design`、`diagnostics`、`delegate`、`verify`、`research`、`shell`、`install`、`mirror`、`docs`、`github`、`feishu` の計 **14 スキル** をオンデマンドで読み込み、各分担セッションには再起動や引き継ぎ後も保持される `orchestrator_division_todo` ツールを提供します。
+
+---
+
+## インストールとアップグレード
+
+### 方法 1：ワンライナー導入スクリプト
+
+**Windows (PowerShell):**
+```powershell
+irm https://xyt071024.github.io/dsh-superagent-cn/install.ps1 | iex
+```
+
+**macOS / Linux (Bash):**
 ```bash
-dsh plugin --profile superagent add https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.16/Super-Agent-Plugin-v0.3.16.tgz
+curl -fsSL https://xyt071024.github.io/dsh-superagent-cn/install.sh | bash
 ```
 
-DSH を再起動すると、サイドバーに **Superagent** が現れます。
+### 方法 2：Node.js・DSH 同梱バンドル版（[GitHub Releases](https://github.com/xyt071024/dsh-superagent-cn/releases/latest)）
 
-### 方法 2 — スタンドアロン版（zip から実行）
-
-[Releases](https://github.com/xyt071024/dsh-superagent-cn/releases) からお使いのシステム用の `Super-Agent-Bundled-<os>-<arch>-v0.3.16.zip`（Node と DSH 同梱、約 200 MB）をダウンロードして展開し、`start.cmd`（Windows）または `./start.sh`（macOS / Linux）を実行します。
-
-初回実行で profile が `~/.dsh/profiles/superagent` に導入され、空いているポート（3082–3182）が選ばれます。**表示されたパネルのアドレスを読んでください** —— それがあなたのポートです。
-
-### 次に
-
-パネルを開く → サイドバーの **Superagent** → **設定** → **ソース** で一つ設定します。各プラットフォームには、認証情報の入手方法と入力方法を示すガイドがあります。
-
-詳しい手順：**[インストールと接続](install.md)**。
-
----
-
-## 📦 受け取れる入口
-
-| プラットフォーム | プロトコル | 状態 |
+| 対象環境 | ファイル名 | 起動方法 |
 |---|---|---|
-| **GitHub** | `gh` CLI の通知 + ポーリング | ✅ **実測済み** |
-| **QQ** | OneBot v11 HTTP | ✅ **実測済み** |
-| **QQ メール** | IMAP ポーリング + SMTP | 実装済み・未検証 |
-| **Gmail** | 同上 | 実装済み・未検証 |
-| **WeChat** | OneBot v11（WeChat 側ブリッジ経由） | 実装済み・未検証 |
-| **WeCom** | OneBot v11（WeCom 側ブリッジ経由） | 実装済み・未検証 |
-| **Feishu** | CLI イベントストリーム + 履歴ポーリング | 実装済み・未検証 |
-
-**「実測済み」と書かれた行だけが、この環境で実際に動作したものです。** 残りはコードは完全ですが一度も接続していません——根拠のない主張を結論として書きません。
+| **Windows x64** | `Super-Agent-Bundled-Windows-x64-v0.3.16.zip` | 解凍して `start.cmd` を実行 |
+| **macOS Apple Silicon (arm64)** | `Super-Agent-Bundled-macOS-arm64-v0.3.16.zip` | 解凍して `./start.sh` を実行 |
+| **macOS Intel (x64)** | `Super-Agent-Bundled-macOS-x64-v0.3.16.zip` | 解凍して `./start.sh` を実行 |
+| **Linux x64** | `Super-Agent-Bundled-Linux-x64-v0.3.16.zip` | 解凍して `./start.sh` を実行 |
+| **既存 DSH 用プラグイン単体** | `Super-Agent-Plugin-v0.3.16.tgz` | `dsh plugin add ./Super-Agent-Plugin-v0.3.16.tgz` |
 
 ---
 
-## 🧩 機能
+## 検証ステータス
 
-<details>
-<summary><b>認可と安全性</b>（クリックで展開）</summary>
-
-**二つの段階があり、固いのは一つ目だけです。**
-
-| 段階 | 性質 | 内容 |
-|---|---|---|
-| ゲート | **純粋なコード** | 送信者が誰かだけを見て、本文は読みません。「以前の指示を無視せよ」と書かれても通りません |
-| 評価 | モデルの判断 | ゲート通過後、引き受けるかどこまでやるかをモデルが判断します。**この段階はメッセージ内容の影響を受け得ます** |
-| マンデート | 不変 | 受注時に発行。人が停止するか、再検証に失敗した場合のみ取り消せます |
-
-固い保証は一段目だけです。「メッセージ内容では権限判定を一切変えられない」とは決して主張しません。
-
-</details>
-
-<details>
-<summary><b>複数インスタンス：一つのインスタンスは一つの仕事だけ</b>（クリックで展開）</summary>
-
-リポジトリが二つ、チームが二つ、アカウントが二つなら、インスタンスも二つです。
-
-> **一つのインスタンス = 一つの profile = 一つのリポジトリ = 一つの bot。**
-
-四つはそれぞれ固有でなければなりません：profile / ポート / stateDir / **bot の認証情報ディレクトリ**（共有すると二つのインスタンスが同じ身元で動きます）。
-
-最も見落としやすい二点：**新しい profile にはモデルが設定されていません**（provider はその profile 自身のプラグインが登録します）、そして**初回起動で `status` が 3 で終了するのは正常です**（設定待ち。再起動を繰り返さないでください）。
-
-手順の全体：[デプロイと二つ目のインスタンス](https://xyt071024.github.io/dsh-superagent-cn/docs/ja/09-deployment.html)。
-
-</details>
-
-<details>
-<summary><b>二つの動作状態</b>（クリックで展開）</summary>
-
-| 状態 | 内容 |
-|---|---|
-| **対話** | パネルが表示され、話しかけたときだけ動き、いつでも中断できます |
-| **静穏** | バックグラウンドで常駐。待機中はほとんどコストがかからず、メッセージで目を覚まします |
-
-処理の流れは同じで、違いは画面を出すかどうかだけです。
-
-</details>
-
-<details>
-<summary><b>信頼できるか —— 正直な限界</b>（クリックで展開）</summary>
-
-**できること**：コードの変更、PR の作成、文書作成、調査、コマンド実行、ファイル操作、Web 利用、そして**プラグインを自分で導入して拡張すること**。
-
-**できないこと**：モデルの訓練（それはベンダーの仕事で、こちらは利用側です）、設計判断の代行。
-
-**マルチエージェントの実際の限界**：`subagent`、`subagent_fork`、`workflow` はありますが、子エージェント同士に**情報共有も進捗共有もなく、詰まると救出ではなく停止され、単発かつ木構造**です。ピアセッションが相互に報告する仕組みは未実装です。
-
-信頼性は**固いルール**（純粋なコードのゲート、不変のマンデート、構造化された報告）から来ており、エージェントが賢いからではありません。
-
-</details>
+- **型検査・ビルド**：`tsc --noEmit` エラー 0、`lib/` 21 モジュール完全一致
+- **自動テストスイート**：Windows 75 ファイル（**1,354 件合格 / 0 件失敗**）、Linux CI 全ジョブ合格、独立検収スイート（第 41〜50 号）**37 / 37 件合格**
+- **分離インストール＆プリフライト検査**：Windows 実パッケージ起動 HTTP 200（`0.3.16`）、`release_preflight.py` 5 成果物スキャン **0 件検出**
+- **未検証範囲**：macOS / Linux 実機デスクトップでの GUI 通し確認、および外部本番アカウントを用いた実送受信は別途実機検証対象です。
 
 ---
 
-## 🛠 技術スタック
+## 謝辞・ライセンス
 
-| 層 | 技術 |
-|---|---|
-| 実行環境 | Node.js 22.19+ / 24+、DeepSeek Harness `0.2.1`–`0.2.9` |
-| 言語 | TypeScript（strict、`tsc --noEmit` エラーゼロ） |
-| ビルド | tsdown（rolldown + dts） |
-| プラグイン基盤 | [Cordis](https://github.com/shigma/cordis) + `@deepseek-ai/dsh-*` のサービス注入 |
-| 保存 | SQLite（WAL）— チケット / 判断記録 / カーソル / 経験 |
-| テスト | Vitest（65 ファイル / 1258 ケース） |
-| パネル | React + 独自 HTTP API（同一オリジンの `x-orchestrator-request` 検証） |
-| コンテキスト | ホストの `ctx.compaction` を再利用。このプロジェクトが決めるのはしきい値と引き継ぎだけ |
-| メッセージ入口 | OneBot v11（QQ/WeChat/WeCom 共通ファクトリ）、自作 IMAP + curl SMTP、`gh` CLI、`lark-cli` イベントストリーム |
-| 配布 | GitHub Releases（六つのパッケージ）+ GitHub Pages（36 ページ、中英日） |
-
----
-
-## 🗂 プロジェクト構成
-
-```
-src/
-├── sources/            # github / qq（OneBot ファクトリ）/ mail（IMAP+SMTP）/ feishu
-│   ├── registry.ts     # インスタンス。一つの kind に複数アカウント（qq-work）
-│   ├── poll.ts         # ポーリングカーソルと失敗カウント
-│   └── host.ts         # Source ホスト
-├── app/                # ランタイム
-│   ├── runtime.ts      # 組み立ての起点：起動停止、一時停止、長時間タスク通知
-│   ├── sessions.ts     # WORK_TOOLS 許可リストと Session の装飾
-│   ├── assessment.ts   # 評価：引き受けるか、難易度
-│   ├── routing.ts      # 難易度別のモデル選択、分割、前面/背面
-│   ├── archive.ts      # コンテキストの自動引き継ぎ（ホストの compaction を再利用）
-│   ├── usage.ts        # 日次トークン台帳
-│   ├── self-inspect.ts # 自己点検：何が足りないか、次に何をするか
-│   ├── tools/          # メイン Session のツール（route / read / report / plugin …）
-│   └── views/          # パネルのビューと HTTP
-├── client/             # フロントエンド：設定、ルーティング、予算、ロケール
-├── core/               # ドメイン：Ticket / Mandate / Assignment / Report
-├── policy.ts           # 全設定スキーマ + Policy バージョン + ゲート
-├── deployment.ts       # 設定解決とマシン抽象
-└── setup.ts            # 環境の検査と問題の報告
-
-prompts/                # worker.md(<=1000) / orchestrator.md(<=1400) / work.md / shared.md
-skills/                 # 六つの内蔵スキル。実行時にスキルルートへ登録
-├── dsh-superagent-shell/      # シェル、バックグラウンドジョブ、サンドボックス
-├── dsh-superagent-install/    # プラグイン/CLI/ランタイムの導入と検証
-├── dsh-superagent-research/   # ソースを読む。検証済みと推測を分ける
-├── dsh-superagent-delegate/   # 子エージェントへの委任：指示書と、返ってきたものの検証
-├── dsh-superagent-verify/     # 完了を証明する：型とテストは別の関門、基準線との差分
-└── dsh-superagent-docs/       # コードと一致するドキュメント
-
-docs/                   # 000 哲学 … 009 二つ目のインスタンス
-scripts/dsh-superagent # 起動スクリプト（終了コード 0 正常 / 1 主サービス / 2 コンポーネント / 3 設定待ち）
-tests/                  # 65 のテストファイル
-```
-
----
-
-## 📖 さらに読む
-
-- **[ドキュメントサイト](https://xyt071024.github.io/dsh-superagent-cn/)** — 中 / 英 / 日。切り替えても同じ記事に留まります
-- **[位置づけ](docs/ja/01-overview.md)** — 何であるか、認可の設計
-- **[タスクの流れ](docs/ja/02-flow.md)** — メッセージが届いてから何が起きるか
-- **[マルチセッション協調](docs/ja/03-collaboration.md)** — 難しいタスクの分割
-- **[接続元](docs/ja/05-sources.md)** — 各プラットフォームの接続方法
-- **[デプロイ](docs/ja/09-deployment.md)** — 構成、依存、二つ目のインスタンス
-- **[変更履歴](CHANGELOG.md)** — 各バージョンの変更点
-- **[上流との差分](UPSTREAM-DIFF.md)** — 何をなぜ変えたか
-- **[セキュリティ](SECURITY.md)** — 境界がどこまでか
-
----
-
-## ⚠️ 破甲（Purge）モード
-
-破甲版は**ホスト本体を書き換えます**（DSH への 86 箇所のパッチ、一部の内蔵制限を迂回）。
-
-- **何も保証しません**：出力は予測できず、DSH の更新で壊れる可能性があり、コンプライアンスは利用者の責任です
-- **自分が所有し、結果を受け入れる環境でのみ使用してください**
-- `dsh purge apply` を明示的に実行する必要があり、`dsh purge revert` で戻せます
-
-詳細：**[破甲モード](purge.md)**。
-
----
-
-## 📄 ライセンス
-
-[MIT](LICENSE)。
-
-中核アーキテクチャは DeepSeek のオープンソース **[dsh-superagent-prototype](https://github.com/deepseek-ai/dsh-superagent-prototype)**
-（作者 **DeepSeek Harness Team**、MIT、commit `8c32a9d` ベース）に由来します。
-
-**六層アーキテクチャと三段階認可の設計はそのプロジェクト由来で、変更していません。** 本プロジェクトはマルチソース取り込み、
-マルチセッション協調、自己進化、安定性の強化、三言語ドキュメントを追加しています。
-
-完全なソース一覧、上流の貢献者名簿、第三者コンポーネントの謝辞：**[クレジットと参考元](credits.html)**。
-
----
-
-## 🙏 謝辞
-
-- **上流**：[DeepSeek Harness Team](https://github.com/deepseek-ai/deepseek-harness) — アーキテクチャとプラグイン基盤
-- **プラグイン基盤**：[Cordis](https://github.com/shigma/cordis)（MIT）
-- **メッセージブリッジ**：[OneBot v11](https://github.com/botuniverse/onebot-11) プロトコル、SnowLuma / NapCat などの実装
-- **アイコン**：[Lucide](https://lucide.dev)（ISC）
-- **README の構成**：[Playa-Cyrene/Cyrene-Agent](https://github.com/Playa-Cyrene/Cyrene-Agent) から学びました
-
-あなたの成果を使っているのに名前が無い場合は、[issue を立ててください](https://github.com/xyt071024/dsh-superagent-cn/issues)。すぐ直します。
+- **上流プロジェクト**：[deepseek-ai/dsh-superagent-prototype](https://github.com/deepseek-ai/dsh-superagent-prototype)（MIT）および [DeepSeek Harness](https://github.com/deepseek-ai)
+- **設計研究参考**：[elder-plinius/CL4R1T4S](https://github.com/elder-plinius/CL4R1T4S)（GPLv3 公開コーパスを外部設計研究の参考として参照。本リポジトリのすべてのコード・スキル・プロンプトは独自に執筆された MIT 実装です）
+- 本プロジェクトは非公式のコミュニティ配布版であり、[MIT License](LICENSE) の下で公開されています。

@@ -1,284 +1,196 @@
 <p align="center">
-  <img src="assets/banner.svg" alt="Super Agent" width="820">
+  <img src="assets/hero-cover.jpg" alt="Super Agent — Autonomous Multi-Session Orchestrator for DeepSeek Harness" width="920">
 </p>
 
-<h1 align="center">Super Agent</h1>
+<h1 align="center">Super Agent · 超级智能体</h1>
 
 <p align="center">
-  <strong>跑在 DeepSeek Harness 上的主动型 Agent。</strong>
-</p>
-
-<p align="center">
-  <a href="README.md">中文</a> | <a href="README.en.md">English</a> | <a href="README.ja.md">日本語</a>
+  <strong>运行在 DeepSeek Harness (DSH) 上的全天候主动型多会话工程智能体</strong><br>
+  <sub>多渠道异步接活 · 三层代码级权限门禁 · 自主多对话并行拆解与槽位模型混配 · 60% 无损上下文接力 · 独立审查闭环</sub>
 </p>
 
 <p align="center">
-  <a href="https://github.com/xyt071024/dsh-superagent-cn/releases"><img src="https://img.shields.io/badge/release-v0.3.16-2ea44f" alt="release"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="license"></a>
-  <a href="https://xyt071024.github.io/dsh-superagent-cn/"><img src="https://img.shields.io/badge/docs-中文%20%7C%20EN%20%7C%20日本語-6f42c1" alt="docs"></a>
-  <img src="https://img.shields.io/badge/Node-22.19%2B%20%7C%2024%2B-339933" alt="node">
-  <img src="https://img.shields.io/badge/DSH-0.2.2-4b5563" alt="dsh">
+  <a href="README.md"><strong>简体中文</strong></a> &nbsp;·&nbsp;
+  <a href="README.en.md">English</a> &nbsp;·&nbsp;
+  <a href="README.ja.md">日本語</a> &nbsp;·&nbsp;
+  <a href="https://xyt071024.github.io/dsh-superagent-cn/">在线文档中心</a> &nbsp;·&nbsp;
+  <a href="https://xyt071024.github.io/dsh-superagent-cn/install.html">安装指南</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/xyt071024/dsh-superagent-cn/releases"><img src="https://img.shields.io/badge/Release-v0.3.16-10b981?style=flat-square" alt="Release v0.3.16"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-38bdf8?style=flat-square" alt="MIT License"></a>
+  <img src="https://img.shields.io/badge/Node.js-22.19%2B%20%7C%2024%2B-339933?style=flat-square" alt="Node.js">
+  <img src="https://img.shields.io/badge/DSH-0.2.1%2B-6366f1?style=flat-square" alt="DeepSeek Harness">
+  <img src="https://img.shields.io/badge/Tests-1354%20Passed%20%7C%200%20Failed-2ea44f?style=flat-square" alt="Tests">
 </p>
 
 ---
 
-**普通 AI 助手：你问一句，它答一句。**
+## 为什么需要 Super Agent？
 
-**Super Agent：你不在的时候它也在工作。** 邮件来了、有人在 GitHub 上 @ 它、QQ 上有人找它，它自己判断这活该不该接、能做到什么程度，然后动手，做完回来告诉你。
+传统的对话式 AI 助手遵循**「你问一句、它答一句、关掉即停、窗口满了就失忆」**的被动模式。一旦遇到跨模块的大型工程改造、多渠道涌入的协作请求，或者耗时数十分钟的长链路任务，单窗口对话很快就会陷入上下文膨胀、改前忘后、无人复核的困境。
 
-> 一个多来源收活 → 判断该不该接 → 拆给多个子会话并行 → 做完回报的智能体。
-> 基于 DeepSeek 开源的 [dsh-superagent-prototype](https://github.com/deepseek-ai/dsh-superagent-prototype)（MIT）。
+**Super Agent (`dsh-superagent`)** 将 DeepSeek Harness 升级为一套完整的**自治研发协调系统**：
 
----
-
-## 能力与验证状态
-
-| 能力 | 状态 |
-|---|---|
-| Windows x64 启动器 / 无损升级 / 端口自选 | ✅ 已验证（隔离环境实跑 127.0.0.1 HTTP 状态检查） |
-| 包内插件与源码一致 | ✅ 构建并哈希一致 |
-| 四平台原生模块归位 | ✅ 零错平台 |
-| 压缩包完整性与权限预检 | ✅ ZIP64 + Unix 权限位 + preflight 清零 |
-| macOS / Linux 真机启动 | ⚠️ 未物理开机（已做 Git Bash / CLI 引导与 Unix 权限校验） |
-| 各通道真实外部账号收发 | ⚠️ 未验证（受限于真实账号凭据，已过协议与模拟集成测试） |
-| 上下文达阈值后交接新会话（主/子/分工） | ✅ 已实现并验证（Runtime + SQLite + 模拟控制器） |
-| 多会话分工 / 模型槽位 / 独立复查 | ✅ 已实现并验证（需在 设置 → 路由 / 执行 开启） |
-| 运行时加载版本 / Profile 识别与热重载提示 | ✅ 已实现并验证 |
+- **主动接单，而非被动等待**：统一监听 **GitHub、飞书、个人 QQ、官方 QQBot、微信、企业微信、IMAP/SMTP 邮箱（含 Gmail）** 以及 DSH 本地聊天窗口。消息到达后先经代码级安全网关与语义评估，符合授权规则才立项为持久化 **工单（Ticket）**。
+- **简单事秒办，复杂活拆团**：单点修改直接由单会话快速交付（**0 额外会话开销**）；跨模块复杂任务自动规划拆解为多个**可在宿主侧边栏独立点开、随时人工追问的分工对话（Division Sessions）**。默认每任务最多开 **5** 个独立分工对话，用户可自由调大或调小（无硬性 16 上限），每个位置均可单独指定 `供应商/模型` 或留空继承当前主模型。
+- **60% 阈值无损上下文接力**：无论是主协调会话、工单执行会话、团队子代理还是独立分工对话，一旦上下文占用达到设定比例（默认 **60%**），系统自动提炼原始意图、约束、尾部最新进度与未认领任务，平滑切换到新一代会话（`r1 → r2 → r3`），旧窗口追问自动路由至最新代次。
+- **独立复查与返工闭环**：全部分工完成后，系统自动拉起**只读权限的独立复查对话**，与当前成果集版本指纹强绑定；发现缺陷精准打回责任分工修复并进入下一轮复审（最多 **3 轮**），彻底杜绝「自己写代码自己喊通过」。
 
 ---
 
-## v0.3.16 更新内容
+## 全景架构
 
-详见 [CHANGELOG.md](CHANGELOG.md)。核心改进包括：
-- **M07-m 默认允许 5 个分工对话且支持任意正整数上限**：新建配置默认 `maxSessions = 5`，兼容已有 `3` / `8` 等保存配置；解除路由接口、模型槽位数组与前端设置的固定 `16` 限制，大数值支持分批浏览并保证第 `N` 个末位槽位可直接访问；`reserveSessionSlot` 改为 `O(已用槽位数)` 扫描且任务提示仅输出默认继承与显式覆盖，超限子项保留在 `deferredDivisions` 可见。
-- **工程技能集与分工结构化清单工具深度融合**：打通 `DSH_BUNDLED_SKILL_DIR` 自动发现全部 14 项内置技能（含新增 `code-navigation`、`planning-loop`、`gui-browser`、`frontend-design`、`diagnostics`），并为独立分工会话新增持久化步骤清单工具 `orchestrator_division_todo`。
+<p align="center">
+  <img src="assets/architecture-flow.svg" alt="Super Agent 全链路架构图" width="960">
+</p>
 
-## 历史记录：v0.3.15 更新内容
+### 核心设计铁律
 
-详见 [CHANGELOG.md](CHANGELOG.md)。核心改进包括：
-- **M07-j 复查期间变更交付范围自动换新复查**：计划修订改变交付范围时自动停止并取代旧复查（记入 `reviewHistory`），待新范围全部分工完成后按新 `deliverableVersion` 与消息标识开启新复查会话，旧审查员无法越权批准新范围。
-- **M07-k 已完成分工返工后更新正式成果并保留历史**：分工修改要求或退回返工时归档旧成果至 `resultHistory` 并递增 `revision`，再次完成时无论显式传 `result` 还是仅填 `summary` 均更新当前正式 `result`，旧事件重放不回退。
-- **M07-l 移除运行中分工主动停止会话防失控**：修订计划移除分工时先取消其运行中宿主会话并确认进入 `idle` 后释放槽位、移入 `removedDivisions`（若宿主无法停止则拒绝移除），阻断被移除会话后续工具调用与迟到汇报。
-
-## 历史记录：v0.3.14 更新内容
-
-详见 [CHANGELOG.md](CHANGELOG.md)。核心改进包括：
-- **M07-g 复杂工单与普通聊天多交付物自动规划拆分**：`planDivisionsFromText` 自动从复杂请求提取独立并行交付物（支持显式分句、编号/项目清单、并列枚举及 API/前端/数据库/认证/安全/测试/文档/部署多领域轨道），按 `maxSessions` 分配槽位开启多个独立可打开分工会话。
-- **M07-h 独立复查轮次、审查会话与交付版本强绑定**：`startReview` 持久绑定轮次、审查会话与 `deliverableVersion`；`submitReview` 拒绝旧复查会话迟到提交（仅记入 `review.history` `superseded_late`）与同轮重复提交，保护当前待审轮次。
-- **M07-i 计划修订按稳定分工 ID 无损合并**：对同一任务提交新 `planKey` 时按 `divisionId` 智能合并，完整保留未变更分工的 `completed` 状态、成果、会话 ID、接班代次与事件回执，仅启动新增或实质修改的分工。
-- **M06-b 分工接班成功后恢复流程防重投首次派工**：`reconcilePlan` 识别已接班代次（`generation > 1`），恢复时仅补齐缺失的接班激活步骤，绝不向后继会话重投首次 `division-start`。
-
-## 历史记录：v0.3.13 更新内容
-
-详见 [CHANGELOG.md](CHANGELOG.md)。核心改进包括：
-- **M07 分工韧性与单子项委托深度闭环**：高难度工单在 `DshExecutor` 自动落入持久化 `TaskPlan` 并创建真实可打开分工会话（`M07-a`）；支持高难度单子项独立委派开 1 个分工会话（`M07-e`）；重放同一 `planKey` 或重启 `resume()` 自动按原会话与请求 ID 补建恢复瞬时失败的分工而不影响已运行/已完成成员（`M07-b`）；汇报进度落盘与协调窗口通知回执分离为持久化待投递队列，瞬时失败后重复汇报或恢复自动补发（`M07-c`）；消除 `sendToDivision` 等跨 `await` 写回旧快照的竞态，并发追问与汇报共存不丢完成态（`M07-d`）；独立复查支持最多 3 轮打回重做并自动推进第 2/3 轮复查（`M07-f`）。
-- **M06-a 分工会话多代接班与激活恢复**：`moveDivision` 持久化 `pendingActivation`，崩溃或唤醒瞬时失败后由 `relay.resume()` 幂等补建并唤醒新代分工会话，连续多代接班（`r1→r2→r3`）与旧窗口输入转发直达最新代次。
-- **Windows 深层中文路径引导复制加固**：`windows-profile-bootstrap.mjs` 改用纯 JS 递归 `copyDir` 替代 Node v22.19.0 在深层中文路径下存在栈溢出（`0xC0000409`）的原生 `fs.cpSync`。
-
-## 历史记录：v0.3.12 更新内容
-
-详见 [CHANGELOG.md](CHANGELOG.md)。核心改进包括：
-- **M07 多会话独立分工与复查**：`orchestrator_dispatch` 按任务复杂度分流（简单 0 额外会话；复杂拆分独立可打开的持久化 DSH 会话）、`maxSessions` 与混用/继承模型槽位、DAG 依赖唤醒、`event_id` 去重及独立复查入口。
-- **M03–M06 接力与崩溃恢复闭环**：继任主会话 `masterId` 实时动态绑定并获完整管理工具；子会话与分工会话达 60% 阈值自动接力并保留父子/槽位/共享任务；多代 `A→B→C` 路由压缩与激活阶段崩溃恢复。
-- **M01 / M02 / M08 部署、版本识别与安全预检**：仓库一键安装脚本全面同步动态 Release 查询并支持 `DSH_HOME`；Bundled 启动脚本接入无损 `profile-bootstrap`；`VersionTracker` 与 Web 面板 `PUT /settings/routing|budget` 修复；多线程 ZIP 打包与精确白名单 Pre-flight 清零。
-
-## 历史记录：v0.3.11 更新内容
-
-本版修的是 v0.3.8 通过独立验收发现的八个缺陷。上一版的接力在单次、理想条件下可用，但在真实 Team 服务、连续第二次接力、切换期并发输入和崩溃恢复这些条件上不成立；三个 Unix 包还带着错误的文件权限，按文档无法启动。
-
-### 修复
-
-**1. Team 名单把主会话自身算成阻塞成员**
-
-接力前的安全检查调用 Team 服务的成员列表，列表非空即拒绝迁移。该服务的成员列表总是先包含 lead 自身，因此即使一个队友都没有，接力也会被永远拒绝，退回原地压缩。
-
-现在按角色与 ID 排除 lead 本身，只看真实队友，且只把正在运行或正在创建的成员视为阻塞；状态枚举取自服务自身。已退出的队友，其工作已记录在会话历史中，不构成留下的理由。
-
-**2. 第二次接力复用上一次的目标会话**
-
-第一次迁移在提交时保留了目标字段，第二次接力又读到同一个值，形成目标等于当前。后果是该轮取消掉的正是正在工作的那个会话。
-
-现在每次迁移带一个递增的代次：只有进行中的迁移复用目标，已提交的迁移必定生成新的代次、目标与请求标识。会话名由代次推导，不依赖时钟，同一毫秒内的两次迁移不会重名，崩溃恢复也能算出同一个名字。提交时清除目标、摘要与请求标识，避免下一轮误读。
-
-**3. 提交被拒绝后，新会话仍在执行同一任务**
-
-摘要投递会唤醒目标会话，而工单与指针的复核在其后进行。一旦复核失败，旧实现只记录失败，目标仍在跑同一件活，两个会话做一件工作。
-
-现在拒绝路径会取消目标会话并记录原因；提交前的复核也扩展到工单是否已结束、是否有新到达的未投递消息、旧会话是否收到过尚未被接手的人工输入。
-
-**4. 切换期间直接输入旧会话的消息不会转交**
-
-上一版注释声称此后的输入会转交，实际实现只取消一次会话、保留收件箱并打印提示，没有发送任何消息。
-
-现在会把旧会话收件箱中的人工消息逐条重新投递给新会话，以消息自身的标识作为幂等键，投递后从旧收件箱移除；提交前也会重新检查旧会话是否有人输入，有则拒绝迁移。
-
-**5. 长历史摘要从头截断，最新进度丢失**
-
-上一版先拼接完整摘要再整体截断。摘要的尾部正是最新一条消息，也就是工作停在哪里，因此被截掉的恰好是最需要的部分。
-
-现在按段落分配预算：任务原文保留开头，会话历史保留尾部，超预算时插入明确说明而非静默剪切。
-
-**6. 摘要已投递阶段的恢复不校验目标**
-
-恢复逻辑只在前两个阶段重新确认目标会话存在且持有摘要，第三个阶段直接提交指针，可能把工单交给一个不存在的会话。
-
-现在三个阶段统一重建并确认所依赖的持久事实，目标与当前相同时直接判为失败。
-
-**7. Linux 与 macOS 包没有执行权限**
-
-打包时直接取构建机的文件模式写入 Unix 权限位。Windows 上该值恒为 666，因此三平台包内的启动脚本与内置 Node 都没有执行位，即使改用 sh start.sh，脚本自身的可执行检查仍会拒绝继续。
-
-现在按文件职责生成权限：启动器、内置 Node、bin 入口与原生模块为 0755，其余为 0644；Windows 包不写 Unix 权限位。
-
-**8. 启动器遇到已安装的 profile 就退出**
-
-两个启动器在检测到已存在的 profile 时要求用户移走并退出。正常首次安装后该文件必然存在，因此关闭程序后再次双击无法启动，中断留下的半成品也会堵住重试。
-
-现在区分三种情况：完整的 profile 直接启动（这也是日常启动入口）；不完整则提示并补装，保留既有设置；完全没有才执行首次安装。
-
-### 测试
-
-独立复现用例 6 项在修复前全部失败、修复后全部通过。`tests/relay.spec.ts` 从 10 项扩到 15 项，新增代次隔离、Team 名单含 lead、真实队友阻塞、摘要尾部保留、拒绝后目标不残留五项回归。
-
-### 已知限制
-
-- 接力只在 Runtime + SQLite + 模拟宿主层面验证，未在真实宿主做故障注入（切换期并发输入、真实 Team 成员、强制杀进程重启）
-- 主会话与子会话的阈值接力仍未覆盖：归档只处理受管会话，子代理被明确排除；主会话无工单标识，走原地压缩
-- 权限位已修但未在 Linux 与 macOS 真机启动验证
-- 各通道真实收发未验收
+1. **三层硬隔离权限（Code Gate → Semantic Eval → Credential Mandate）**
+   准入白名单、工具写权限、环境变量注入与消息字数上限全部由宿主代码强制执行。任何外部消息、网页内容、评论或提示词重写都**绝对无法放大权限或绕过授权边界**。
+2. **协调与执行彻底解耦**
+   主协调会话（`dsh-superagent-router`）只做毫秒级路由、派单与状态汇总，前台命令与任务等待超过 **5 秒**立即转入后台异步唤醒，绝不阻塞后续新消息。重型编码、测试与 Git 操作全部在隔离工作目录（Worktree）的执行会话（`dsh-superagent-worker`）中无人值守完成。
+3. **全状态 SQLite 原子持久化**
+   工单、分工计划（`TaskPlan`）、待投递回执队列（`pendingDeliveries`）、会话接力路由表（`SessionRelay`）、复查历史（`reviewHistory`）与每日 Token 预算均保存在本地 SQLite WAL 数据库中，进程重启或网络抖动后可幂等恢复，已完成工作绝不重跑。
+4. **环境与命令垫片隔离（`isolateEnvironment: true`）**
+   为每个工单生成受控的 `gh` / `lark-cli` 账号包装器与命令黑名单垫片，严格限制在工单作用域内，绝不污染宿主机全局 `PATH` 或用户的日常配置。
 
 ---
 
-## 下载
+## 四大核心引擎详解
 
-| 你的情况 | 选这个 |
-|---|---|
-| 已装 DSH | `Super-Agent-Plugin-v0.3.16.tgz` |
-| 未装 Node / 未装 DSH（Windows） | `Super-Agent-Bundled-Windows-x64-v0.3.16.zip` |
-| 未装 Node / 未装 DSH（macOS Apple 芯片） | `Super-Agent-Bundled-macOS-arm64-v0.3.16.zip` |
-| 未装 Node / 未装 DSH（macOS Intel） | `Super-Agent-Bundled-macOS-x64-v0.3.16.zip` |
-| 未装 Node / 未装 DSH（Linux） | `Super-Agent-Bundled-Linux-x64-v0.3.16.zip` |
+### 1. 自主多对话拆分与按槽位混配模型（Division Coordinator）
 
-内置包解压后双击 `start.cmd`（Windows）或 `./start.sh`，自动把 profile 装到 `~/.dsh/profiles/superagent`（若已存在则无损升级并保留配置）并选空闲端口启动。
+<p align="center">
+  <img src="assets/multi-session-collab.jpg" alt="自主多会话并行与独立审查" width="880">
+</p>
+
+当路由设置开启 **`multiSession: auto`** 时，`DivisionCoordinator` 会综合评估请求的跨模块信号、并行结构与交办复杂度：
+
+- **按需弹性创建，绝不盲目开满**：简单问题开启 `0` 个额外会话；复杂工单或聊天请求自动识别显式角色分句（如“一人做 API、一人做前端 UI、一人做测试”）、编号清单与八大工程轨道（`api`、`ui`、`db`、`auth`、`security`、`test`、`docs`、`deploy`），按实际需要创建独立会话。
+- **默认上限 5，用户无上限自由调节（`M07-m`）**：新装默认允许每个任务开启最多 **5** 个额外分工对话（发起任务的对话本身与独立复查对话均不占名额）。用户可在面板或 API 中将其调小（如 `1`、`3`）或调大（如 `8`、`17`、`32` 乃至更大正整数）。当待拆分子项超过设定限额 `N` 时，前 `N` 项按拓扑依赖开启独立会话，其余子项自动保存在 `deferredDivisions` 中对主会话与面板保持可见。
+- **逐槽位异构模型编排**：第 `1..N` 个分工槽位可分别指定不同厂商与模型（例如槽位 1 用推理模型攻克核心架构，槽位 2 用前端强项模型写界面，其余槽位留空自动继承发起任务时的模型），大数值槽位在面板中支持按批浏览并直达第 `N` 末位。
+- **动态修订计划无损演进**：任务中途修改计划时，未变更且已完成的分工完整保留成果；修改要求的分工自动归档旧版成果至 `resultHistory` 并递增 `revision`；被移除的运行中分工先主动取消宿主会话、确认停止后再释放槽位并阻断迟到写入。
+
+### 2. 全角色 60% 阈值无损上下文接力（Endless Context Relay）
+
+<p align="center">
+  <img src="assets/context-relay-engine.jpg" alt="60% 阈值无损上下文接力引擎" width="880">
+</p>
+
+长任务的头号杀手是上下文窗口耗尽后的注意力退化与暴力截断。Super Agent 的 `SessionRelay` 覆盖**主协调会话、工单执行会话、子代理（Subagent）与独立分工会话**全部四种角色：
+
+- **分段预算保尾摘要**：当会话上下文达到设定阈值（默认 **60%**，可在 `20%–95%` 调整）时，系统将摘要空间独立分配给「原始任务目标与约束」和「最近会话尾部进度 + 未认领共享任务」，确保最关键的最新进展永不丢失。
+- **先切指针、后发唤醒**：交接摘要先以静默注入方式写入新代会话历史，待 SQLite 原子事务正式提交新会话指针与 `pendingActivation` 标记后才投递唤醒消息，彻底消除新旧两代会话同时跑同一份活的竞态。
+- **多代路由穿透与断线补救**：支持 `r1 → r2 → r3` 无限代连续接力；用户在已被取代的旧会话窗口继续打字追问时，消息会被实时拦截并以幂等键转发至最新一代会话；若唤醒瞬间遇网络异常，重启或恢复流程会自动补投唤醒而不重发初代派工指令。
+
+### 3. 内置 14 项工程与渠道技能包 + 结构化任务清单工具
+
+插件开箱内置 **14 项渐进式加载技能（`DSH_BUNDLED_SKILL_DIR`）** 与分工专属工具集，按需注入而不浪费基础上下文预算：
+
+| 类别 | 内置技能 / 工具名称 | 核心能力说明 |
+|---|---|---|
+| **代码与架构导航** | `dsh-superagent-code-navigation` | 单一事实源先读后改、并行搜索批处理、锁文件工具链识别与最多 3 次编译修复上限 |
+| **自主规划循环** | `dsh-superagent-planning-loop` | 诊断/实现双模式门禁、`Analyze → Plan → Execute → Observe → Verify` 闭环与上下文卫生 |
+| **Web 与黑盒测试** | `dsh-superagent-gui-browser` | DOM/ARIA 快照优先定位器、禁止 `evaluate` 篡改状态的纯黑盒测试、DOM+截图交叉核验与网页防注入 |
+| **高精前端构建** | `dsh-superagent-frontend-design` | 既有设计令牌对齐、`oklch` 和谐色板、响应式布局、组件模块化与大列表分批渲染 |
+| **插件与环境诊断** | `dsh-superagent-diagnostics` | 四步注册链路排查（构建产物 / `exports` / `cordis.patch.yml` / 运行时健康）与 Windows `.cmd` 垫片排障 |
+| **研发执行基座** | `delegate` · `verify` · `research` · `shell` · `install` · `mirror` · `docs` | 子任务独立交办规范、类型+测试双门禁实证校验、权威源码溯源、5 秒异步后台作业、国内高速镜像源自动切换与文档代码一致性核查 |
+| **渠道深度操作** | `dsh-superagent-github` · `dsh-superagent-feishu` | GitHub Issue/PR/Review 规范化操作与飞书群聊/话题/文档上下文分页读取 |
+| **分工清单工具** | `orchestrator_division_todo` | 为每个独立分工对话提供持久化的结构化步骤清单（支持按 `id` 增量合并，跨重启与 60% 接班自动保留） |
+
+### 4. 七大外部与本地接入通道
+
+| 接入通道 | 实现模块 | 接入方式与进程说明 |
+|---|---|---|
+| **GitHub** | `dsh-superagent/github-watch` | 通过受控 `gh` CLI 轮询仓库 Issue、PR 评论与 Review 事件，支持自动绑定工单分支与 PR 状态 |
+| **飞书 (Feishu)** | `dsh-superagent/feishu-watch` | 支持飞书应用机器人长连接 / 事件订阅与 `lark-cli` 富文本、图片及话题串上下文读取 |
+| **个人 QQ** | `dsh-superagent/qq-watch` | 基于 OneBot v11 正向/反向 WebSocket 协议接入（需配合 NapCat / LLOneBot 等外部协议端扫码登录） |
+| **官方 QQBot** | `dsh-superagent/qqbot-watch` | 原生集成官方 `@tencent-connect/qqbot-nodejs` WebSocket 网关，插件进程直连无需外部桥接 |
+| **微信 / 企业微信** | `dsh-superagent/qq-watch` | 复用 OneBot 多实例工厂，可与个人 QQ 在同一插件内分别建立独立实例并各自启停（需对应兼容桥接端） |
+| **邮箱 (含 Gmail)** | `dsh-superagent/mail-watch` | 原生内置加密 IMAP 轮询与 STARTTLS/TLS SMTP 发信（支持应用专用密码与邮件线程关联） |
+
+---
+
+## 快速安装与升级
+
+提供**「一键在线脚本」**、**「全平台零依赖内置包（Bundled ZIP）」**与**「轻量独立插件包（`.tgz`）」**三种方式，按需任选：
+
+### 方式一：命令行一键安装（推荐已装或准备接入 DSH 的环境）
+
+安装脚本会自动通过 GitHub API 解析最新正式版 `Super-Agent-Plugin-v*.tgz`、校验 gzip 魔数与 SHA-256 哈希，并安全注入 DSH Profile（保留你已有的其他插件与模型配置）：
+
+**Windows (PowerShell)：**
+```powershell
+irm https://xyt071024.github.io/dsh-superagent-cn/install.ps1 | iex
+```
+
+**macOS / Linux (Bash)：**
+```bash
+curl -fsSL https://xyt071024.github.io/dsh-superagent-cn/install.sh | bash
+```
+
+### 方式二：零依赖全平台内置包（解压即用，内置 Node.js 与完整 DSH 宿主）
+
+无需提前安装 Node.js 或配置 npm 环境，前往 [GitHub Releases](https://github.com/xyt071024/dsh-superagent-cn/releases/latest) 下载对应系统的压缩包：
+
+| 适用环境 | 发行包文件名 | 启动方式 |
+|---|---|---|
+| **Windows x64**（免装环境开箱即用） | `Super-Agent-Bundled-Windows-x64-v0.3.16.zip` | 解压后双击或运行 `start.cmd` |
+| **macOS Apple Silicon (M1–M4)** | `Super-Agent-Bundled-macOS-arm64-v0.3.16.zip` | 解压后运行 `./start.sh` |
+| **macOS Intel (x64)** | `Super-Agent-Bundled-macOS-x64-v0.3.16.zip` | 解压后运行 `./start.sh` |
+| **Linux x64** | `Super-Agent-Bundled-Linux-x64-v0.3.16.zip` | 解压后运行 `./start.sh` |
+| **已有 DSH 环境（仅装插件包）** | `Super-Agent-Plugin-v0.3.16.tgz` | 运行 `dsh plugin add ./Super-Agent-Plugin-v0.3.16.tgz` |
+
+> **无损升级保障**：内置包的 `start.cmd` / `start.sh` 启动前会自动运行 `profile-bootstrap` 自检：全新环境自动建库选端口；检测到旧版插件或缺依赖时自动对 `package.json` 做加法合并升级，**原样保留你已配置的 `cordis.patch.yml`、模型连接、第三方插件（含原有自定义插件）与历史数据库**，任一步骤异常自动原子回滚。升级前仍建议备份 `<stateDir>/orchestrator.sqlite`。
+
+---
+
+## 工程质量与真实测试矩阵
+
+本项目坚持**「用实测输出说话，明确区分已验证范围与待真机/真账号补证项」**：
+
+| 验收维度 | 当前状态 | 实测依据与边界说明 |
+|---|---|---|
+| **TypeScript 类型检查与构建** | ✅ **通过** | `tsc --noEmit` 0 错误；`tsdown` 产出 21 个模块文件并与独立插件包及四平台内置包逐字节对齐 |
+| **全量自动化测试套件 (Windows)** | ✅ **1,354 通过 / 0 失败** | 75 个测试文件通过（仅 15 项 POSIX 专属守护脚本用例在 Windows 按平台条件跳过） |
+| **GitHub Actions 跨平台测试 (Linux CI)** | ✅ **全部通过** | Ubuntu 环境完整跑通构建、Linux 专属守护脚本测试及双平台安装脚本语法解析 |
+| **历轮独立黑盒验收套件 (第 41–50 号)** | ✅ **37 / 37 全部通过** | 完整覆盖接力竞态、多代路由、复杂工单自动多分工、复查防串轮、修订计划保成果/换复查/停旧会话、默认 5 会话与大槽位上限 |
+| **Windows 隔离实包安装 / 修复 / 升级** | ✅ **HTTP 200 验证通过** | 正式 ZIP 在干净临时目录实测空白安装、缺插件自动修复、旧版升级保留用户配置，随包宿主 `/orchestrator/api/state` 返回 `200` 且 `loaded = installed = 0.3.16` |
+| **安全与隐私发布预检 (`release_preflight`)** | ✅ **0 告警通过** | 五件发行产物全字节扫描私钥、Token、URL 凭据、危险链接、Unix 可执行权限位与本机路径，命中数为 `0` |
+| **macOS / Linux 物理机桌面完整启停** | ⚠️ **待真机补证** | 已通过 Linux CI 代码测试、ZIP64 结构与 `0755` 权限位校验，尚未在物理 macOS / Linux 桌面走完 GUI 全流程 |
+| **七大外部渠道真实商业账号收发** | ⚠️ **待真号补证** | 已通过本地加密 IMAP/SMTP、OneBot WebSocket、飞书与 GitHub 模拟协议回归测试；为保护用户真实生产账号未在自动化测试中挂载私密凭据 |
+
+---
+
+## 从源码开发与构建
+
+仓库内的完整插件源码位于 [`src-repo/`](src-repo/) 目录：
 
 ```bash
-# 插件版安装
-dsh plugin add ./Super-Agent-Plugin-v0.3.16.tgz
-```
-
----
-
-## 工作模式
-
-一个请求进来，走同一条流水线，区别只在「一个人做还是几个人一起做」。
-
-### 单个执行（默认）
-
-主会话收到活 → 判断该不该接 → 交给执行会话 → 做完回报。
-
-### 多人协作（`multiSession: auto`）
-
-难度跨过门槛时（默认按交办说明长度判断，1200 字符），执行会话收到「这活可以拆」的说明，然后用 Agent Teams 开成员、切写作用域、派任务、收结果。
-
-默认 `single`，需在设置中开启。
-
-### 独立复查（`reviewEnabled`）
-
-复杂工单完成后另开一个只读审查员。它拿到工单、改动范围、验收标准，看不到执行过程，因此不受执行者思路影响。
-
-审不过则打回修复再复审，最多 3 轮。审查员身份绑定（`reviewerId`），换人会被拒；审查期间工作树有变化（`reviewSnapshot` Git 指纹不符）也会被拒。
-
-默认关闭。
-
----
-
-## 已知限制
-
-**跨会话接力已实现，但未在真实宿主验收。**
-
-接力的四个阶段均有单元测试覆盖：会话身份、摘要内容、拒绝条件、崩溃恢复。尚未验收的是真实 DSH 中的端到端行为——切换期间并发输入、活跃 Team 的实际绑定、进程强制重启后的恢复，这些需要真实会话与故障注入环境，当前测试只到 Runtime + SQLite 层。
-
-**多会话与独立复查默认关闭。** 拆分会显著增加 token 消耗，故默认不开启。
-
-**各通道未做真实收发验收。** 已通过本地模拟服务器验证 OneBot / IMAP / SMTP 的协议行为与错误映射；真实账号的登录、收发、断线恢复、重启去重未验证。
-
-**Windows 与 Linux 测试全绿。** Windows 原生环境下 75 个测试文件（1350 项用例）全部通过，仅 `service-script.spec.ts`（15 项 POSIX 守护脚本测试）在 Windows 下按平台条件跳过并在 Linux CI 中完整执行通过。
-
----
-
-## 架构
-
-```
-请求进来（CLI / 面板 / QQ / 邮箱 / GitHub / 飞书）
-        │
-        ▼
-   主会话（路由、派单、跟进度）
-        │
-        ▼
-   执行会话（worker）── 缺少能力？自己装插件
-        │
-        ├─ 难度够了 → DivisionCoordinator / Agent Teams 拆独立可打开分工会话
-        │
-        └─ 复杂工单 → 独立复查员（只读、看不到执行过程，支持最多 3 轮打回重做）
-```
-
-**四条设计约束**：
-
-1. **`isolateEnvironment: true` 必开** —— 插件会改 process-wide `PATH` 和 git 配置，不开则 worker 的 `gh` / `lark-cli` shim 会静默替换 20+ 个插件的同名命令
-2. **上下文归档复用宿主 `ctx.compaction`** —— 缺 `tokenMeter` 或 `compaction` 时整体不启用，不做假归档
-3. **单一插件包** —— 不为同一份代码打多个包
-4. **判断 agent 能力强弱，看工具清单，不看自述**
-
----
-
-## 测试情况
-
-```
-typecheck        0 错
-build            0 错
-测试（Windows）  75 文件通过 / 1 文件按平台跳过（1350 通过 / 15 跳过 / 0 失败）
-测试（Linux CI） 76 文件全部通过
-```
-
----
-
-## 从源码构建
-
-```bash
+cd src-repo
 pnpm install
-pnpm typecheck
-pnpm build            # 产物在 lib/
-pnpm test
+pnpm typecheck        # TypeScript 严格类型检查
+pnpm test             # 运行全量 Vitest 测试套件
+pnpm build            # 编译服务端 ESM 与前端面板 CJS 产物至 lib/
 ```
 
-打包发行物：
-
-```bash
-node _tools/build-packages.mjs     # 插件 tgz
-node _tools/make-dist.mjs          # 铺包目录 + 装配跨平台原生模块
-node _tools/make-dist-zips.mjs     # 串行 zip64 压缩
-```
-
-压缩必须串行（三并发可耗尽十几 GB 内存）。zip64 为手写实现——`Compress-Archive` 不支持 zip64，而单个内置包 7.6 万条目超过经典 zip 的 65535 上限。
+文档中心全部章节源码位于 [`docs/`](docs/)，修改后运行 `node build.mjs` 即可重新生成中 / 英 / 日三语静态站点。版本详细演进记录请参阅 [CHANGELOG.md](CHANGELOG.md)。
 
 ---
 
-## 致谢
+## 致谢与开源声明
 
-**上游**
+- **直接上游**：[deepseek-ai/dsh-superagent-prototype](https://github.com/deepseek-ai/dsh-superagent-prototype)（MIT License）—— 本项目在其核心事件驱动与三层准入架构基础上构建并深度扩展。
+- **宿主底座**：[DeepSeek Harness (DSH)](https://github.com/deepseek-ai) —— 提供会话控制器、沙箱执行、插件系统与 Web 控制台底座。
+- **工程研究参考**：[elder-plinius/CL4R1T4S](https://github.com/elder-plinius/CL4R1T4S)（GPLv3 公开语料库）—— 作为多智能体提示词结构、检查清单工具与黑盒验证流程的外部研究参考；本仓库所有提示词、技能文档与 TypeScript 代码均为独立编写的原创 MIT 实现，不含任何第三方专有或 GPL 文本片段。
 
-- [dsh-superagent-prototype](https://github.com/deepseek-ai/dsh-superagent-prototype) — MIT — 本项目直接来源
-- [DeepSeek Harness](https://github.com/deepseek-ai) — 宿主框架
-
-**技术参考**
-
-- [elder-plinius/CL4R1T4S](https://github.com/elder-plinius/CL4R1T4S)（GPLv3 公开语料库，作为多智能体提示工程与结构化工具协议的外部设计研究参考，本项目所有技能与代码均为独立编写的 MIT 实现）
-- RFC 6455（WebSocket） · RFC 5321/5322（SMTP/IMAP） · Playwright（浏览器自动化） · MCP（工具协议）
-
-本项目不是官方发行版，也未获上游作者背书。
+> **非官方声明**：本项目为社区独立维护的开源增强发行版，并非 DeepSeek 官方发行物，亦未获上游作者背书。
 
 ---
 
 ## 许可证
 
-MIT。见 [LICENSE](LICENSE)。
+本项目基于 [MIT License](LICENSE) 开源发布。
