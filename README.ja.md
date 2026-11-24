@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/xyt071024/dsh-superagent-cn/releases"><img src="https://img.shields.io/badge/release-v0.3.14-2ea44f" alt="release"></a>
+  <a href="https://github.com/xyt071024/dsh-superagent-cn/releases"><img src="https://img.shields.io/badge/release-v0.3.15-2ea44f" alt="release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="license"></a>
   <a href="https://xyt071024.github.io/dsh-superagent-cn/"><img src="https://img.shields.io/badge/docs-中文%20%7C%20EN%20%7C%20日本語-6f42c1" alt="docs"></a>
   <img src="https://img.shields.io/badge/Node-22.19%2B%20%7C%2024%2B-339933" alt="node">
@@ -58,14 +58,14 @@
 ### 方法 1 — プラグイン版（DSH 導入済み）
 
 ```bash
-dsh plugin --profile superagent add https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.14/Super-Agent-Plugin-v0.3.14.tgz
+dsh plugin --profile superagent add https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.15/Super-Agent-Plugin-v0.3.15.tgz
 ```
 
 DSH を再起動すると、サイドバーに **Superagent** が現れます。
 
 ### 方法 2 — スタンドアロン版（zip から実行）
 
-[Releases](https://github.com/xyt071024/dsh-superagent-cn/releases) からお使いのシステム用の `Super-Agent-Bundled-<os>-<arch>-v0.3.14.zip`（Node と DSH 同梱、約 200 MB）をダウンロードして展開し、`start.cmd`（Windows）または `./start.sh`（macOS / Linux）を実行します。
+[Releases](https://github.com/xyt071024/dsh-superagent-cn/releases) からお使いのシステム用の `Super-Agent-Bundled-<os>-<arch>-v0.3.15.zip`（Node と DSH 同梱、約 200 MB）をダウンロードして展開し、`start.cmd`（Windows）または `./start.sh`（macOS / Linux）を実行します。
 
 初回実行で profile が `~/.dsh/profiles/superagent` に導入され、空いているポート（3082–3182）が選ばれます。**表示されたパネルのアドレスを読んでください** —— それがあなたのポートです。
 

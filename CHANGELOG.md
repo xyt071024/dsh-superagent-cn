@@ -8,6 +8,27 @@
 
 ## [Unreleased]
 
+## [0.3.15] - 2026-11-24
+
+本版针对独立复验第 49 号目录发现的三项计划修订生命周期问题（`M07-j`、`M07-k`、`M07-l`）完成全面修复与边界加固。
+
+### 修复与深度加固
+
+**1. 复查期间变更交付范围自动更新复查会话与消息标识（M07-j）**
+
+- 在 `DivisionCoordinator.dispatch` 修订计划时，一旦交付范围或成果版本发生改变（如在待审期间新增或修改分工），自动停止旧复查会话并将其标记为已取代（`state: 'superseded_late'`）存入 `reviewHistory`。
+- 待本次修订的全部分工完成后，`startReview` 与 `reconcilePlan` 基于最新 `deliverableVersion` 与递增 `reviewSeq` 创建全新的复查会话与消息标识（`div-review-start:${taskId}:${verTag}:r${round}`），确保旧复查会话无法批准新范围，而当前复查会话可正常审阅全部最新成果并通过，且重启后可幂等恢复。
+
+**2. 已完成分工修改要求返工后更新正式成果并保留历史（M07-k）**
+
+- 计划修订或复查退回导致已完成分工返工时，自动将旧版正式成果归档至 `resultHistory`、递增 `revision` 并清空旧 `result`。
+- 分工完成新修订并调用 `reportDivision`（`state: 'completed'`）时，无论显式传入 `result` 还是仅填写完成摘要 `summary`，均将本次新成果写入 `div.result`，确保下游依赖分工与独立复查均读取到最新版成果，同时基于 `deliveredEventIds` 防止旧消息重放回退。
+
+**3. 计划修订移除运行中分工时主动停止会话并防止失控（M07-l）**
+
+- 计划修订计算出被移除的分工后，先调用 `stopDivisionSessions` 取消其正在运行的宿主会话（含历史接班代次）并等待进入 `idle`：确认停止后释放模型槽位并将记录移入 `removedDivisions`（`status: 'stopped'`），若宿主无法停止该运行中会话则拒绝移除并保留成员可见。
+- 被停止/移除的分工会话其工具守卫立即阻断后续工具调用，且迟到的 `reportDivision` / `sendToDivision` 均被明确拒绝，绝不覆盖当前计划成果。
+
 ## [0.3.14] - 2026-11-24
 
 本版针对独立复验第 48 号目录发现的四项长任务与多交付物自动拆分缺陷（`M07-g`、`M07-h`、`M07-i`、`M06-b`）进行了全面修复与边界加固。

@@ -97,6 +97,10 @@ export interface DivisionRecord {
   status: DivisionStatus
   latestProgress?: string
   result?: string
+  /** 当前分工的要求修订号（计划修改或复查打回重做时递增，M07-k）。 */
+  revision?: number | undefined
+  /** 历次已完成修订的历史成果记录（M07-k）。 */
+  resultHistory?: { revision: number; result: string; summary?: string | undefined; at: string }[] | undefined
   error?: string
   /** 已处理的事件/回执 ID，用于去重并避免回报循环。 */
   deliveredEventIds: string[]
@@ -138,8 +142,13 @@ export interface TaskPlan {
   maxSessions: number
   slots: Record<string, number>
   divisions: DivisionRecord[]
+  /** 计划修订时被移除并已停止的分工历史记录（M07-l）。 */
+  removedDivisions?: DivisionRecord[] | undefined
   pendingDeliveries?: PendingDivisionDelivery[] | undefined
   deliveredNotificationIds?: string[] | undefined
+  /** 跨计划修订的复查历史与递增序号（M07-j）。 */
+  reviewHistory?: ReviewHistoryEntry[] | undefined
+  reviewSeq?: number | undefined
   review?: {
     sessionId: string
     round: number

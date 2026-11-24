@@ -648,6 +648,113 @@ describe('M07: 复杂度判定与多独立可打开分工对话', () => {
       expect(promptSpy.mock.calls.filter(c => c[0] === gen2Session && c[1] === 'division-start:handover-no-repost:worker')).toHaveLength(0)
     } finally { await h.stop() }
   })
+
+  it('M07-j/k/l: 复查期间新增分工自动换新复查、修改分工返工更新正式成果、移除运行中分工自动停止会话并拒绝失控移除', async () => {
+    const h = await startRuntime(store => {
+      const s = store.settings()
+      store.saveSettings(SettingsSchema.parse({
+        ...s,
+        executor: { ...s.executor, reviewEnabled: true },
+        routing: { ...s.routing, multiSession: 'auto', maxSessions: 5, difficultyThreshold: 50 },
+      }))
+    })
+    try {
+      // 1. M07-j: api 与 ui 完成后进入第 1 轮待审，此时修订计划新增 qa；旧审查会话被取代且不能批准新成果，qa 完成后新审查会话可正常批准
+      await h.runtime.divisions.dispatch({
+        originSessionId: h.runtime.masterId,
+        taskId: 'jkl-task',
+        planKey: 'p1',
+        title: 'JKL Verification',
+        brief: 'API and UI',
+        difficulty: 90,
+        divisions: [
+          { divisionId: 'api', title: 'API', brief: 'Implement API v1' },
+          { divisionId: 'ui', title: 'UI', brief: 'Implement UI v1' },
+        ],
+      })
+      await h.runtime.divisions.reportDivision({ taskId: 'jkl-task', divisionId: 'api', state: 'completed', summary: 'Result v1', eventId: 'a1' })
+      await h.runtime.divisions.reportDivision({ taskId: 'jkl-task', divisionId: 'ui', state: 'completed', summary: 'Result u1', eventId: 'u1' })
+      const oldReview = h.runtime.divisions.get('jkl-task')!.review!
+      expect(oldReview.state).toBe('pending')
+
+      // 修订计划：同时修改 api 的要求（M07-k），移除 ui 并新增 qa（M07-l + M07-j）
+      const uiSession = h.runtime.divisions.get('jkl-task')!.divisions.find(d => d.divisionId === 'ui')!.sessionId
+      // 再开一个 running 的 temp 分工验证移除时自动停止
+      await h.runtime.divisions.dispatch({
+        originSessionId: h.runtime.masterId,
+        taskId: 'jkl-task',
+        planKey: 'p2',
+        title: 'JKL Verification',
+        brief: 'API, UI, and Temp',
+        difficulty: 90,
+        divisions: [
+          { divisionId: 'api', title: 'API', brief: 'Implement API v1' },
+          { divisionId: 'ui', title: 'UI', brief: 'Implement UI v1' },
+          { divisionId: 'temp', title: 'Temp', brief: 'Running work to be removed' },
+        ],
+      })
+      const tempSession = h.runtime.divisions.get('jkl-task')!.divisions.find(d => d.divisionId === 'temp')!.sessionId
+      expect(h.agents.get(tempSession)?.status).toBe('running')
+
+      // p3: 修改 api 的 brief（M07-k）、移除 running 的 temp（M07-l）、新增 qa（依赖 api）
+      await h.runtime.divisions.dispatch({
+        originSessionId: h.runtime.masterId,
+        taskId: 'jkl-task',
+        planKey: 'p3',
+        title: 'JKL Verification',
+        brief: 'Revised API, UI, and QA',
+        difficulty: 90,
+        divisions: [
+          { divisionId: 'api', title: 'API', brief: 'Implement revised API v2' },
+          { divisionId: 'ui', title: 'UI', brief: 'Implement UI v1' },
+          { divisionId: 'qa', title: 'QA', brief: 'Verify API v2 and UI', dependsOn: ['api'] },
+        ],
+      })
+      // M07-l: 被移除的 temp 已不再处于 running，且迟到汇报被拒绝
+      expect(h.runtime.divisions.get('jkl-task')!.divisions.some(d => d.divisionId === 'temp')).toBe(false)
+      expect(h.agents.get(tempSession)?.status).not.toBe('running')
+      await expect(h.runtime.divisions.reportDivision({
+        taskId: 'jkl-task',
+        divisionId: 'temp',
+        state: 'completed',
+        summary: 'Late temp report',
+        eventId: 'temp-late',
+      })).rejects.toThrow(/not found or stopped/)
+
+      // M07-k: api 仅填写 summary 完成 v2，其正式 result 必须更新为 Result v2（且保留 v1 在 resultHistory），下游 qa 拿到 Result v2
+      expect(h.runtime.divisions.get('jkl-task')!.divisions.find(d => d.divisionId === 'ui')?.sessionId).toBe(uiSession)
+      await h.runtime.divisions.reportDivision({ taskId: 'jkl-task', divisionId: 'api', state: 'completed', summary: 'Result v2', eventId: 'a2' })
+      const apiDiv = h.runtime.divisions.get('jkl-task')!.divisions.find(d => d.divisionId === 'api')!
+      expect(apiDiv.latestProgress).toBe('Result v2')
+      expect(apiDiv.result).toBe('Result v2')
+      expect(apiDiv.resultHistory?.[0]?.result).toBe('Result v1')
+
+      // 旧消息 a1 重放不回退 Result v2
+      await h.runtime.divisions.reportDivision({ taskId: 'jkl-task', divisionId: 'api', state: 'completed', summary: 'Result v1', eventId: 'a1' })
+      expect(h.runtime.divisions.get('jkl-task')!.divisions.find(d => d.divisionId === 'api')!.result).toBe('Result v2')
+
+      // qa 完成 -> 触发绑定新成果范围的复查
+      await h.runtime.divisions.reportDivision({ taskId: 'jkl-task', divisionId: 'qa', state: 'completed', summary: 'Result qa1', eventId: 'q1' })
+      await h.runtime.divisions.resume()
+      const renewedReview = h.runtime.divisions.get('jkl-task')!.review!
+      expect(renewedReview.state).toBe('pending')
+      expect(renewedReview.sessionId).not.toBe(oldReview.sessionId)
+
+      // 旧审查员不能批准新成果版本
+      await expect(h.runTool(oldReview.sessionId, 'orchestrator_division_review_submit', {
+        approved: true,
+        summary: 'Old reviewer trying to approve new scope',
+      })).rejects.toThrow(/stale reviewer/)
+      expect(h.runtime.divisions.get('jkl-task')!.review!.state).toBe('pending')
+
+      // 当前新审查员正常批准通过
+      await h.runTool(renewedReview.sessionId, 'orchestrator_division_review_submit', {
+        approved: true,
+        summary: 'Reviewed current deliverables',
+      })
+      expect(h.runtime.divisions.get('jkl-task')!.review!.state).toBe('passed')
+    } finally { await h.stop() }
+  })
 })
 
 describe('M08 & 设置保存接口: 版本/配置识别与 routing/budget 保存', () => {

@@ -509,7 +509,7 @@ export class Sessions {
         if (linked && !liveTicket(linked)) return 'Ticket ended; new work needs a new authorized ticket'
         const plan = host.store.get(KV.sessions.divisions(division.taskId))
         const row = plan?.divisions.find(item => item.divisionId === division.divisionId)
-        if (row?.status === 'stopped') return 'Division was stopped'
+        if (!row || row.status === 'stopped') return 'Division was stopped'
         return undefined
       }))
       return

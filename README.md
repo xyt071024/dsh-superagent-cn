@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/xyt071024/dsh-superagent-cn/releases"><img src="https://img.shields.io/badge/release-v0.3.14-2ea44f" alt="release"></a>
+  <a href="https://github.com/xyt071024/dsh-superagent-cn/releases"><img src="https://img.shields.io/badge/release-v0.3.15-2ea44f" alt="release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="license"></a>
   <a href="https://xyt071024.github.io/dsh-superagent-cn/"><img src="https://img.shields.io/badge/docs-中文%20%7C%20EN%20%7C%20日本語-6f42c1" alt="docs"></a>
   <img src="https://img.shields.io/badge/Node-22.19%2B%20%7C%2024%2B-339933" alt="node">
@@ -47,7 +47,14 @@
 
 ---
 
-## v0.3.14 更新内容
+## v0.3.15 更新内容
+
+详见 [CHANGELOG.md](CHANGELOG.md)。核心改进包括：
+- **M07-j 复查期间变更交付范围自动换新复查**：计划修订改变交付范围时自动停止并取代旧复查（记入 `reviewHistory`），待新范围全部分工完成后按新 `deliverableVersion` 与消息标识开启新复查会话，旧审查员无法越权批准新范围。
+- **M07-k 已完成分工返工后更新正式成果并保留历史**：分工修改要求或退回返工时归档旧成果至 `resultHistory` 并递增 `revision`，再次完成时无论显式传 `result` 还是仅填 `summary` 均更新当前正式 `result`，旧事件重放不回退。
+- **M07-l 移除运行中分工主动停止会话防失控**：修订计划移除分工时先取消其运行中宿主会话并确认进入 `idle` 后释放槽位、移入 `removedDivisions`（若宿主无法停止则拒绝移除），阻断被移除会话后续工具调用与迟到汇报。
+
+## 历史记录：v0.3.14 更新内容
 
 详见 [CHANGELOG.md](CHANGELOG.md)。核心改进包括：
 - **M07-g 复杂工单与普通聊天多交付物自动规划拆分**：`planDivisionsFromText` 自动从复杂请求提取独立并行交付物（支持显式分句、编号/项目清单、并列枚举及 API/前端/数据库/认证/安全/测试/文档/部署多领域轨道），按 `maxSessions` 分配槽位开启多个独立可打开分工会话。
@@ -140,17 +147,17 @@
 
 | 你的情况 | 选这个 |
 |---|---|
-| 已装 DSH | `Super-Agent-Plugin-v0.3.14.tgz` |
-| 未装 Node / 未装 DSH（Windows） | `Super-Agent-Bundled-Windows-x64-v0.3.14.zip` |
-| 未装 Node / 未装 DSH（macOS Apple 芯片） | `Super-Agent-Bundled-macOS-arm64-v0.3.14.zip` |
-| 未装 Node / 未装 DSH（macOS Intel） | `Super-Agent-Bundled-macOS-x64-v0.3.14.zip` |
-| 未装 Node / 未装 DSH（Linux） | `Super-Agent-Bundled-Linux-x64-v0.3.14.zip` |
+| 已装 DSH | `Super-Agent-Plugin-v0.3.15.tgz` |
+| 未装 Node / 未装 DSH（Windows） | `Super-Agent-Bundled-Windows-x64-v0.3.15.zip` |
+| 未装 Node / 未装 DSH（macOS Apple 芯片） | `Super-Agent-Bundled-macOS-arm64-v0.3.15.zip` |
+| 未装 Node / 未装 DSH（macOS Intel） | `Super-Agent-Bundled-macOS-x64-v0.3.15.zip` |
+| 未装 Node / 未装 DSH（Linux） | `Super-Agent-Bundled-Linux-x64-v0.3.15.zip` |
 
 内置包解压后双击 `start.cmd`（Windows）或 `./start.sh`，自动把 profile 装到 `~/.dsh/profiles/superagent`（若已存在则无损升级并保留配置）并选空闲端口启动。
 
 ```bash
 # 插件版安装
-dsh plugin add ./Super-Agent-Plugin-v0.3.14.tgz
+dsh plugin add ./Super-Agent-Plugin-v0.3.15.tgz
 ```
 
 ---
