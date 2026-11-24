@@ -99,10 +99,10 @@ export const PLAN_SCHEMA_VERSION = 'plan-v1'
 export const RoutingConfigSchema = z.object({
   /** `single` keeps every Session on the operator and executor models; `auto` may pick another Session model per difficulty. */
   multiSession: z.enum(['single', 'auto']).default('single'),
-  /** Per-task child session capacity, independent of concurrent tickets. */
-  maxSessions: z.number().int().min(1).max(16).default(3),
+  /** Per-task child session capacity, independent of concurrent tickets (default 5, user-adjustable without a fixed business cap). */
+  maxSessions: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).default(5),
   /** Per-child model; null inherits the task-start model. */
-  sessionModels: z.array(RoleModelSchema.nullable()).max(16).default([]),
+  sessionModels: z.array(RoleModelSchema.nullable()).default([]),
   /**
    * How the operator's own current model competes with the approved list.
    *

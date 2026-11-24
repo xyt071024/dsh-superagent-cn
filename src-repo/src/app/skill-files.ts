@@ -22,6 +22,25 @@ function load(name: string) {
   return { name: match[1]!, description: match[2]!, content: match[3]!, path }
 }
 export const bundledSkills = { feishu: load('feishu'), github: load('github') }
+
+export const OPERATIONAL_SKILL_NAMES = [
+  'delegate',
+  'docs',
+  'install',
+  'mirror',
+  'research',
+  'shell',
+  'verify',
+  'code-navigation',
+  'planning-loop',
+  'gui-browser',
+  'frontend-design',
+  'diagnostics',
+] as const
+
+export const operationalSkills = Object.fromEntries(
+  OPERATIONAL_SKILL_NAMES.map(name => [name, load(name)]),
+) as Record<(typeof OPERATIONAL_SKILL_NAMES)[number], ReturnType<typeof load>>
 /**
  * Loads a built-in prompt file (`prompts/<name>.md`). Source `.md` files are written one sentence per line for
  * readable diffs; `promptFile` joins lines within each paragraph with spaces while keeping blank-line paragraph breaks.

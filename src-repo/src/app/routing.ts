@@ -68,13 +68,14 @@ export function modelFor(config: RoutingConfig | undefined, operatorModel: RoleM
  */
 export const multiSession = (config: RoutingConfig | undefined): boolean => config?.multiSession === 'auto'
 
-/** Reserve a stable per-task slot. Never reassign an existing session on restart. */
+/** Reserve a stable per-task slot in O(used) without allocating a max-sized array. Never reassign an existing valid session slot on restart. */
 export function reserveSessionSlot(slots: Record<string, number>, id: string, max: number): number {
   const existing = slots[id]
-  if (existing !== undefined) return existing
-  const used = new Set(Object.values(slots))
-  const slot = Array.from({ length: max }, (_, index) => index).find(index => !used.has(index))
-  if (slot === undefined) throw new Error(`This task has reached its ${max} child-session limit`)
+  if (existing !== undefined && existing >= 0 && existing < max) return existing
+  const used = new Set(Object.values(slots).filter(slot => slot >= 0 && slot < max))
+  let slot = 0
+  while (slot < max && used.has(slot)) slot++
+  if (slot >= max) throw new Error(`This task has reached its ${max} child-session limit`)
   slots[id] = slot
   return slot
 }

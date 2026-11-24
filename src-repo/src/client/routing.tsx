@@ -70,9 +70,25 @@ export function RoutingSettings() {
   const value = draft.value
   const edit = (next: Partial<typeof value>) => draft.edit({ ...value, ...next })
   const [catalog, setCatalog] = useState<ModelCatalog>()
+  const [batchIndex, setBatchIndex] = useState(0)
   useEffect(() => { call('GET models').then(setCatalog, () => undefined) }, [call])
   const groups = catalog?.groups ?? []
   const multi = value.multiSession === 'auto'
+  const totalSlots = Math.max(0, Math.floor(Number(value.maxSessions) || 0))
+  const batchSize = 32
+  const batchCount = Math.max(1, Math.ceil(totalSlots / batchSize))
+  const activeBatch = Math.min(batchIndex, batchCount - 1)
+  const batchStart = activeBatch * batchSize
+  const batchEnd = Math.min(totalSlots, batchStart + batchSize)
+  const visibleSlots = (() => {
+    const indices = new Set<number>()
+    for (let i = batchStart; i < batchEnd; i++) indices.add(i)
+    for (let i = 0; i < Math.min(totalSlots, value.sessionModels.length); i++) {
+      if (value.sessionModels[i]) indices.add(i)
+    }
+    if (totalSlots > 0) indices.add(totalSlots - 1)
+    return [...indices].sort((a, b) => a - b)
+  })()
   return <div className="dt-form">
     <form className="dt-form" onSubmit={event => { void draft.submit(event) }}>
       <Fields disabled={draft.busy}>
@@ -86,11 +102,21 @@ export function RoutingSettings() {
           </Section>
           {multi && <>
             <Field label={t('routingMaxSessions')} hint={t('routingMaxSessionsHint')}>
-              <Input type="number" min={1} max={16} required value={value.maxSessions}
+              <Input type="number" min={1} required value={value.maxSessions}
                 onChange={event => edit({ maxSessions: event.target.value })} />
             </Field>
             <Hint>{t('routingSessionModelHint')}</Hint>
-            {Array.from({ length: Math.max(0, Math.min(16, Number(value.maxSessions) || 0)) }, (_, index) =>
+            {batchCount > 1 && <div className="dt-filters">
+              {Array.from({ length: Math.min(batchCount, 12) }, (_, idx) => {
+                const page = idx === 11 && batchCount > 12 ? batchCount - 1 : idx
+                const start = page * batchSize + 1
+                const end = Math.min(totalSlots, (page + 1) * batchSize)
+                return <Pill key={page} active={activeBatch === page} onClick={() => setBatchIndex(page)}>
+                  {t('routingSessionBatch', { start, end })}
+                </Pill>
+              })}
+            </div>}
+            {visibleSlots.map(index =>
               <Section key={index} title={t('routingSessionModel', { number: index + 1 })}>
                 <ModelField id={`dt-session-model-${index}`} value={value.sessionModels[index] ?? null} onChange={model => {
                   const models = [...value.sessionModels]

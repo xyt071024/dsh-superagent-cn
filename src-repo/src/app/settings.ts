@@ -179,9 +179,12 @@ export class Settings {
       catch (error) { throw new UserError('modelUnavailable', { block, error: error instanceof Error ? error.message : String(error) }) }
     }
     if (block === 'routing') {
+      const checked = new Set<string>()
       for (const [index, selected] of candidate.routing.sessionModels.entries()) {
         if (!selected || JSON.stringify(selected) === JSON.stringify(current.routing.sessionModels[index])) continue
-        try { await resolveRoleModel(this.host.context, selected) }
+        const keyId = `${selected.provider}/${selected.model}/${selected.reasoningEffort ?? ''}`
+        if (checked.has(keyId)) continue
+        try { await resolveRoleModel(this.host.context, selected); checked.add(keyId) }
         catch (error) { throw new UserError('modelUnavailable', { block: `routing ${index + 1}`, error: error instanceof Error ? error.message : String(error) }) }
       }
     }

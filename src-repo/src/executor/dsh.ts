@@ -665,10 +665,20 @@ export class DshExecutor implements Executor {
     // A hard ticket gets told, in the dispatch message itself, that it may open its own members. This is the only place the
     // instruction can go: `worker.md` has a 1000-character cap and applies to every ticket, while this text is sent to one
     // worker on one ticket and has no length limit. Without it `multiSession` was a setting that changed nothing.
-    const split = !told && multiSession(reading) && hard ? { team: TEAM_INSTRUCTION,
+    const configuredModels = !told && multiSession(reading) && hard
+      ? Object.fromEntries(reading.sessionModels
+        .flatMap((model, index) => model && index < reading.maxSessions
+          ? [[index + 1, `${model.provider}/${model.model}`] as const]
+          : []))
+      : {}
+    const split = !told && multiSession(reading) && hard ? {
+      team: TEAM_INSTRUCTION,
       session_limit: reading.maxSessions,
-      session_models: Array.from({ length: reading.maxSessions }, (_, index) => reading.sessionModels[index]
-        ? `${reading.sessionModels[index]!.provider}/${reading.sessionModels[index]!.model}` : 'inherit task-start model') } : {}
+      session_models: {
+        default: 'inherit task-start model',
+        ...(Object.keys(configuredModels).length ? { overrides: configuredModels } : {}),
+      },
+    } : {}
     const text = told ? JSON.stringify({ ticket_id: ticket.id, assignment: ticket.assignments.length, ...retried })
       : JSON.stringify({ ticket_id: ticket.id, title: ticket.title, ...(brief ? { assignment: brief } : {}),
         ...(read ? { assignment_chars: chars, assignment_read: read } : {}), ...(card ? { trigger: card } : {}),

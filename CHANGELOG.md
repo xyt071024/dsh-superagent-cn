@@ -8,6 +8,24 @@
 
 ## [Unreleased]
 
+## [0.3.16] - 2026-11-24
+
+本版完成独立复验第 50 号目录提出的用户可调分工对话上限与模型槽位改进（`M07-m`），并深度融合多智能体工程技能库与分工结构化任务清单工具。
+
+### 新增与改进
+
+**1. 默认允许 5 个分工对话，支持任意正整数上限与按需槽位模型配置（M07-m）**
+
+- `src/policy.ts` 将新建配置或缺字段时的 `routing.maxSessions` 默认值调整为 `5`，移除 `maxSessions` 与 `sessionModels` 固定 `16` 的业务上限，保留正安全整数校验，同时原样兼容用户已显式保存的 `3`、`8` 等历史配置。
+- `src/client/routing.tsx` 与 `src/client/locales.ts` 移除输入框与模型槽位数组的 `16` 截断限制，更新文案为“每个任务最多可开的独立分工对话（默认 5，可调整）”，大数值下支持按 32 项分批浏览并始终保证已配置项与第 `N` 个末位槽位可直接访问。
+- `src/app/routing.ts` `reserveSessionSlot` 改为 `O(已用槽位数)` 扫描而不再构造长度为 `N` 的数组；`src/executor/dsh.ts` 任务提示改为表达默认继承与显式覆盖例外，避免大 `N` 下产生与 `N` 成正比的提示词开销。
+- `src/app/divisions.ts` 在待拆分子项超过用户设定的 `maxSessions` 时严格遵守限额不突破，同时将其余子项持久保留在 `deferredDivisions` 中对主会话、管理面板与后续批次可见；缩小 `maxSessions` 后自动阻断超限槽位派发。
+
+**2. 深度融合工程技能集与分工结构化步骤清单工具（`orchestrator_division_todo`）**
+
+- `src/index.ts` 与 `src/app/skill-files.ts` 打通 `DSH_BUNDLED_SKILL_DIR` 内置技能目录自动发现，并新增 5 项高信号工程技能（`code-navigation`、`planning-loop`、`gui-browser`、`frontend-design`、`diagnostics`），连同既有技能共 14 项内置技能全量生效。
+- 为独立分工会话新增持久化结构化清单工具 `orchestrator_division_todo`（支持增量合并与重启/接班保留），并强化分工执行与独立复查的反提示注入与双门禁（类型+测试）验证协议。
+
 ## [0.3.15] - 2026-11-24
 
 本版针对独立复验第 49 号目录发现的三项计划修订生命周期问题（`M07-j`、`M07-k`、`M07-l`）完成全面修复与边界加固。

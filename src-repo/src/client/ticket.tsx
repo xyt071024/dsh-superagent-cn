@@ -171,6 +171,13 @@ export function TicketPage({ id }: { id: string }) {
           </div>
           <div className="dt-row-actions"><SessionButton variant="outline" sessionId={div.sessionId} /></div>
         </li>)}
+        {data.plan.deferredDivisions?.map(div => <li key={`deferred-${div.divisionId}`} className="dt-row">
+          <Dot state="idle" label={div.status} />
+          <div className="dt-row-main">
+            <div className="dt-row-title">{div.title} <Tag tone="neutral">{div.status}</Tag></div>
+            <Hint>{div.brief}</Hint>
+          </div>
+        </li>)}
         {data.plan.review && <li className="dt-row">
           <Dot state={data.plan.review.state === 'pending' ? 'ongoing' : data.plan.review.state === 'failed' ? 'warning' : 'idle'}
             label={data.plan.review.state} />

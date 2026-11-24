@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/xyt071024/dsh-superagent-cn/releases"><img src="https://img.shields.io/badge/release-v0.3.15-2ea44f" alt="release"></a>
+  <a href="https://github.com/xyt071024/dsh-superagent-cn/releases"><img src="https://img.shields.io/badge/release-v0.3.16-2ea44f" alt="release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="license"></a>
   <a href="https://xyt071024.github.io/dsh-superagent-cn/"><img src="https://img.shields.io/badge/docs-中文%20%7C%20EN%20%7C%20日本語-6f42c1" alt="docs"></a>
   <img src="https://img.shields.io/badge/Node-22.19%2B%20%7C%2024%2B-339933" alt="node">
@@ -47,7 +47,13 @@
 
 ---
 
-## v0.3.15 更新内容
+## v0.3.16 更新内容
+
+详见 [CHANGELOG.md](CHANGELOG.md)。核心改进包括：
+- **M07-m 默认允许 5 个分工对话且支持任意正整数上限**：新建配置默认 `maxSessions = 5`，兼容已有 `3` / `8` 等保存配置；解除路由接口、模型槽位数组与前端设置的固定 `16` 限制，大数值支持分批浏览并保证第 `N` 个末位槽位可直接访问；`reserveSessionSlot` 改为 `O(已用槽位数)` 扫描且任务提示仅输出默认继承与显式覆盖，超限子项保留在 `deferredDivisions` 可见。
+- **工程技能集与分工结构化清单工具深度融合**：打通 `DSH_BUNDLED_SKILL_DIR` 自动发现全部 14 项内置技能（含新增 `code-navigation`、`planning-loop`、`gui-browser`、`frontend-design`、`diagnostics`），并为独立分工会话新增持久化步骤清单工具 `orchestrator_division_todo`。
+
+## 历史记录：v0.3.15 更新内容
 
 详见 [CHANGELOG.md](CHANGELOG.md)。核心改进包括：
 - **M07-j 复查期间变更交付范围自动换新复查**：计划修订改变交付范围时自动停止并取代旧复查（记入 `reviewHistory`），待新范围全部分工完成后按新 `deliverableVersion` 与消息标识开启新复查会话，旧审查员无法越权批准新范围。
@@ -147,17 +153,17 @@
 
 | 你的情况 | 选这个 |
 |---|---|
-| 已装 DSH | `Super-Agent-Plugin-v0.3.15.tgz` |
-| 未装 Node / 未装 DSH（Windows） | `Super-Agent-Bundled-Windows-x64-v0.3.15.zip` |
-| 未装 Node / 未装 DSH（macOS Apple 芯片） | `Super-Agent-Bundled-macOS-arm64-v0.3.15.zip` |
-| 未装 Node / 未装 DSH（macOS Intel） | `Super-Agent-Bundled-macOS-x64-v0.3.15.zip` |
-| 未装 Node / 未装 DSH（Linux） | `Super-Agent-Bundled-Linux-x64-v0.3.15.zip` |
+| 已装 DSH | `Super-Agent-Plugin-v0.3.16.tgz` |
+| 未装 Node / 未装 DSH（Windows） | `Super-Agent-Bundled-Windows-x64-v0.3.16.zip` |
+| 未装 Node / 未装 DSH（macOS Apple 芯片） | `Super-Agent-Bundled-macOS-arm64-v0.3.16.zip` |
+| 未装 Node / 未装 DSH（macOS Intel） | `Super-Agent-Bundled-macOS-x64-v0.3.16.zip` |
+| 未装 Node / 未装 DSH（Linux） | `Super-Agent-Bundled-Linux-x64-v0.3.16.zip` |
 
 内置包解压后双击 `start.cmd`（Windows）或 `./start.sh`，自动把 profile 装到 `~/.dsh/profiles/superagent`（若已存在则无损升级并保留配置）并选空闲端口启动。
 
 ```bash
 # 插件版安装
-dsh plugin add ./Super-Agent-Plugin-v0.3.15.tgz
+dsh plugin add ./Super-Agent-Plugin-v0.3.16.tgz
 ```
 
 ---
@@ -266,6 +272,7 @@ node _tools/make-dist-zips.mjs     # 串行 zip64 压缩
 
 **技术参考**
 
+- [elder-plinius/CL4R1T4S](https://github.com/elder-plinius/CL4R1T4S)（GPLv3 公开语料库，作为多智能体提示工程与结构化工具协议的外部设计研究参考，本项目所有技能与代码均为独立编写的 MIT 实现）
 - RFC 6455（WebSocket） · RFC 5321/5322（SMTP/IMAP） · Playwright（浏览器自动化） · MCP（工具协议）
 
 本项目不是官方发行版，也未获上游作者背书。

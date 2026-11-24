@@ -350,6 +350,16 @@ export function mainTools(host: MainToolsHost, agent: Agent): Tool[] {
               status: d.status,
               depends_on: d.dependsOn,
             })),
+            ...(plan.deferredDivisions?.length ? {
+              deferred_divisions: plan.deferredDivisions.map(d => ({
+                division_id: d.divisionId,
+                title: d.title,
+                brief: d.brief,
+                depends_on: d.dependsOn,
+                status: d.status,
+                reason: d.reason,
+              })),
+            } : {}),
           }
         },
       }),

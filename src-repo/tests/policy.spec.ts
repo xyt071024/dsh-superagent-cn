@@ -261,7 +261,7 @@ describe('settings migration', () => {
       executor: { model: null, reviewEnabled: false, maxWorkers: 5, directory: '', prepare: '', blockedCommands: [] },
       // The routing and budget blocks arrived after this migration was written; a migrated install gets their defaults, so
       // they are part of the expected shape rather than omissions.
-      routing: { multiSession: 'single', maxSessions: 3, sessionModels: [], inheritOperatorModel: 'prefer', placement: 'background', thinking: 'auto', allow: [], difficultyThreshold: 60 },
+      routing: { multiSession: 'single', maxSessions: 5, sessionModels: [], inheritOperatorModel: 'prefer', placement: 'background', thinking: 'auto', allow: [], difficultyThreshold: 60 },
       budget: { archiveEnabled: true, archivePercent: 60, notifyLongTask: true, longTaskMinutes: 10, dailyTokens: 0 },
     })
     expect(migrateSettings(migrated)).toEqual(migrated)

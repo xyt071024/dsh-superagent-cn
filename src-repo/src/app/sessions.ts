@@ -15,7 +15,7 @@ import type { Variable } from './execution-environment.ts'
 import { RetryHealth } from './retry-health.ts'
 import { initializeRoleModel } from './role-models.ts'
 import { modelFor, reserveSessionSlot } from './routing.ts'
-import { bundledSkills } from './skill-files.ts'
+import { bundledSkills, operationalSkills } from './skill-files.ts'
 import { SKILL_PREFIX, type PromptVersion, type Prompts } from './prompts.ts'
 import type { Store } from './store.ts'
 import type { RoleModel, Settings } from '../policy.ts'
@@ -229,7 +229,8 @@ export class Sessions {
       const settings = this.host.store.settings()
       const task = role === 'worker' ? ticketOfSession(this.host.store, id) : undefined
       if (task && settings.routing.multiSession === 'auto' && !this.host.store.get(KV.sessions.teamModels(task))) {
-        this.host.store.set(KV.sessions.teamModels(task), { inherited: this.operatorModel(), models: settings.routing.sessionModels,
+        this.host.store.set(KV.sessions.teamModels(task), { inherited: this.operatorModel(),
+          models: settings.routing.sessionModels.slice(0, settings.routing.maxSessions),
           max: settings.routing.maxSessions, slots: {}, ...(settings.routing.thinking === 'auto' ? { autoHard: hard } : {}) })
       }
       // An orchestrator decides whether to take work, so its model comes from the Eval settings. A worker's comes from
@@ -591,14 +592,19 @@ export class Sessions {
     if (member?.role === 'teammate' || (!member && (agent.session.header.parentSession === parent || persistedParent === parent))) {
       const saved = this.host.store.get(KV.sessions.teamModels(ticketId))
       if (saved) {
+        const currentRouting = typeof this.host.store.settings === 'function' ? this.host.store.settings().routing : undefined
+        const effectiveMax = currentRouting ? Math.min(saved.max, currentRouting.maxSessions) : saved.max
         let slot = saved.slots[agent.id]
         let assigned = false
-        if (slot === undefined) {
-          slot = reserveSessionSlot(saved.slots, agent.id, saved.max)
+        if (slot === undefined || slot >= effectiveMax) {
+          slot = reserveSessionSlot(saved.slots, agent.id, effectiveMax)
           this.host.store.set(KV.sessions.teamModels(ticketId), saved)
           assigned = true
         }
-        try { await initializeRoleModel(this.ctx, agent, saved.models[slot] ?? saved.inherited, true, saved.autoHard) }
+        const slotModel = currentRouting
+          ? (slot < currentRouting.maxSessions ? (currentRouting.sessionModels[slot] ?? saved.models[slot]) : null)
+          : saved.models[slot]
+        try { await initializeRoleModel(this.ctx, agent, slotModel ?? saved.inherited, true, saved.autoHard) }
         catch (error) {
           if (assigned) {
             const latest = this.host.store.get(KV.sessions.teamModels(ticketId))
@@ -611,17 +617,31 @@ export class Sessions {
     this.bindings.set(agent, { disposers: this.workOnly(agent, ticketId, true), subagent: true })
   }
   /** Register the skills of a prompt version in the agent's skill scope, in place of an earlier version's. */
-  private bindSkills(binding: SessionBinding, version: PromptVersion): void {
+  private bindSkills(binding: SessionBinding, version: PromptVersion, includeOperational = false): void {
     const { scope, skills: previous } = binding
     if (!scope || previous?.revision === version.revision) return
     previous?.dispose()
     const disposers: (() => void)[] = []
+    const registered = new Set<string>()
     for (const [name, content] of this.host.prompts.skills(version.config)) {
       const bundled = name === 'feishu' || name === 'github' ? bundledSkills[name] : undefined
       const body = version.config.skills[name] ?? ''
       const description = bundled?.description ?? (body.replace(/\s+/g, ' ').slice(0, 120) || 'Custom dsh-superagent operational skill.')
+      registered.add(name)
       disposers.push(scope.skills.register({ name: `${SKILL_PREFIX}${name}`, description, content, source: 'runtime',
         ...(bundled ? { resourceBase: { kind: 'directory' as const, path: dirname(bundled.path) } } : {}) }))
+    }
+    if (includeOperational) {
+      for (const [name, skill] of Object.entries(operationalSkills)) {
+        if (registered.has(name)) continue
+        disposers.push(scope.skills.register({
+          name: `${SKILL_PREFIX}${name}`,
+          description: skill.description,
+          content: skill.content,
+          source: 'runtime',
+          resourceBase: { kind: 'directory' as const, path: dirname(skill.path) },
+        }))
+      }
     }
     binding.skills = { revision: version.revision, dispose: () => { disposers.forEach(dispose => dispose()) } }
   }
@@ -630,7 +650,7 @@ export class Sessions {
     const version = this.host.prompts.current()
     if (!bind) return version
     const binding = this.bindings.get(agent)
-    if (binding) this.bindSkills(binding, version)
+    if (binding) this.bindSkills(binding, version, this.divisionOf(agent.id) !== undefined)
     const { store } = this.host
     const revisions = store.get(KV.sessions.prompts(agent.id)) ?? []
     const bound = [...revisions.filter(revision => revision !== version.revision), version.revision]

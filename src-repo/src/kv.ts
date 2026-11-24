@@ -82,6 +82,14 @@ export interface ComplexityVerdict {
   skipReason?: string
 }
 
+/** 分工会话内的结构化任务步骤清单项（对标 TodoWrite 规范，持久化保存并随接班保留）。 */
+export interface DivisionTodoItem {
+  id: string
+  content: string
+  status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
+  priority?: 'high' | 'medium' | 'low' | undefined
+}
+
 /** 单个独立可打开分工对话的持久记录。 */
 export interface DivisionRecord {
   divisionId: string
@@ -97,6 +105,8 @@ export interface DivisionRecord {
   status: DivisionStatus
   latestProgress?: string
   result?: string
+  /** 当前分工的结构化执行步骤清单。 */
+  todos?: DivisionTodoItem[] | undefined
   /** 当前分工的要求修订号（计划修改或复查打回重做时递增，M07-k）。 */
   revision?: number | undefined
   /** 历次已完成修订的历史成果记录（M07-k）。 */
@@ -131,6 +141,16 @@ export interface ReviewHistoryEntry {
   submittedAt: string
 }
 
+/** 超出当前任务允许上限（maxSessions）而暂缓创建独立会话的分工项，保持可见以便留给主会话或后续批次（M07-m）。 */
+export interface DeferredDivisionRecord {
+  divisionId: string
+  title: string
+  brief: string
+  dependsOn: string[]
+  status: 'deferred'
+  reason: 'max-sessions-limit'
+}
+
 export interface TaskPlan {
   taskId: string
   title: string
@@ -142,6 +162,8 @@ export interface TaskPlan {
   maxSessions: number
   slots: Record<string, number>
   divisions: DivisionRecord[]
+  /** 超出 maxSessions 限额而未开启独立会话的其余分工项，保持可见以便留给主会话或后续批次（M07-m）。 */
+  deferredDivisions?: DeferredDivisionRecord[] | undefined
   /** 计划修订时被移除并已停止的分工历史记录（M07-l）。 */
   removedDivisions?: DivisionRecord[] | undefined
   pendingDeliveries?: PendingDivisionDelivery[] | undefined

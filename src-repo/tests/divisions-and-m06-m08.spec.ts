@@ -10,6 +10,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session'
 import { KV } from '../src/kv.ts'
 import { assessComplexity } from '../src/app/routing.ts'
 import { inspect } from '../src/app/self-inspect.ts'
+import { OPERATIONAL_SKILL_NAMES, operationalSkills } from '../src/app/skill-files.ts'
 import { VersionTracker } from '../src/app/version-info.ts'
 import { SettingsSchema } from '../src/policy.ts'
 import { startRuntime, feishu } from './fixtures/host.ts'
@@ -280,14 +281,17 @@ describe('M07: 复杂度判定与多独立可打开分工对话', () => {
       expect(finalPlan.review?.state).toBe('passed')
       expect(finalPlan.divisions.find(d => d.divisionId === 'api')?.modelCalls.length).toBeGreaterThan(0)
 
-      // 8. 超过上限 5 应明确拒绝
-      await expect(h.runTool(master, 'orchestrator_dispatch', {
+      // 8. 超过上限 5 时不突破用户限额（仅开 5 个会话），其余工作保留在 deferred_divisions 中可见
+      const overRes = await h.runTool(master, 'orchestrator_dispatch', {
         title: '超限拆分',
         brief: '拆 6 个会话',
         difficulty: 90,
         plan_key: 'too-many',
         divisions: Array.from({ length: 6 }, (_, i) => ({ division_id: `d${i}`, title: `D${i}`, brief: `Work ${i}` })),
-      })).rejects.toThrow(/maxSessions limit is 5/)
+      }) as { extra_sessions: number; divisions: { division_id: string }[]; deferred_divisions?: { division_id: string; status: string }[] }
+      expect(overRes.extra_sessions).toBe(5)
+      expect(overRes.divisions).toHaveLength(5)
+      expect(overRes.deferred_divisions).toEqual([expect.objectContaining({ division_id: 'd5', status: 'deferred' })])
     } finally { await h.stop() }
   })
 
@@ -753,6 +757,151 @@ describe('M07: 复杂度判定与多独立可打开分工对话', () => {
         summary: 'Reviewed current deliverables',
       })
       expect(h.runtime.divisions.get('jkl-task')!.review!.state).toBe('passed')
+    } finally { await h.stop() }
+  })
+
+  it('M07-m: 新建默认允许 5 个分工对话、保留已有 3/8 配置、支持 17/32 等任意正整数槽位与末位模型、缩小限额后不派发超限槽位且大 N 下保持常量级开销', async () => {
+    // 1. 新建配置或缺字段默认 5，已有显式保存的 3 和 8 原样保留
+    expect(SettingsSchema.parse({}).routing.maxSessions).toBe(5)
+    expect(SettingsSchema.parse({ routing: { multiSession: 'auto' } }).routing.maxSessions).toBe(5)
+    expect(SettingsSchema.parse({ routing: { maxSessions: 3 } }).routing.maxSessions).toBe(3)
+    expect(SettingsSchema.parse({ routing: { maxSessions: 8 } }).routing.maxSessions).toBe(8)
+
+    const h = await startRuntime()
+    try {
+      const initGet = await h.api('GET', 'settings')
+      expect((initGet.body as { blocks: { routing: { value: { maxSessions: number } } } }).blocks.routing.value.maxSessions).toBe(5)
+
+      // 2. 通过设置接口依次保存 1、5、8、16、17、32 并读回
+      for (const n of [1, 5, 8, 16, 17, 32]) {
+        const cur = (await h.api('GET', 'settings')).body as { blocks: { routing: { revision: number; value: Record<string, unknown> } } }
+        const res = await h.api('PUT', 'settings/routing', {
+          revision: cur.blocks.routing.revision,
+          value: { ...cur.blocks.routing.value, multiSession: 'auto', maxSessions: n },
+        })
+        expect(res.status).toBe(200)
+        expect(h.runtime.store.settings().routing.maxSessions).toBe(n)
+      }
+
+      // 3. 设 maxSessions=17，中间槽位留空（继承发起模型），第 17 个位置（index 16）设置独立模型，派工 17 项验证第 17 槽位与中间继承
+      const models17: ({ provider: string; model: string } | null)[] = Array(17).fill(null)
+      models17[16] = { provider: 'anthropic', model: 'claude-3-7-sonnet' }
+      const s = h.runtime.store.settings()
+      h.runtime.store.saveSettings({
+        ...s,
+        routing: { ...s.routing, multiSession: 'auto', maxSessions: 17, sessionModels: models17 },
+      })
+      const p17 = await h.runtime.divisions.dispatch({
+        taskId: 'm07m-17',
+        title: '17-part task',
+        brief: 'Run 17 independent parts',
+        difficulty: 90,
+        originSessionId: h.runtime.masterId,
+        planKey: 'p17',
+        divisions: Array.from({ length: 17 }, (_, i) => ({
+          divisionId: `part-${i + 1}`,
+          title: `Part ${i + 1}`,
+          brief: `Deliverable ${i + 1}`,
+        })),
+      })
+      expect(p17.plan.divisions).toHaveLength(17)
+      expect(p17.plan.divisions.some(d => d.sessionId === h.runtime.masterId)).toBe(false)
+      const slot0 = p17.plan.divisions.find(d => d.slot === 0)!
+      const slot16 = p17.plan.divisions.find(d => d.slot === 16)!
+      expect(slot0.model).toEqual(p17.plan.originModel)
+      expect(slot16.model).toEqual({ provider: 'anthropic', model: 'claude-3-7-sonnet' })
+
+      // 4. 缩小 maxSessions 为 2（保留 17 项 sessionModels 不删），派工 4 项验证：仅开 2 个会话（槽位 0、1），超出范围的槽位 16 绝不被派发，其余 2 项在 deferredDivisions 保持可见
+      const s2 = h.runtime.store.settings()
+      h.runtime.store.saveSettings({
+        ...s2,
+        routing: { ...s2.routing, multiSession: 'auto', maxSessions: 2, sessionModels: models17 },
+      })
+      const pShrunk = await h.runtime.divisions.dispatch({
+        taskId: 'm07m-shrunk',
+        title: '4-part task under limit 2',
+        brief: 'Run 4 parts with limit 2',
+        difficulty: 90,
+        originSessionId: h.runtime.masterId,
+        planKey: 'p-shrunk',
+        divisions: Array.from({ length: 4 }, (_, i) => ({
+          divisionId: `sub-${i + 1}`,
+          title: `Sub ${i + 1}`,
+          brief: `Work ${i + 1}`,
+        })),
+      })
+      expect(pShrunk.plan.divisions).toHaveLength(2)
+      expect(pShrunk.plan.divisions.map(d => d.slot)).toEqual([0, 1])
+      expect(pShrunk.plan.divisions.every(d => d.model?.model !== 'claude-3-7-sonnet')).toBe(true)
+      expect(pShrunk.plan.deferredDivisions?.map(d => d.divisionId)).toEqual(['sub-3', 'sub-4'])
+
+      // 5. 大数值 N=5000 下只分派 2 项：只开 2 个分工会话，不会产生与 N 成正比的开销
+      const sLarge = h.runtime.store.settings()
+      h.runtime.store.saveSettings({
+        ...sLarge,
+        routing: { ...sLarge.routing, multiSession: 'auto', maxSessions: 5000, sessionModels: models17 },
+      })
+      const t0 = Date.now()
+      const pLarge = await h.runtime.divisions.dispatch({
+        taskId: 'm07m-large',
+        title: '2-part task under limit 5000',
+        brief: 'Only two needed',
+        difficulty: 90,
+        originSessionId: h.runtime.masterId,
+        planKey: 'p-large',
+        divisions: [
+          { divisionId: 'api', title: 'API', brief: 'Build API' },
+          { divisionId: 'ui', title: 'UI', brief: 'Build UI' },
+        ],
+      })
+      expect(pLarge.plan.divisions).toHaveLength(2)
+      expect(Date.now() - t0).toBeLessThan(1000)
+    } finally { await h.stop() }
+  })
+
+  it('融合技能与分工结构化清单工具: 12 项内置运维/工程技能全部加载有效，且分工会话支持持久化 orchestrator_division_todo', async () => {
+    expect(Object.keys(operationalSkills)).toEqual([...OPERATIONAL_SKILL_NAMES])
+    for (const name of OPERATIONAL_SKILL_NAMES) {
+      expect(operationalSkills[name].name).toBe(`dsh-superagent-${name}`)
+      expect(operationalSkills[name].description.length).toBeGreaterThan(15)
+      expect(operationalSkills[name].content.length).toBeGreaterThan(100)
+    }
+
+    const h = await startRuntime(store => {
+      const s = store.settings()
+      store.saveSettings({ ...s, routing: { ...s.routing, multiSession: 'auto', maxSessions: 5 } })
+    })
+    try {
+      const disp = await h.runtime.divisions.dispatch({
+        taskId: 'todo-task',
+        title: 'Structured Checklist Task',
+        brief: 'Implement and verify with checklist',
+        difficulty: 90,
+        originSessionId: h.runtime.masterId,
+        planKey: 'p-todo',
+        divisions: [{ divisionId: 'core', title: 'Core', brief: 'Build core module' }],
+      })
+      const divSession = disp.plan.divisions[0]!.sessionId
+      const created = await h.runTool(divSession, 'orchestrator_division_todo', {
+        merge: false,
+        todos: [
+          { id: 'step-1', content: 'Inspect lockfile and source', status: 'in_progress', priority: 'high' },
+          { id: 'step-2', content: 'Implement core module and run tests', status: 'pending', priority: 'medium' },
+        ],
+      }) as { todos: { id: string; status: string }[] }
+      expect(created.todos).toHaveLength(2)
+
+      const merged = await h.runTool(divSession, 'orchestrator_division_todo', {
+        merge: true,
+        todos: [
+          { id: 'step-1', content: 'Inspect lockfile and source', status: 'completed', priority: 'high' },
+          { id: 'step-2', content: 'Implement core module and run tests', status: 'in_progress', priority: 'high' },
+        ],
+      }) as { todos: { id: string; status: string }[] }
+      expect(merged.todos.map(t => `${t.id}:${t.status}`)).toEqual(['step-1:completed', 'step-2:in_progress'])
+
+      const ctx = await h.runTool(divSession, 'orchestrator_division_context', {}) as { todos: { id: string; status: string }[] }
+      expect(ctx.todos.map(t => `${t.id}:${t.status}`)).toEqual(['step-1:completed', 'step-2:in_progress'])
     } finally { await h.stop() }
   })
 })
