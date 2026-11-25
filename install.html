@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -30,10 +30,10 @@
 <p>不需要预装 Node 或 DSH。下载对应你系统的包，解压，运行启动脚本。</p>
 
 <table><thead><tr><th>系统</th><th>下载</th></tr></thead><tbody>
-<tr><td><strong>Windows x64</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.16/Super-Agent-Bundled-Windows-x64-v0.3.16.zip">Super-Agent-Bundled-Windows-x64-v0.3.16.zip</a> · 195 MB</td></tr>
-<tr><td><strong>macOS Apple Silicon</strong><br>（M1/M2/M3/M4）</td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.16/Super-Agent-Bundled-macOS-arm64-v0.3.16.zip">Super-Agent-Bundled-macOS-arm64-v0.3.16.zip</a> · 194 MB</td></tr>
-<tr><td><strong>macOS Intel</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.16/Super-Agent-Bundled-macOS-x64-v0.3.16.zip">Super-Agent-Bundled-macOS-x64-v0.3.16.zip</a> · 193 MB</td></tr>
-<tr><td><strong>Linux x64</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.16/Super-Agent-Bundled-Linux-x64-v0.3.16.zip">Super-Agent-Bundled-Linux-x64-v0.3.16.zip</a> · 202 MB</td></tr>
+<tr><td><strong>Windows x64</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.11/Super-Agent-Bundled-Windows-x64-v0.3.11.zip">Super-Agent-Bundled-Windows-x64-v0.3.11.zip</a> · 196 MB</td></tr>
+<tr><td><strong>macOS Apple Silicon</strong><br>（M1/M2/M3/M4）</td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.11/Super-Agent-Bundled-macOS-arm64-v0.3.11.zip">Super-Agent-Bundled-macOS-arm64-v0.3.11.zip</a> · 194 MB</td></tr>
+<tr><td><strong>macOS Intel</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.11/Super-Agent-Bundled-macOS-x64-v0.3.11.zip">Super-Agent-Bundled-macOS-x64-v0.3.11.zip</a> · 193 MB</td></tr>
+<tr><td><strong>Linux x64</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.11/Super-Agent-Bundled-Linux-x64-v0.3.11.zip">Super-Agent-Bundled-Linux-x64-v0.3.11.zip</a> · 202 MB</td></tr>
 </tbody></table>
 
 <h3>步骤</h3>
@@ -59,7 +59,7 @@
 终端会打印地址，形如 <code>http://127.0.0.1:3087</code>。</li>
 </ol>
 
-<p class="note"><strong>如果已有旧版 profile</strong>，启动脚本会自动备份并无损升级 <code>dsh-superagent</code> 插件，保留原有的 <code>cordis.patch.yml</code> 与其他插件。</p>
+<p class="note"><strong>如果提示 profile 已存在</strong>，说明之前装过。先把 <code>~/.dsh/profiles/superagent</code> 移走再运行。</p>
 
 <hr>
 
@@ -67,13 +67,13 @@
 
 <p>已经装了 DSH 的话，用这个。</p>
 
-<pre><code>dsh plugin add ./Super-Agent-Plugin-v0.3.16.tgz</code></pre>
+<pre><code>dsh plugin add ./Super-Agent-Plugin-v0.3.11.tgz</code></pre>
 
 <p>或指定 profile：</p>
 
-<pre><code>dsh plugin --profile superagent add ./Super-Agent-Plugin-v0.3.16.tgz</code></pre>
+<pre><code>dsh plugin --profile superagent add ./Super-Agent-Plugin-v0.3.11.tgz</code></pre>
 
-<p>下载：<a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.16/Super-Agent-Plugin-v0.3.16.tgz">Super-Agent-Plugin-v0.3.16.tgz</a> · 0.4 MB</p>
+<p>下载：<a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.11/Super-Agent-Plugin-v0.3.11.tgz">Super-Agent-Plugin-v0.3.11.tgz</a> · 0.4 MB</p>
 
 <p class="muted">需要 Node.js 22.19+ 与已安装的 DSH（0.2.2）。</p>
 
@@ -112,11 +112,16 @@
 
 <h2>已知限制</h2>
 
+<p><strong>上下文达阈值时是压缩，不是开新会话。</strong></p>
+<p>设置中的百分比为「归档阈值」，实际行为是压缩当前会话并在同一会话内继续。跨会话移交尚未实现。</p>
+
 <p><strong>多会话与独立复查默认关闭。</strong></p>
 
 <p><strong>各通道未做真实收发验收。</strong> 已验证协议行为与错误映射；真实账号的登录、收发、断线恢复未验证。</p>
 
 <p><strong>macOS / Linux 未在真机启动验证。</strong> 包结构与原生模块正确，但未实际运行过。</p>
+
+<p><strong>Windows 上约 35 项测试失败。</strong> 测试脚本依赖 POSIX 命令、符号链接、权限位，非功能故障。</p>
 
 <hr>
 
