@@ -31,8 +31,8 @@
       name: '@deepseek-ai/dsh-agent-preset'
       config:
         id: dsh-superagent-worker
-        name: dsh-superagent 鎵ц鍣?
-        description: dsh-superagent 鐨勬墽琛屽櫒 Session 涓撶敤锛屼笉渚涙墜鍔ㄩ€夋嫨銆傚墠鍙板懡浠よ秴 5 绉掕浆鍏ュ悗鍙帮紝鍙惈鎵ц宸ヤ綔鎵€闇€鐨勫伐鍏枫€?
+        name: Super Agent · 内部执行器（自动使用）
+        description: 供 Super Agent 后台工单与独立分工对话自动使用，通常无需手动选择。前台命令超 5 秒转入后台，包含执行工作所需的工具。
         order: 90
         plugins:
           - id: persona
@@ -155,8 +155,8 @@
       name: '@deepseek-ai/dsh-agent-preset'
       config:
         id: dsh-superagent-router
-        name: dsh-superagent 涓?Session
-        description: dsh-superagent 鐨勪富 Session 涓撶敤锛屼笉渚涙墜鍔ㄩ€夋嫨銆傚墠鍙板懡浠ゅ拰浠诲姟绛夊緟瓒?5 绉掕浆鍏ュ悗鍙帮紝鍙惈璺敱鎵€闇€鐨勫伐鍏枫€?
+        name: Super Agent · 自动分工协调
+        description: 在普通聊天中启用 Super Agent 自动分工协调（请在发送首条消息前选择）。简单任务在当前对话直接完成，复杂任务按设置上限在当前工作区侧栏自动创建独立可打开的分工对话；内部主协调会话也使用此预设。
         order: 91
         plugins:
           - id: agent-instructions

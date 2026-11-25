@@ -7,9 +7,10 @@ import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { ConfigPageForm } from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 import { LIMITS } from '../limits.ts'
 import type { SetupView } from './api.ts'
-import { InfoTip, Input } from './controls.tsx'
+import { Button, Icon, InfoTip, Input } from './controls.tsx'
 import { SaveBar, useDraft } from './draft.tsx'
 import { PanelProvider, usePanel, usePanelData } from './provider.tsx'
+import { settingsRoute, type SettingsGroup } from './route.ts'
 import { Field, Fields } from './settings-kit.tsx'
 import { setupText, type T } from './text.ts'
 import { CheckSetupButton, Hint, KeyValues, Section, SetupMessage } from './widgets.tsx'
@@ -30,8 +31,10 @@ export function usePageForm(form: ConfigForm<Record<string, unknown>> | undefine
 }
 
 /** Deployment configuration form; falls back to read-only display when DSH config forms are unavailable or read-only. */
-export function DeploymentPage({ setup, form, accounts: showAccounts }: { setup: SetupView; form: DeploymentForm; accounts?: boolean }) {
-  const { t, notify } = usePanel()
+export function DeploymentPage({ setup, form, accounts: showAccounts, openSettings }: {
+  setup: SetupView; form: DeploymentForm; accounts?: boolean; openSettings?: (group: SettingsGroup) => void
+}) {
+  const { t, notify, navigate } = usePanel()
   const snapshot = form?.state
   const editable = snapshot?.status === 'ready' && snapshot.writable
   // Pass `revision` only while DSH serves writable values so a draft started before `ready` rebases once writable.
@@ -66,6 +69,18 @@ export function DeploymentPage({ setup, form, accounts: showAccounts }: { setup:
           [t('deploymentAgent'), accounts ? `@${accounts.agent}` : '—'], [t('deploymentFeishu'), feishu]]} />
         <Hint>{t('deploymentAccountsWhere')}</Hint>
       </Section>}
+      <Section title={t('deploymentQuickSettings')} hint={t('deploymentQuickSettingsHint')}>
+        <div className="dt-row-buttons">
+          <Button variant="outline" size="sm" icon={<Icon name="settings" size={14} />}
+            onClick={() => { if (openSettings) openSettings('routing'); else navigate(settingsRoute('routing')) }}>
+            {t('deploymentOpenRouting')}
+          </Button>
+          <Button variant="outline" size="sm" icon={<Icon name="settings" size={14} />}
+            onClick={() => { if (openSettings) openSettings('budget'); else navigate(settingsRoute('budget')) }}>
+            {t('deploymentOpenBudget')}
+          </Button>
+        </div>
+      </Section>
       <Section title={t('deploymentMachine')}>
         {readOnlyHint && <Hint>{readOnlyHint}</Hint>}
         <div className="dt-field">
@@ -84,15 +99,17 @@ export function DeploymentPage({ setup, form, accounts: showAccounts }: { setup:
 }
 
 /** Plugin Manager config page; includes derived repository and accounts because Source settings live in the main panel. */
-function PluginPage({ form }: { form: DeploymentForm }) {
+function PluginPage({ form, openSettings }: { form: DeploymentForm; openSettings?: (group: SettingsGroup) => void }) {
   const { t } = usePanel()
   const { state, error } = usePanelData()
   return <div className="dt-embedded">
-    {state ? <DeploymentPage setup={state.setup} form={form} accounts />
+    {state ? <DeploymentPage setup={state.setup} form={form} accounts openSettings={openSettings} />
       : error ? <p className="dt-error" role="alert">{error.message}</p> : <p className="dt-hint">{t('loading')}</p>}
   </div>
 }
 /** DSH Plugin Manager config view entry; renders nothing in `summary` mode because DSH displays the package description. */
-export function PluginConfig({ t, view, form }: { t: T; view: 'page' | 'summary'; form: DeploymentForm }) {
-  return view === 'page' ? <PanelProvider t={t} interval={10_000}><PluginPage form={form} /></PanelProvider> : null
+export function PluginConfig({ t, view, form, openSettings }: {
+  t: T; view: 'page' | 'summary'; form: DeploymentForm; openSettings?: (group: SettingsGroup) => void
+}) {
+  return view === 'page' ? <PanelProvider t={t} interval={10_000}><PluginPage form={form} openSettings={openSettings} /></PanelProvider> : null
 }

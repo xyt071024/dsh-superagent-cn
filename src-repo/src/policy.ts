@@ -96,13 +96,16 @@ export const MODEL_ALLOWANCE_KEYS = ['allow'] as const
 const ModelIdSchema = z.string().trim().regex(/^[^/\s]+\/\S+$/, 'provider/model')
 /** How hard work is spread over Sessions: one at a time, or several with a model chosen per estimate. */
 export const PLAN_SCHEMA_VERSION = 'plan-v1'
+const SlotIndexKeySchema = z.string().regex(/^(?:0|[1-9]\d*)$/, 'non-negative integer slot index')
 export const RoutingConfigSchema = z.object({
   /** `single` keeps every Session on the operator and executor models; `auto` may pick another Session model per difficulty. */
   multiSession: z.enum(['single', 'auto']).default('single'),
   /** Per-task child session capacity, independent of concurrent tickets (default 5, user-adjustable without a fixed business cap). */
   maxSessions: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).default(5),
-  /** Per-child model; null inherits the task-start model. */
+  /** Legacy per-child model array; null inherits the task-start model. Kept for backward compatibility. */
   sessionModels: z.array(RoleModelSchema.nullable()).default([]),
+  /** Sparse per-child model overrides keyed by 0-based slot index (M07-m2); unspecified slots inherit the task-start model. */
+  sessionModelOverrides: z.record(SlotIndexKeySchema, RoleModelSchema).optional(),
   /**
    * How the operator's own current model competes with the approved list.
    *

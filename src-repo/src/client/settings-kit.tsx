@@ -80,31 +80,84 @@ function SwitchRow({ label, hint, checked,
   </div>
 }
 type RoleModel = Settings['eval']['model']
-export function ModelField({ id, value, onChange }: { id: string; value: RoleModel; onChange: (next: RoleModel) => void }) {
+const MODEL_PAIR_SEP = '\u0000'
+export function ModelField({ id, value, onChange, inheritLabel, catalog: sharedCatalog, onRefreshCatalog, refreshing }: {
+  id: string
+  value: RoleModel
+  onChange: (next: RoleModel) => void
+  inheritLabel?: string | undefined
+  catalog?: ApiResponse<'GET models'> | undefined
+  onRefreshCatalog?: (() => void) | undefined
+  refreshing?: boolean | undefined
+}) {
   const { t, call } = usePanel()
-  const [catalog, setCatalog] = useState<ApiResponse<'GET models'>>()
+  const [ownCatalog, setOwnCatalog] = useState<ApiResponse<'GET models'>>()
   const [error, setError] = useState<string>()
-  useEffect(() => { call('GET models').then(setCatalog, failure => setError(errorText(failure))) }, [call])
+  const [loadingCatalog, setLoadingCatalog] = useState(false)
+  const loadCatalog = () => {
+    setLoadingCatalog(true)
+    setError(undefined)
+    call('GET models').then(next => { setOwnCatalog(next); setLoadingCatalog(false) }, failure => { setError(errorText(failure)); setLoadingCatalog(false) })
+  }
+  useEffect(() => {
+    if (sharedCatalog !== undefined) return
+    loadCatalog()
+  }, [call, sharedCatalog !== undefined])
+  const catalog = sharedCatalog ?? ownCatalog
   const current = { provider: value?.provider ?? '', model: value?.model ?? '', effort: value?.reasoningEffort ?? '' }
   const set = (next: Partial<typeof current>) => {
     const { provider, model, effort } = { ...current, ...next }
     onChange(provider.trim() || model.trim() || effort.trim() ? { provider, model, ...effort ? { reasoningEffort: effort } : {} } : null)
   }
-  const models = catalog?.groups.find(group => group.id === current.provider.trim())?.models ?? []
+  const groups = catalog?.groups ?? []
+  const models = groups.find(group => group.id === current.provider.trim())?.models ?? []
   const fallback = catalog?.default
+  const inheritText = inheritLabel ?? t('modelInherit')
+  const hasSelection = !!(current.provider.trim() && current.model.trim())
+  const selectedKnown = !hasSelection || groups.length === 0
+    || groups.some(g => g.id === current.provider.trim() && g.models.some(m => m.id === current.model.trim()))
+  const pairValue = hasSelection ? `${current.provider.trim()}${MODEL_PAIR_SEP}${current.model.trim()}` : ''
   const input = (name: keyof typeof current, label: string, placeholder: string) => <Field label={label}>
     <Input list={`${id}-${name}s`} spellCheck={false} placeholder={placeholder} value={current[name]}
       onChange={event => set({ [name]: event.target.value })} />
   </Field>
   return <div className="dt-model">
-    <Hint>{fallback ? t('defaultModel', { model: `${fallback.provider} / ${fallback.model}${fallback.reasoningEffort
-      ? ` · ${fallback.reasoningEffort}` : ''}` }) : t('defaultModelUnavailable')}</Hint>
+    <div className="dt-row-meta">
+      <Hint>{fallback ? t('defaultModel', { model: `${fallback.provider} / ${fallback.model}${fallback.reasoningEffort
+        ? ` · ${fallback.reasoningEffort}` : ''}` }) : t('defaultModelUnavailable')}</Hint>
+      <Button variant="ghost" size="sm" icon={<Icon name="refresh" size={14} />} disabled={refreshing || loadingCatalog}
+        onClick={() => { if (onRefreshCatalog) onRefreshCatalog(); else loadCatalog() }}>{t('routingModelRefresh')}</Button>
+    </div>
     {error && <p className="dt-error">{t('modelCatalogError', { error })}</p>}
+    {hasSelection && !selectedKnown && <p className="dt-error" role="alert">
+      {t('modelUnavailableInCatalog', { model: `${current.provider.trim()}/${current.model.trim()}` })}
+    </p>}
+    {groups.length > 0 && <Field label={t('modelCatalogSelect')}>
+      <select className="dt-select" aria-label={t('modelCatalogSelect')} value={selectedKnown ? pairValue : '__missing__'}
+        onChange={event => {
+          const raw = event.target.value
+          if (!raw) { onChange(null); return }
+          if (raw === '__missing__') return
+          const sepAt = raw.indexOf(MODEL_PAIR_SEP)
+          if (sepAt <= 0) return
+          const nextProvider = raw.slice(0, sepAt)
+          const nextModel = raw.slice(sepAt + 1)
+          set({ provider: nextProvider, model: nextModel, effort: '' })
+        }}>
+        <option value="">{inheritText}</option>
+        {!selectedKnown && <option value="__missing__" disabled>{`${current.provider.trim()} / ${current.model.trim()}`}</option>}
+        {groups.map(group => <optgroup key={group.id} label={`${group.name} (${group.id})`}>
+          {group.models.map(model => <option key={`${group.id}${MODEL_PAIR_SEP}${model.id}`} value={`${group.id}${MODEL_PAIR_SEP}${model.id}`}>
+            {`${group.name} · ${model.name} (${model.id})`}
+          </option>)}
+        </optgroup>)}
+      </select>
+    </Field>}
     <div className="dt-grid3">
-      {input('provider', t('modelProvider'), t('modelInherit'))}{input('model', t('modelName'), t('modelInherit'))}{input('effort',
+      {input('provider', t('modelProvider'), inheritText)}{input('model', t('modelName'), inheritText)}{input('effort',
         t('modelEffort'), t('modelEffortDefault'))}
     </div>
-    <datalist id={`${id}-providers`}>{catalog?.groups.map(group => <option key={group.id}
+    <datalist id={`${id}-providers`}>{groups.map(group => <option key={group.id}
       value={group.id}>{group.name}</option>)}</datalist>
     <datalist id={`${id}-models`}>{models.map(model => <option key={model.id} value={model.id}>{model.name}</option>)}</datalist>
     <datalist id={`${id}-efforts`}>

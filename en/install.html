@@ -31,10 +31,10 @@
 <p>No need to pre-install Node or DSH. Download the package for your system, unzip, run the start script.</p>
 
 <table><thead><tr><th>System</th><th>Download</th></tr></thead><tbody>
-<tr><td><strong>Windows x64</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.11/Super-Agent-Bundled-Windows-x64-v0.3.11.zip">Super-Agent-Bundled-Windows-x64-v0.3.11.zip</a> · 196 MB</td></tr>
-<tr><td><strong>macOS Apple Silicon</strong><br>(M1/M2/M3/M4)</td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.11/Super-Agent-Bundled-macOS-arm64-v0.3.11.zip">Super-Agent-Bundled-macOS-arm64-v0.3.11.zip</a> · 194 MB</td></tr>
-<tr><td><strong>macOS Intel</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.11/Super-Agent-Bundled-macOS-x64-v0.3.11.zip">Super-Agent-Bundled-macOS-x64-v0.3.11.zip</a> · 193 MB</td></tr>
-<tr><td><strong>Linux x64</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.11/Super-Agent-Bundled-Linux-x64-v0.3.11.zip">Super-Agent-Bundled-Linux-x64-v0.3.11.zip</a> · 202 MB</td></tr>
+<tr><td><strong>Windows x64</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.17/Super-Agent-Bundled-Windows-x64-v0.3.17.zip">Super-Agent-Bundled-Windows-x64-v0.3.17.zip</a> · 195 MB</td></tr>
+<tr><td><strong>macOS Apple Silicon</strong><br>(M1/M2/M3/M4)</td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.17/Super-Agent-Bundled-macOS-arm64-v0.3.17.zip">Super-Agent-Bundled-macOS-arm64-v0.3.17.zip</a> · 194 MB</td></tr>
+<tr><td><strong>macOS Intel</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.17/Super-Agent-Bundled-macOS-x64-v0.3.17.zip">Super-Agent-Bundled-macOS-x64-v0.3.17.zip</a> · 193 MB</td></tr>
+<tr><td><strong>Linux x64</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.17/Super-Agent-Bundled-Linux-x64-v0.3.17.zip">Super-Agent-Bundled-Linux-x64-v0.3.17.zip</a> · 202 MB</td></tr>
 </tbody></table>
 
 <h3>Steps</h3>
@@ -60,7 +60,7 @@
 The terminal prints the address, e.g. <code>http://127.0.0.1:3087</code>.</li>
 </ol>
 
-<p class="note"><strong>If it says the profile already exists</strong>, move <code>~/.dsh/profiles/superagent</code> away and run again.</p>
+<p class="note"><strong>If the profile already exists</strong>, the launcher backs up and upgrades <code>dsh-superagent</code> in place while preserving your existing <code>cordis.patch.yml</code> and other plugins.</p>
 
 <hr>
 
@@ -68,13 +68,13 @@ The terminal prints the address, e.g. <code>http://127.0.0.1:3087</code>.</li>
 
 <p>If DSH is already installed, use this.</p>
 
-<pre><code>dsh plugin add ./Super-Agent-Plugin-v0.3.11.tgz</code></pre>
+<pre><code>dsh plugin add ./Super-Agent-Plugin-v0.3.17.tgz</code></pre>
 
 <p>Or a specific profile:</p>
 
-<pre><code>dsh plugin --profile superagent add ./Super-Agent-Plugin-v0.3.11.tgz</code></pre>
+<pre><code>dsh plugin --profile superagent add ./Super-Agent-Plugin-v0.3.17.tgz</code></pre>
 
-<p>Download: <a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.11/Super-Agent-Plugin-v0.3.11.tgz">Super-Agent-Plugin-v0.3.11.tgz</a> · 0.4 MB</p>
+<p>Download: <a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.17/Super-Agent-Plugin-v0.3.17.tgz">Super-Agent-Plugin-v0.3.17.tgz</a> · 0.4 MB</p>
 
 <p class="muted">Requires Node.js 22.19+ and DSH 0.2.2.</p>
 
@@ -113,16 +113,11 @@ The terminal prints the address, e.g. <code>http://127.0.0.1:3087</code>.</li>
 
 <h2>Known limitations</h2>
 
-<p><strong>Reaching the threshold compacts the session; it does not start a new one.</strong></p>
-<p>The percentage in settings is an "archive threshold". The actual behaviour is to compact the current session and continue in the same one. Cross-session handoff is not implemented.</p>
-
 <p><strong>Multi-session and independent review are off by default.</strong></p>
 
 <p><strong>No real send/receive verification for any channel.</strong> Protocol behaviour and error mapping are verified; real-account login, send, receive and reconnect are not.</p>
 
 <p><strong>macOS / Linux not verified on real hardware.</strong> Package structure and native modules are correct, but neither has been launched on those systems.</p>
-
-<p><strong>About 35 tests fail on Windows.</strong> The test scripts depend on POSIX commands, symlinks and permission bits. Not a functional defect.</p>
 
 <hr>
 

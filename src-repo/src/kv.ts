@@ -151,17 +151,64 @@ export interface DeferredDivisionRecord {
   reason: 'max-sessions-limit'
 }
 
+/** 同一任务内可由空闲或等待依赖成员主动领取、独立完成并交回原负责人合并的工作项（R04 动态补位）。 */
+export type WorkItemStatus = 'open' | 'claimed' | 'submitted' | 'merged' | 'failed'
+
+export interface DivisionWorkItem {
+  itemId: string
+  title: string
+  brief: string
+  /** 原负责人分工 ID（负责验收与合并成果）。 */
+  ownerDivisionId: string
+  /** 当前实际领取执行该项的分工 ID（空闲或等待依赖成员补位）。 */
+  assigneeDivisionId?: string | undefined
+  dependsOn: string[]
+  status: WorkItemStatus
+  deliverable?: string | undefined
+  summary?: string | undefined
+  /** 实际参与编写/产出该工作项的分工 ID 列表，用于最终复核回避校验。 */
+  contributors: string[]
+  mergedBy?: string | undefined
+  mergeNote?: string | undefined
+  claimRevision: number
+  claimEventIds: string[]
+  submitEventIds: string[]
+  mergeEventIds: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+/** 分工成员之间的定向协助、澄清、接手与合并消息记录（带 eventId 去重与防循环统计）。 */
+export interface DivisionPeerMessage {
+  id: string
+  fromDivisionId: string
+  toDivisionId: string
+  kind: 'help_request' | 'clarification' | 'claim_notice' | 'handoff_result' | 'merge_confirm'
+  content: string
+  itemId?: string | undefined
+  eventId: string
+  at: string
+}
+
 export interface TaskPlan {
   taskId: string
   title: string
   originSessionId: string
   originModel: { provider: string; model: string; reasoningEffort?: string } | null
+  /** 记录发起任务时模型解析来源，严禁静默回退到协调器默认模型。 */
+  originModelSource?: 'session-selection' | 'session-request' | 'host-default' | 'unresolved' | undefined
   planKey: string
+  /** 发起聊天归属的宿主工作区 ID（保证分工会话出现在同一工作区侧栏，R02）。 */
+  workspaceId?: string | undefined
   directory: string
   complexity: ComplexityVerdict
   maxSessions: number
   slots: Record<string, number>
   divisions: DivisionRecord[]
+  /** 同任务内可独立拆分、领取、回报与合并的细粒度工作项（R04）。 */
+  workItems?: DivisionWorkItem[] | undefined
+  /** 分工成员之间的定向求助、澄清、接手与合并消息（R04）。 */
+  peerMessages?: DivisionPeerMessage[] | undefined
   /** 超出 maxSessions 限额而未开启独立会话的其余分工项，保持可见以便留给主会话或后续批次（M07-m）。 */
   deferredDivisions?: DeferredDivisionRecord[] | undefined
   /** 计划修订时被移除并已停止的分工历史记录（M07-l）。 */
@@ -223,7 +270,9 @@ export const KV = {
     usage: record<{ day: string; tokens: number }>('daily-usage') },
   /** Sessions: prompt revisions each Session has worked under, ordered oldest first; the last entry (`.at(-1)`) is its active revision. */
   sessions: { prompts: family<number[], [session: string]>('session-prompts:'),
-    teamModels: family<{ inherited: { provider: string; model: string; reasoningEffort?: string } | null; models: ({ provider: string; model: string; reasoningEffort?: string } | null)[]; max: number; slots: Record<string, number>; autoHard?: boolean }, [ticket: string]>('team-models:'),
+    teamModels: family<{ inherited: { provider: string; model: string; reasoningEffort?: string } | null; models: ({ provider: string; model: string; reasoningEffort?: string } | null)[]; overrides?: Record<string, { provider: string; model: string; reasoningEffort?: string }> | undefined; max: number; slots: Record<string, number>; autoHard?: boolean }, [ticket: string]>('team-models:'),
+    /** 用户在普通聊天中显式启用 Super Agent 自动分工协调预设的持久标记（重启后自动恢复权限）。 */
+    chatCoordinator: family<boolean, [session: string]>('chat-coordinator:'),
     /**
      * The ticket a Session works on, written when the Session is created and kept for its whole life.
      *

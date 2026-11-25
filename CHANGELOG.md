@@ -8,6 +8,42 @@
 
 ## [Unreleased]
 
+## [0.3.17] - 2026-11-25
+
+本版围绕独立复验第 51 号目录留存的 `M07-m1` / `M07-m2` 及工作区独立会话、设置导航、模型目录与严格继承、成员双向协作与吞吐测速工具等 7 项需求完成全面升级。
+
+### 新增与修复
+
+**1. 大数量槽位完整分页可达与稀疏存储（`M07-m1` / `M07-m2`）**
+
+- `src/client/routing.tsx` 保留 32 项每页渲染并补齐“上一页 / 下一页”、窗口化页码切换与“按槽位编号直达跳转”（`#dt-slot-jump`），实测 `N = 32 / 384 / 385 / 416 / 5000` 全部 `1..N` 槽位 100% 可达（含 `N = 385` 下同时独立配置第 352、353、384、385 位并保存重载）。
+- `src/policy.ts` 与 `src/app/routing.ts` 新增稀疏映射 `sessionModelOverrides: Record<string, RoleModel>`（同时向后兼容旧 `sessionModels` 数组），高编号槽位（如第 `5000`、`100000` 位）不再填充空数组，序列化体积仅随实际配置项增长（约 82 字节），重启可读且其余槽位正常继承。
+
+**2. 设置入口注册、插件管理直达与聊天顶栏分工状态（需求 1 & 2）**
+
+- 在 `src/client/route.ts`、`src/client/settings.tsx`、`src/client/locales.ts` 正式注册「会话分工与模型（`routing`）」与「上下文与预算（`budget`）」设置页，补齐未保存 / 保存中 / 已保存 / 失败状态标签。
+- 在插件管理页（`deployment.tsx`、`index.tsx`）新增直达路由与预算设置按钮，并在聊天会话顶栏（`conversation.session.header.utilities`）注入实时分工模式标识、直达设置与“新建自动分工对话”入口。
+- 修复 `cordis.patch.yml` 中 `dsh-superagent-router`（`Super Agent · 自动分工协调`）与 `dsh-superagent-worker`（`Super Agent · 内部执行器（自动使用）`）的中文乱码，清晰区分普通聊天、自动分工协调与内部执行预设，并支持普通聊天启用/取消/重启恢复后的实际工具权限同步。
+
+**3. 同工作区独立顶层对话与自然复杂任务主动拆分（需求 3 & 4）**
+
+- `src/app/sessions.ts` 新增 `resolveSessionWorkspace(originSessionId)`，从宿主 `workspaceRegistry` 优先继承发起聊天所属工作区 `workspaceId` 与路径，并在重试、复查与 60% 接力中全程透传；新建分工会话不带 `parentSession`，自动在原工作区侧栏以“任务名 · 分工名”展示独立可打开对话。
+- `src/app/routing.ts` 与 `src/app/divisions.ts` 增强自然中文多交付物识别（如“请分别核对安装说明、设置项说明和更新日志，各自给出文件依据，最后汇总”），在不提示“开会话”的情况下自动按需拆分为独立分工会话，简单单步任务仍留在原聊天（`0` 额外会话）。
+
+**4. 成员双向互通、动态补位领取、原负责人合并与独立复查回避（需求 5）**
+
+- 在 `TaskPlan`（`src/kv.ts`）与 `DivisionCoordinator`（`src/app/divisions.ts`）新增持久化工作项（`workItems`）与成员消息（`peerMessages`），提供 `orchestrator_division_publish_items`、`orchestrator_division_claim_item`、`orchestrator_division_submit_item`、`orchestrator_division_merge_item` 与 `orchestrator_division_peer_message` 五项协作工具。
+- 支持空闲或等待依赖的成员原子认领可拆分工作项（带 `event_id` 并发防重）、向原负责人自动发接手通知、提交并由原负责人验收合并、失败释放、60% 接力保留认领/归属状态、消息防循环护栏及独立复核回避校验（参与编写者不可自审）。
+
+**5. 宿主完整模型目录、同名模型区分与严格继承原窗口模型（需求 6）**
+
+- `ModelField`（`src/client/settings-kit.tsx`）新增按供应商分组的下拉选择器（以 `provider + model` 区分同名模型）、“跟随发起聊天”首选项、刷新目录按钮与下架模型警告。
+- `src/app/sessions.ts` 新增 `resolveOriginModel()` 与 `validateModelInCatalog()`，严格按 `model/selection → request/header → 宿主默认模型` 捕获发起聊天实际生效模型并彻底移除向 `masterId` 静默回退路径；已配置模型从目录移除时明确报错并允许重选。
+
+**6. 输出吞吐与并行测速工具（需求 7）**
+
+- 新增 `scripts/benchmark-throughput.mjs`（含 `--mock-server` 本地验证与真实 OpenAI-SSE 端点模式），严格按单条生成速度 `outputTokens / (lastToken - firstToken)` 与多路合计速度 `sum(outputTokens) / (max(lastToken) - min(firstToken))` 统计，记录 TTFT、并发重叠区间、429 限流次数与总墙钟耗时。
+
 ## [0.3.16] - 2026-11-24
 
 本版完成独立复验第 50 号目录提出的用户可调分工对话上限与模型槽位改进（`M07-m`），并深度融合多智能体工程技能库与分工结构化任务清单工具。

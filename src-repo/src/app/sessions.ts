@@ -14,7 +14,7 @@ import type { Effects } from './effects.ts'
 import type { Variable } from './execution-environment.ts'
 import { RetryHealth } from './retry-health.ts'
 import { initializeRoleModel } from './role-models.ts'
-import { modelFor, reserveSessionSlot } from './routing.ts'
+import { configuredSlotModel, modelFor, normalizeRoutingOverrides, reserveSessionSlot } from './routing.ts'
 import { bundledSkills, operationalSkills } from './skill-files.ts'
 import { SKILL_PREFIX, type PromptVersion, type Prompts } from './prompts.ts'
 import type { Store } from './store.ts'
@@ -27,7 +27,7 @@ import type { RegisterTool, Tool } from './tools/tool.ts'
 export interface SessionsHost {
   /** DSH Cordis context: sessions, agents, persistence, and their events. */
   readonly context: Context
-  readonly store: Pick<Store, 'tickets' | 'settings' | 'get' | 'set' | 'keys'>
+  readonly store: Pick<Store, 'tickets' | 'settings' | 'get' | 'set' | 'keys'> & Partial<Pick<Store, 'delete'>>
   readonly prompts: Pick<Prompts, 'current' | 'version' | 'compose' | 'skills'>
   readonly effects: Pick<Effects, 'enqueue' | 'handle' | 'idle' | 'pending'>
   /** The `models` health entry, which reports managed sessions waiting on a model-budget retry. */
@@ -173,22 +173,33 @@ export class Sessions {
     ctx.on('agent/created', async ({ agent }) => { await this.decorate(agent); return undefined })
     // Opening a Session in DSH's Web UI before its first turn may select the default preset for it: select ours again. After
     // its first turn DSH refuses any selection, which leaves it as it is.
-    ctx.inject(['agentPresets'], child => {
-      child.on('agent-preset/selected', (sessionId, preset) => {
-        const ticketId = ticketOfSession(this.host.store, sessionId), agent = ctx.agents.get(sessionId as SessionId)
-        const division = this.host.store.get(KV.sessions.divisionOwner(sessionId))
-        const ours = sessionId === this.host.masterId ? ROUTER_PRESET
-          : (ticketId && this.host.store.tickets.get(ticketId)) || division ? WORKER_PRESET : undefined
-        if (!ours && preset === ROUTER_PRESET && agent && !this.bindings.get(agent)?.subagent) {
-          // 用户在普通聊天中手动选择了 Super Agent 预设：将其装配为可交互的 Super Agent 协调入口。
+    // Subscribe on the root context directly so preset switches are never missed regardless of agentPresets activation order.
+    ctx.on('agent-preset/selected', (sessionId, preset) => {
+      const ticketId = ticketOfSession(this.host.store, sessionId), agent = ctx.agents.get(sessionId as SessionId)
+      const division = this.host.store.get(KV.sessions.divisionOwner(sessionId))
+      const ours = sessionId === this.host.masterId ? ROUTER_PRESET
+        : (ticketId && this.host.store.tickets.get(ticketId)) || division ? WORKER_PRESET : undefined
+      if (!ours && agent && !this.bindings.get(agent)?.subagent) {
+        if (preset === ROUTER_PRESET) {
+          // 用户在普通聊天中手动选择了「Super Agent · 自动分工协调」预设：持久记录并装配为可交互协调入口。
           this.chatCoordinators.add(sessionId)
+          this.host.store.set(KV.sessions.chatCoordinator(sessionId), true)
           void this.redecorate(agent)
           return
         }
-        if (!ours || preset === ours || !agent) return
-        const presets = child.get('agentPresets') as { select(agent: Agent, preset: string): Promise<string> }
-        presets.select(agent, ours).catch(() => {})
-      })
+        if (this.chatCoordinators.has(sessionId) || this.host.store.get(KV.sessions.chatCoordinator(sessionId))) {
+          // 用户从自动分工预设切回普通预设：撤销持久化标记并立即释放 orchestrator_* 工具权限。
+          this.chatCoordinators.delete(sessionId)
+          if (typeof this.host.store.delete === 'function') this.host.store.delete(KV.sessions.chatCoordinator(sessionId))
+          else this.host.store.set(KV.sessions.chatCoordinator(sessionId), false)
+          this.release(agent)
+          return
+        }
+      }
+      if (!ours || preset === ours || !agent) return
+      let presets: { select(agent: Agent, preset: string): Promise<string> } | undefined
+      try { presets = ctx.get('agentPresets') as typeof presets } catch { presets = undefined }
+      presets?.select(agent, ours).catch(() => {})
     })
     ctx.on('agent/status', ({ agent, status }) => {
       if (status === 'idle' && !this.host.closing()) { this.retryHealth.clear(agent.id); this.updateModelHealth() }
@@ -230,7 +241,8 @@ export class Sessions {
       const task = role === 'worker' ? ticketOfSession(this.host.store, id) : undefined
       if (task && settings.routing.multiSession === 'auto' && !this.host.store.get(KV.sessions.teamModels(task))) {
         this.host.store.set(KV.sessions.teamModels(task), { inherited: this.operatorModel(),
-          models: settings.routing.sessionModels.slice(0, settings.routing.maxSessions),
+          models: [],
+          overrides: normalizeRoutingOverrides(settings.routing),
           max: settings.routing.maxSessions, slots: {}, ...(settings.routing.thinking === 'auto' ? { autoHard: hard } : {}) })
       }
       // An orchestrator decides whether to take work, so its model comes from the Eval settings. A worker's comes from
@@ -284,16 +296,28 @@ export class Sessions {
   }
   /**
    * 为复杂任务创建或接续一个独立可打开的分工对话（M07），在宿主会话列表可见且可由用户随时点开继续交互。
+   * 当提供 workspaceId（来自发起聊天归属工作区）时直接挂到同一工作区侧栏，不设置 parentSession。
    */
   async ensureDivision(id: string, cwd: string, title: string, options: {
-    taskId: string; divisionId: string; model: RoleModel | null; autoHard?: boolean | undefined
+    taskId: string; divisionId: string; model: RoleModel | null; autoHard?: boolean | undefined; workspaceId?: string | undefined
   }): Promise<Agent> {
     if (!validSessionId(id)) throw new Error(`Refusing to create a Session whose id is not a usable name: ${JSON.stringify(id)}`)
     this.host.store.set(KV.sessions.divisionOwner(id), { taskId: options.taskId, divisionId: options.divisionId })
     let result = await this.ctx.sessionController.resolveAgent(id as SessionId)
     if ('error' in result && result.error.code === 'session/not-found') {
-      const workspace = await this.ctx.workspaceRegistry.create(cwd)
-      await this.ctx.sessionController.create({ sessionId: id as SessionId, workspaceId: workspace.id, agentPreset: WORKER_PRESET })
+      const registry = this.ctx.workspaceRegistry as {
+        create(path: string): Promise<{ id: string }>
+        get?(id: string): { id: string; path?: string } | undefined
+      }
+      const existingWs = options.workspaceId && typeof registry.get === 'function'
+        ? registry.get(options.workspaceId)
+        : (options.workspaceId ? { id: options.workspaceId } : undefined)
+      const workspace = existingWs ?? await registry.create(cwd)
+      await this.ctx.sessionController.create({
+        sessionId: id as SessionId,
+        workspaceId: workspace.id as import('@deepseek-ai/dsh-workspace').WorkspaceId,
+        agentPreset: WORKER_PRESET,
+      })
       result = await this.ctx.sessionController.resolveAgent(id as SessionId)
     }
     if ('error' in result) throw result.error
@@ -305,15 +329,186 @@ export class Sessions {
     await this.ctx.sessionController.rename({ sessionId: id as SessionId, title })
     return result.agent
   }
-  /** 读取某个指定会话当前选用的模型（用于捕获用户发起会话时的实时模型）。 */
+  /** 判断某个普通聊天会话是否由用户启用了「Super Agent · 自动分工协调」预设（跨重启恢复）。 */
+  isChatCoordinator(sessionId: string): boolean {
+    if (sessionId === this.host.masterId) return false
+    if (ticketOfSession(this.host.store, sessionId) !== undefined) return false
+    if (this.host.store.get(KV.sessions.divisionOwner(sessionId))) return false
+    if (this.chatCoordinators.has(sessionId)) return true
+    if (this.host.store.get(KV.sessions.chatCoordinator(sessionId)) === true) return true
+    const agent = this.ctx.agents.get(sessionId as SessionId)
+    if (!agent || this.bindings.get(agent)?.subagent) return false
+    return this.routed(agent)
+  }
+  /** 查询指定会话在宿主 workspaceRegistry 中归属的工作区 ID 与目录路径（R02 同工作区侧栏）。 */
+  async resolveSessionWorkspace(sessionId: string): Promise<{ workspaceId?: string; cwd?: string }> {
+    const registry = this.ctx.workspaceRegistry as {
+      list?(): readonly { id: string; path: string; sessionIds?: readonly string[] }[]
+      resolveByPath?(path: string): Promise<{ id: string; path: string } | undefined>
+    } | undefined
+    try {
+      const list = typeof registry?.list === 'function' ? registry.list() : []
+      const owned = list.find(ws => ws.sessionIds?.includes(sessionId))
+      if (owned) return { workspaceId: owned.id, cwd: owned.path }
+    } catch { /* ignore workspace lookup error and fall back to header cwd */ }
+    const agent = this.ctx.agents.get(sessionId as SessionId)
+    let cwd = (agent?.session?.header as { cwd?: string } | undefined)?.cwd
+    if (!cwd && typeof this.ctx.sessionController?.inspect === 'function') {
+      try {
+        const inspected = await this.ctx.sessionController.inspect(sessionId as SessionId) as { header?: { cwd?: string } } | undefined
+        cwd = inspected?.header?.cwd
+      } catch { /* ignore inspect failure */ }
+    }
+    if (cwd) {
+      try {
+        const matched = typeof registry?.resolveByPath === 'function' ? await registry.resolveByPath(cwd) : undefined
+        if (matched) return { workspaceId: matched.id, cwd: matched.path }
+      } catch { /* keep raw cwd */ }
+      return { cwd }
+    }
+    return {}
+  }
+  /** 读取某个指定会话当前选用的模型（先读 model/selection，再读 requestHeader；绝不跨会话读取其他窗口）。 */
   sessionModel(sessionId: string): RoleModel | null {
     const agent = this.ctx.agents.get(sessionId as SessionId)
     if (!agent) return null
-    const selection = agent.session.snapshotEvents().findLast(event => event.type === 'model/selection')
-    if (!selection || selection.type !== 'model/selection') return null
-    const { provider, model, reasoningEffort } = selection.data
-    if (!provider || !model) return null
-    return { provider, model, ...reasoningEffort ? { reasoningEffort } : {} }
+    const events = agent.session.snapshotEvents()
+    const selection = events.findLast(event => event.type === 'model/selection')
+    if (selection && selection.type === 'model/selection') {
+      const { provider, model, reasoningEffort } = selection.data
+      if (provider && model) return { provider, model, ...reasoningEffort ? { reasoningEffort } : {} }
+    }
+    const header = agent.session.requestHeader?.() as { config?: { provider?: string; model?: string; reasoningEffort?: string } } | undefined
+    if (header?.config?.provider && header?.config?.model) {
+      return {
+        provider: header.config.provider,
+        model: header.config.model,
+        ...(header.config.reasoningEffort ? { reasoningEffort: header.config.reasoningEffort } : {}),
+      }
+    }
+    const reqEvent = events.findLast(event => event.type === 'request/header') as {
+      data?: { header?: { config?: { provider?: string; model?: string; reasoningEffort?: string } }; provider?: string; model?: string; reasoningEffort?: string }
+    } | undefined
+    const cfg = reqEvent?.data?.header?.config ?? reqEvent?.data
+    if (cfg?.provider && cfg?.model) {
+      return { provider: cfg.provider, model: cfg.model, ...(cfg.reasoningEffort ? { reasoningEffort: cfg.reasoningEffort } : {}) }
+    }
+    return null
+  }
+  /**
+   * 严格解析发起任务窗口（originSessionId）当前实际生效的供应商与模型（R03）：
+   * 1. 原窗口自身最新 model/selection 事件（实时或持久化日志）；
+   * 2. 原窗口最新 request/header 实际发送的配置；
+   * 3. 原窗口尚未手动选过模型时，读取宿主 modelCatalog().default 有效默认值；
+   * 绝不静默借用协调器（masterId）的模型！
+   */
+  async resolveOriginModel(sessionId: string): Promise<{
+    model: RoleModel | null
+    source: 'session-selection' | 'session-request' | 'host-default' | 'unresolved'
+    error?: string
+  }> {
+    const liveAgent = this.ctx.agents.get(sessionId as SessionId)
+    if (liveAgent) {
+      const events = liveAgent.session.snapshotEvents()
+      const selection = events.findLast(event => event.type === 'model/selection')
+      if (selection && selection.type === 'model/selection' && selection.data.provider && selection.data.model) {
+        return {
+          model: {
+            provider: selection.data.provider,
+            model: selection.data.model,
+            ...(selection.data.reasoningEffort ? { reasoningEffort: selection.data.reasoningEffort } : {}),
+          },
+          source: 'session-selection',
+        }
+      }
+      const header = liveAgent.session.requestHeader?.() as { config?: { provider?: string; model?: string; reasoningEffort?: string } } | undefined
+      if (header?.config?.provider && header.config.model) {
+        return {
+          model: {
+            provider: header.config.provider,
+            model: header.config.model,
+            ...(header.config.reasoningEffort ? { reasoningEffort: header.config.reasoningEffort } : {}),
+          },
+          source: 'session-request',
+        }
+      }
+      const reqEvent = events.findLast(event => event.type === 'request/header') as {
+        data?: { header?: { config?: { provider?: string; model?: string; reasoningEffort?: string } }; provider?: string; model?: string; reasoningEffort?: string }
+      } | undefined
+      const cfg = reqEvent?.data?.header?.config ?? reqEvent?.data
+      if (cfg?.provider && cfg?.model) {
+        return {
+          model: { provider: cfg.provider, model: cfg.model, ...(cfg.reasoningEffort ? { reasoningEffort: cfg.reasoningEffort } : {}) },
+          source: 'session-request',
+        }
+      }
+    }
+    if (typeof this.ctx.sessionController?.inspect === 'function') {
+      try {
+        const inspected = await this.ctx.sessionController.inspect(sessionId as SessionId)
+        const events = inspected?.events ?? []
+        const sel = events.findLast(e => e.type === 'model/selection') as { data?: { provider?: string; model?: string; reasoningEffort?: string } } | undefined
+        if (sel?.data?.provider && sel.data.model) {
+          return {
+            model: {
+              provider: sel.data.provider,
+              model: sel.data.model,
+              ...(sel.data.reasoningEffort ? { reasoningEffort: sel.data.reasoningEffort } : {}),
+            },
+            source: 'session-selection',
+          }
+        }
+        const req = events.findLast(e => e.type === 'request/header') as {
+          data?: { header?: { config?: { provider?: string; model?: string; reasoningEffort?: string } }; provider?: string; model?: string; reasoningEffort?: string }
+        } | undefined
+        const cfg = req?.data?.header?.config ?? req?.data
+        if (cfg?.provider && cfg?.model) {
+          return {
+            model: { provider: cfg.provider, model: cfg.model, ...(cfg.reasoningEffort ? { reasoningEffort: cfg.reasoningEffort } : {}) },
+            source: 'session-request',
+          }
+        }
+      } catch { /* fall through to host catalog default */ }
+    }
+    if (typeof this.ctx.sessionController?.modelCatalog === 'function') {
+      try {
+        const catalog = await this.ctx.sessionController.modelCatalog()
+        const def = catalog?.default
+        if (def?.provider && def?.model) {
+          return {
+            model: {
+              provider: def.provider,
+              model: def.model,
+              ...(def.reasoningEffort ? { reasoningEffort: def.reasoningEffort } : {}),
+            },
+            source: 'host-default',
+          }
+        }
+        return { model: null, source: 'unresolved', error: 'Host model catalog has no active default model and origin session has no model selection.' }
+      } catch (error) {
+        return { model: null, source: 'unresolved', error: `Failed to read host model catalog: ${error instanceof Error ? error.message : String(error)}` }
+      }
+    }
+    return { model: null, source: 'unresolved' }
+  }
+  /** 核对某个显式选择的供应商与模型是否仍在宿主当前可选目录中（按 provider + model 区分同名模型，下架则报错不静默替换）。 */
+  async validateModelInCatalog(model: RoleModel): Promise<{ valid: boolean; reason?: string }> {
+    if (typeof this.ctx.sessionController?.modelCatalog !== 'function') return { valid: true }
+    try {
+      const catalog = await this.ctx.sessionController.modelCatalog()
+      if (!catalog || !Array.isArray(catalog.groups) || catalog.groups.length === 0) return { valid: true }
+      const providerGroup = catalog.groups.find(g => g.id === model.provider)
+      if (!providerGroup) {
+        return { valid: false, reason: `Provider "${model.provider}" for model "${model.model}" is no longer available in the host model catalog.` }
+      }
+      const matched = providerGroup.models.find((m: { id: string }) => m.id === model.model)
+      if (!matched) {
+        return { valid: false, reason: `Model "${model.provider}/${model.model}" is no longer available in the host model catalog.` }
+      }
+      return { valid: true }
+    } catch {
+      return { valid: true }
+    }
   }
   /** 判断某个会话是否被作为子会话（subagent / teammate）管理。 */
   isSubagent(sessionId: string): boolean {
@@ -335,7 +530,7 @@ export class Sessions {
       ?? this.host.store.get(KV.sessions.subagentTicket(agent.id))
     const saved = ticketId ? this.host.store.get(KV.sessions.teamModels(ticketId)) : undefined
     const slot = saved?.slots[agent.id]
-    const model = slot !== undefined && saved ? (saved.models[slot] ?? saved.inherited) : this.sessionModel(agent.id)
+    const model = slot !== undefined && saved ? (saved.overrides?.[String(slot)] ?? saved.models[slot] ?? saved.inherited) : this.sessionModel(agent.id)
     return { ...(parentId ? { parentId } : {}), ...(ticketId ? { ticketId } : {}), ...(slot !== undefined ? { slot } : {}),
       model, ...(saved?.autoHard !== undefined ? { autoHard: saved.autoHard } : {}) }
   }
@@ -474,7 +669,10 @@ export class Sessions {
   private async decorate(agent: Agent): Promise<void> {
     if (this.bindings.has(agent)) return
     const host = this.host
-    const master = agent.id === host.masterId || this.pendingOrchestrators.has(agent.id) || this.chatCoordinators.has(agent.id)
+    const isCoreMaster = agent.id === host.masterId || this.pendingOrchestrators.has(agent.id)
+    const isChatCoord = !isCoreMaster && this.isChatCoordinator(agent.id)
+    if (isChatCoord) this.chatCoordinators.add(agent.id)
+    const master = isCoreMaster || isChatCoord
     const ticket = master ? undefined : this.ticketOf(agent)
     const division = master || ticket ? undefined : this.host.store.get(KV.sessions.divisionOwner(agent.id))
     if (!master && !ticket && !division) { await this.limitSubagent(agent); return }
@@ -489,7 +687,25 @@ export class Sessions {
       const current = ticket && host.store.tickets.get(ticket.id)
       const composed = host.prompts.compose(version.config, master ? 'orchestrator' : 'worker', current ? host.environment(current) : undefined)
       return `[dsh-superagent prompt revision ${version.revision}]\n${composed}\n${current ? mandateInstructions(current.mandate) : ''}`
-    }, ...(master ? { complete: true } : {}) }))
+    }, ...(isCoreMaster ? { complete: true } : {}) }))
+    if (isChatCoord) {
+      binding.disposers.push(agent.ctx.systemPrompt.section({
+        name: 'dsh-superagent-chat-coordinator',
+        order: 10000,
+        interpolate: false,
+        text: () => {
+          const routing = host.store.settings().routing
+          return [
+            '## Super Agent · Interactive Workspace Coordination Mode',
+            `You are running in interactive "Super Agent · Auto-Division Coordination" mode (max extra division sessions: ${routing.maxSessions}, difficulty threshold: ${routing.difficultyThreshold}%).`,
+            '- For simple single-step requests, answer or finish directly in this conversation without opening extra sessions.',
+            '- For complex tasks with multiple separable deliverables (e.g., auditing multiple docs/modules in parallel, or splitting API/UI/test/review), proactively call `orchestrator_dispatch` without waiting for the user to ask to open sessions.',
+            '- Clearly explain to the user which divisions run in parallel, which wait on dependencies, and synthesize final verified findings back into this chat.',
+            '- Every division session is created in the same workspace sidebar as this chat and inherits this chat window\'s active model unless a slot override is explicitly configured.',
+          ].join('\n')
+        },
+      }))
+    }
     // A recreated skill scope (e.g. after the skills service restarts) starts empty, so reset `binding.skills` before rebinding.
     const skillScope = agent.ctx.inject(['skills'], scope => {
       binding.scope = scope
@@ -516,12 +732,19 @@ export class Sessions {
       return
     }
     for (const tool of host.tools(agent, ticket)) register(tool.name, tool.description, tool.schema, tool.execute)
-    if (master) {
+    if (isCoreMaster) {
       // The preset enables `bash` or `pwsh` by platform; restrict only names this host really has. The agent's own view
       // includes the preset's tools, and reading through the parent scope covers a host that keeps them only there.
       const parent = scopeParentOf(agent)
       const shell = ['bash', 'pwsh'].filter(name => agent.ctx.tools.get(name) ?? agent.ctx.tools.get(name, parent))
       binding.disposers.push(agent.ctx.tools.restrict({ allow: ['skill', ...shell, 'read', 'read_image', 'job_output', 'job_list', 'job_kill'] }),
+        agent.ctx.tools.guard(execution => noWait(execution, () => this.routed(agent))))
+    } else if (isChatCoord) {
+      // 普通聊天启用自动分工协调时，保留读取、搜索和命令行工具以便简单任务在本会话直接完成，同时保留防长阻塞守卫。
+      const parent = scopeParentOf(agent)
+      const chatPool = ['skill', 'bash', 'pwsh', 'read', 'read_image', 'glob', 'grep', 'job_output', 'job_list', 'job_kill', 'web_search', 'web_fetch']
+      const allowed = chatPool.filter(name => agent.ctx.tools.get(name) ?? agent.ctx.tools.get(name, parent))
+      binding.disposers.push(agent.ctx.tools.restrict({ allow: allowed }),
         agent.ctx.tools.guard(execution => noWait(execution, () => this.routed(agent))))
     } else {
       // An Executor Session keeps the profile's work tools it has, which DSH requires to be known; its own tools are not masked.
@@ -602,8 +825,8 @@ export class Sessions {
           assigned = true
         }
         const slotModel = currentRouting
-          ? (slot < currentRouting.maxSessions ? (currentRouting.sessionModels[slot] ?? saved.models[slot]) : null)
-          : saved.models[slot]
+          ? (configuredSlotModel(currentRouting, slot) ?? (slot < currentRouting.maxSessions ? (saved.overrides?.[String(slot)] ?? saved.models[slot]) : null))
+          : (saved.overrides?.[String(slot)] ?? saved.models[slot])
         try { await initializeRoleModel(this.ctx, agent, slotModel ?? saved.inherited, true, saved.autoHard) }
         catch (error) {
           if (assigned) {

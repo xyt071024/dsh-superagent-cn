@@ -4,7 +4,7 @@
  * 这三项都是「谁掏钱、谁被打扰」的决定，所以逐项写在设置里，不藏进代码。
  */
 import { LIMITS } from '../limits.ts'
-import { InfoTip, Input, Pill, Switch } from './controls.tsx'
+import { InfoTip, Input, Pill, Switch, Tag } from './controls.tsx'
 import { SaveBar } from './draft.tsx'
 import { ConfigHistory, Field, Fields, numberOf, useBlockDraft, useSettings } from './settings-kit.tsx'
 import { usePanel } from './provider.tsx'
@@ -25,11 +25,18 @@ export function BudgetSettings() {
       dailyTokens: numberOf(value.dailyTokens) }))
   const value = draft.value
   const edit = (next: Partial<typeof value>) => draft.edit({ ...value, ...next })
+  const draftNoticeKind = draft.state?.notice?.kind
+  const statusFailed = draftNoticeKind === 'failed' || draftNoticeKind === 'invalid' || draftNoticeKind === 'conflict' || draftNoticeKind === 'unstored'
+  const statusTone = statusFailed ? 'danger' : draft.busy ? 'info' : draft.dirty ? 'warning' : 'neutral'
+  const statusLabel = statusFailed ? t('routingStatusFailed') : draft.busy ? t('routingStatusSaving') : draft.dirty ? t('routingStatusDirty') : t('routingStatusSaved')
   return <div className="dt-form">
     <form className="dt-form" onSubmit={event => { void draft.submit(event) }}>
       <Fields disabled={draft.busy}>
         <div className="dt-form dt-block">
-          <h2 className="dt-block-title">{t('budgetArchive')}<InfoTip text={t('budgetArchiveHint')} /></h2>
+          <div className="dt-row-meta">
+            <h2 className="dt-block-title">{t('budgetArchive')}<InfoTip text={t('budgetArchiveHint')} /></h2>
+            <Tag tone={statusTone}>{statusLabel}</Tag>
+          </div>
           <Section title={t('budgetArchiveSwitch')} hint={t('budgetArchiveSwitchHint')}>
             <Switch checked={value.archiveEnabled} label={t('budgetArchiveSwitch')} onChange={archiveEnabled => edit({ archiveEnabled })} />
           </Section>

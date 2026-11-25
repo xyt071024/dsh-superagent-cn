@@ -18,11 +18,11 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/xyt071024/dsh-superagent-cn/releases"><img src="https://img.shields.io/badge/Release-v0.3.16-10b981?style=flat-square" alt="Release v0.3.16"></a>
+  <a href="https://github.com/xyt071024/dsh-superagent-cn/releases"><img src="https://img.shields.io/badge/Release-v0.3.17-10b981?style=flat-square" alt="Release v0.3.17"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-38bdf8?style=flat-square" alt="MIT License"></a>
   <img src="https://img.shields.io/badge/Node.js-22.19%2B%20%7C%2024%2B-339933?style=flat-square" alt="Node.js">
   <img src="https://img.shields.io/badge/DSH-0.2.1%2B-6366f1?style=flat-square" alt="DeepSeek Harness">
-  <img src="https://img.shields.io/badge/Tests-1354%20Passed%20%7C%200%20Failed-2ea44f?style=flat-square" alt="Tests">
+  <img src="https://img.shields.io/badge/Tests-1361%20Passed%20%7C%200%20Failed-2ea44f?style=flat-square" alt="Tests">
 </p>
 
 ---
@@ -82,19 +82,19 @@ curl -fsSL https://xyt071024.github.io/dsh-superagent-cn/install.sh | bash
 
 | 対象環境 | ファイル名 | 起動方法 |
 |---|---|---|
-| **Windows x64** | `Super-Agent-Bundled-Windows-x64-v0.3.16.zip` | 解凍して `start.cmd` を実行 |
-| **macOS Apple Silicon (arm64)** | `Super-Agent-Bundled-macOS-arm64-v0.3.16.zip` | 解凍して `./start.sh` を実行 |
-| **macOS Intel (x64)** | `Super-Agent-Bundled-macOS-x64-v0.3.16.zip` | 解凍して `./start.sh` を実行 |
-| **Linux x64** | `Super-Agent-Bundled-Linux-x64-v0.3.16.zip` | 解凍して `./start.sh` を実行 |
-| **既存 DSH 用プラグイン単体** | `Super-Agent-Plugin-v0.3.16.tgz` | `dsh plugin add ./Super-Agent-Plugin-v0.3.16.tgz` |
+| **Windows x64** | `Super-Agent-Bundled-Windows-x64-v0.3.17.zip` | 解凍して `start.cmd` を実行 |
+| **macOS Apple Silicon (arm64)** | `Super-Agent-Bundled-macOS-arm64-v0.3.17.zip` | 解凍して `./start.sh` を実行 |
+| **macOS Intel (x64)** | `Super-Agent-Bundled-macOS-x64-v0.3.17.zip` | 解凍して `./start.sh` を実行 |
+| **Linux x64** | `Super-Agent-Bundled-Linux-x64-v0.3.17.zip` | 解凍して `./start.sh` を実行 |
+| **既存 DSH 用プラグイン単体** | `Super-Agent-Plugin-v0.3.17.tgz` | `dsh plugin add ./Super-Agent-Plugin-v0.3.17.tgz` |
 
 ---
 
 ## 検証ステータス
 
 - **型検査・ビルド**：`tsc --noEmit` エラー 0、`lib/` 21 モジュール完全一致
-- **自動テストスイート**：Windows 75 ファイル（**1,354 件合格 / 0 件失敗**）、Linux CI 全ジョブ合格、独立検収スイート（第 41〜50 号）**37 / 37 件合格**
-- **分離インストール＆プリフライト検査**：Windows 実パッケージ起動 HTTP 200（`0.3.16`）、`release_preflight.py` 5 成果物スキャン **0 件検出**
+- **自動テストスイート**：Windows 76 ファイル（**1,361 件合格 / 0 件失敗**）、Linux CI 全ジョブ合格、独立検収スイート（第 41〜50 号）**37 / 37 件合格**
+- **分離インストール＆プリフライト検査**：Windows 実パッケージ起動 HTTP 200（`0.3.17`）、`release_preflight.py` 5 成果物スキャン **0 件検出**
 - **未検証範囲**：macOS / Linux 実機デスクトップでの GUI 通し確認、および外部本番アカウントを用いた実送受信は別途実機検証対象です。
 
 ---

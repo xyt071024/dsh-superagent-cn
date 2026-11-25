@@ -62,11 +62,71 @@ export function modelFor(config: RoutingConfig | undefined, operatorModel: RoleM
   return { provider: route.provider, model: route.model, ...effort ? { reasoningEffort: effort } : {} }
 }
 
-/**
- * Whether a run may open more than one Session for a job.
+/** Whether a run may open more than one Session for a job.
  * `single` keeps every job on one Session, which is what an operator choosing that expects.
  */
 export const multiSession = (config: RoutingConfig | undefined): boolean => config?.multiSession === 'auto'
+
+/**
+ * 读取指定分工槽位（0-based）的显式模型配置（兼容旧数组 sessionModels 与稀疏映射 sessionModelOverrides，M07-m2）。
+ * 超出当前 maxSessions 或未配置时返回 null（继承发起任务时原窗口实际模型）。
+ */
+export function configuredSlotModel(
+  config: Pick<RoutingConfig, 'maxSessions' | 'sessionModels' | 'sessionModelOverrides'> | undefined,
+  slot: number,
+): RoleModel | null {
+  if (!config || !Number.isInteger(slot) || slot < 0 || slot >= config.maxSessions) return null
+  const override = config.sessionModelOverrides?.[String(slot)]
+  if (override) return override
+  return config.sessionModels?.[slot] ?? null
+}
+
+/**
+ * 以 O(已配置数) 返回当前 maxSessions 范围内所有已显式配置模型的槽位列表（升序，M07-m2）。
+ */
+export function configuredSlotEntries(
+  config: Pick<RoutingConfig, 'maxSessions' | 'sessionModels' | 'sessionModelOverrides'> | undefined,
+  maxLimit?: number,
+): [slot: number, model: RoleModel][] {
+  if (!config) return []
+  const limit = maxLimit === undefined ? config.maxSessions : Math.min(config.maxSessions, maxLimit)
+  const map = new Map<number, RoleModel>()
+  if (Array.isArray(config.sessionModels)) {
+    const cap = Math.min(config.sessionModels.length, limit)
+    for (let i = 0; i < cap; i++) {
+      const m = config.sessionModels[i]
+      if (m) map.set(i, m)
+    }
+  }
+  if (config.sessionModelOverrides) {
+    for (const [key, model] of Object.entries(config.sessionModelOverrides)) {
+      const idx = Number(key)
+      if (Number.isInteger(idx) && idx >= 0 && idx < limit && model) map.set(idx, model)
+    }
+  }
+  return [...map.entries()].sort((a, b) => a[0] - b[0])
+}
+
+/**
+ * 将路由配置中的槽位模型压缩为稀疏映射（不破坏显式传入的非空槽位），避免高编号位置写入海量 null（M07-m2）。
+ */
+export function normalizeRoutingOverrides(
+  config: Pick<RoutingConfig, 'sessionModels' | 'sessionModelOverrides'>,
+): Record<string, RoleModel> {
+  const out: Record<string, RoleModel> = {}
+  if (Array.isArray(config.sessionModels)) {
+    for (let i = 0; i < config.sessionModels.length; i++) {
+      const m = config.sessionModels[i]
+      if (m) out[String(i)] = m
+    }
+  }
+  if (config.sessionModelOverrides) {
+    for (const [k, m] of Object.entries(config.sessionModelOverrides)) {
+      if (m) out[k] = m
+    }
+  }
+  return out
+}
 
 /** Reserve a stable per-task slot in O(used) without allocating a max-sized array. Never reassign an existing valid session slot on restart. */
 export function reserveSessionSlot(slots: Record<string, number>, id: string, max: number): number {
@@ -92,9 +152,10 @@ export function reserveSessionSlot(slots: Record<string, number>, id: string, ma
  * reaches it at `HARD_BRIEF_CHARS` characters' worth of instruction. It is a proxy, not a measurement, and the panel says so.
  */
 const HARD_BRIEF_CHARS = 1200
-const MULTI_MODULE_CUE = /(?:前端|后端|数据库|接口|API|测试|部署|文档|迁移|重构|认证|登录|权限|路由|组件|模块|frontend|backend|database|schema|migration|auth|endpoint|test|deploy|refactor)/gi
-const PARALLEL_CUE = /(?:并且|同时|分别|并行|独立|拆分|以及|另外|此外|parallel|independently|separate|split|across\s+modules?)/i
+const MULTI_MODULE_CUE = /(?:前端|后端|数据库|接口|API|测试|部署|文档|迁移|重构|认证|登录|权限|路由|组件|模块|说明|日志|配置|设置项|安装|更新日志|frontend|backend|database|schema|migration|auth|endpoint|test|deploy|refactor|docs?|changelog)/gi
+const PARALLEL_CUE = /(?:并且|同时|分别|并行|独立|拆分|各自|以及|另外|此外|汇总|parallel|independently|separate|split|across\s+modules?|respectively)/i
 const SIMPLE_EDIT_CUE = /(?:改成|改为|替换为|typo|错别字|拼写|改一下|仅需|只改|端口|port\s*\d+|重命名|rename|explain|解释|总结|翻译)/i
+const PARALLEL_ENUM_CLAUSE = /(?:请)?(?:分别|各自|并行)(?:核对|检查|审查|分析|整理|实现|编写|处理|开发|验证|修改|调研)[^。.\n]{2,120}(?:[、，,]|(?:\s*(?:和|与|以及|and)\s+))[^。.\n]{2,120}/i
 
 /**
  * 综合评估任务复杂度（M07）：
@@ -138,13 +199,15 @@ export function assessComplexity(input: {
   const modules = new Set((text.match(MULTI_MODULE_CUE) ?? []).map(item => item.toLowerCase()))
   const listItems = (text.match(/(?:^|\n)\s*(?:\d+[.)]|[-*•])\s+\S/g) ?? []).length
   const parallel = PARALLEL_CUE.test(text)
+  const parallelEnum = PARALLEL_ENUM_CLAUSE.test(text)
   if (modules.size >= 3) signals.push(`modules:${modules.size}`)
   if (listItems >= 2) signals.push(`steps:${listItems}`)
   if (parallel) signals.push('parallel-cue')
+  if (parallelEnum) signals.push('parallel-enumeration')
 
-  // 简短难题：虽然字数不多，但明确涉及跨模块协作（>=3 个不同模块/层）或显式多步骤拆分。
-  if ((modules.size >= 3 && (parallel || modules.size >= 4)) || (listItems >= 2 && (modules.size >= 2 || parallel))) {
-    const score = Math.min(100, Math.max(threshold, 65 + modules.size * 5 + listItems * 5))
+  // 简短难题：虽然字数不多，但明确涉及跨模块协作（>=3 个不同模块/层）、显式多步骤拆分，或明确要求“分别/各自核对/处理 A、B 和 C 并汇总”。
+  if ((modules.size >= 3 && (parallel || modules.size >= 4)) || (listItems >= 2 && (modules.size >= 2 || parallel)) || parallelEnum) {
+    const score = Math.min(100, Math.max(threshold, 65 + modules.size * 5 + listItems * 5 + (parallelEnum ? 10 : 0)))
     return {
       hard: score >= threshold,
       score,

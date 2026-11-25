@@ -1,11 +1,13 @@
-/** Settings tab shell routing between stage settings (Sources, Eval, Execution), Prompts, and Deployment. */
+/** Settings tab shell routing between stage settings (Sources, Eval, Execution), Routing, Budget, Prompts, and Deployment. */
 import type { StateView } from './api.ts'
+import { BudgetSettings } from './budget.tsx'
 import { DeploymentPage, type DeploymentForm } from './deployment.tsx'
 import { EvalSettings } from './eval.tsx'
 import { ExecutionSettings } from './execution.tsx'
 import { PromptsPage } from './prompts.tsx'
 import { usePanel } from './provider.tsx'
 import { SETTINGS_GROUPS, settingsRoute, type SettingsGroup } from './route.ts'
+import { RoutingSettings } from './routing.tsx'
 import { SettingsProvider } from './settings-kit.tsx'
 import { SourceSettings } from './source.tsx'
 
@@ -19,6 +21,8 @@ export function SettingsPage({ group, query, state, deploymentForm }: {
       case 'source': return <SettingsProvider><SourceSettings {...query.source ? { focus: query.source } : {}} /></SettingsProvider>
       case 'eval': return <SettingsProvider><EvalSettings version={query.version} /></SettingsProvider>
       case 'execution': return <SettingsProvider><ExecutionSettings /></SettingsProvider>
+      case 'routing': return <SettingsProvider><RoutingSettings /></SettingsProvider>
+      case 'budget': return <SettingsProvider><BudgetSettings /></SettingsProvider>
       case 'prompts': return <PromptsPage />
       case 'deployment': return <DeploymentPage setup={state.setup} form={deploymentForm} />
     }

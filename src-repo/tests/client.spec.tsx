@@ -49,10 +49,16 @@ const serve = () => vi.stubGlobal('fetch', vi.fn(async (url: string) => {
 }))
 afterEach(() => { vi.unstubAllGlobals() })
 
-it('registers a localized main panel, sidebar entry and Plugin Manager row page, and no settings section', () => {
+it('registers a localized main panel, sidebar entry, Plugin Manager row page and chat header utility, and no settings section', () => {
   const { entries, dictionaries, main, nav } = fixture([])
-  expect(entries.map(entry => entry.options.name)).toEqual(['main', 'sidebar.panellist', 'plugins.row.config'])
+  expect(entries.map(entry => entry.options.name)).toEqual([
+    'main',
+    'sidebar.panellist',
+    'plugins.row.config',
+    'conversation.session.header.utilities',
+  ])
   expect(entries[2]!.options).toMatchObject({ key: 'dsh-superagent#dsh-superagent', locale: 'dshSuperagent' })
+  expect(entries[3]!.options).toMatchObject({ id: 'dsh-superagent-division-status', locale: 'dshSuperagent' })
   expect(Object.keys(dictionaries)).toEqual(['dshSuperagent'])
   expect(main.options).toMatchObject({ key: 'dsh-superagent', locale: 'dshSuperagent' })
   expect(nav.options).toMatchObject({ id: 'dsh-superagent', order: 10, locale: 'dshSuperagent' })

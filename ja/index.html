@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Super Agent v0.3.16 · DeepSeek Harness 向け自律型マルチセッション開発エージェント</title>
+<title>Super Agent v0.3.17 · DeepSeek Harness 向け自律型マルチセッション開発エージェント</title>
 <link rel="stylesheet" href="../assets/style.css">
 </head>
 <body>
@@ -13,7 +13,7 @@
     <div class="brand">
       <span class="logo">◆</span>
       <span class="brand-name">Super Agent</span>
-      <span class="brand-sub">v0.3.16 · for DeepSeek Harness</span>
+      <span class="brand-sub">v0.3.17 · for DeepSeek Harness</span>
     </div>
 
     <nav class="lang-switch" aria-label="Language">
@@ -32,7 +32,7 @@
     7チャネル受信 · 3層コード権限ゲート · 独立分担セッション＆スロット別モデル選択 · 60% 無損失コンテキストリレー · 独立レビュー
   </p>
   <div class="hero-actions">
-    <a href="install.html" class="btn btn-primary">v0.3.16 を導入</a>
+    <a href="install.html" class="btn btn-primary">v0.3.17 を導入</a>
     <a href="../docs/ja/01-overview.html" class="btn btn-ghost">ドキュメントを読む</a>
     <a href="https://github.com/xyt071024/dsh-superagent-cn/releases/latest" class="btn btn-ghost">リリース一覧</a>
   </div>
@@ -74,7 +74,7 @@
 <section class="doc-index">
   <h2>はじめに</h2>
   <ol class="toc">
-    <li><a href="install.html"><span class="num">→</span><span class="title">導入と無損失アップグレード（v0.3.16）</span><span class="desc">ワンライナー導入、同梱バンドル ZIP、単体プラグイン</span></a></li>
+    <li><a href="install.html"><span class="num">→</span><span class="title">導入と無損失アップグレード（v0.3.17）</span><span class="desc">ワンライナー導入、同梱バンドル ZIP、単体プラグイン</span></a></li>
   </ol>
 </section>
 
@@ -94,15 +94,16 @@
 </section>
 
 <section class="quickfacts">
-  <h2>v0.3.16 概要</h2>
+  <h2>v0.3.17 概要</h2>
   <table>
     <tr><th>項目</th><th>内容</th></tr>
     <tr><td>配布形態</td><td>単体プラグイン（<code>.tgz</code>） / Node+DSH 同梱 4 プラットフォーム版（<code>.zip</code>）</td></tr>
-    <tr><td>分担セッション上限</td><td>既定 <strong>5</strong>（固定 16 上限なし、任意の正整数に設定可能）・スロット別モデル設定／継承対応</td></tr>
+    <tr><td>分担セッション上限</td><td>既定 <strong>5</strong>（同一ワークスペースに独立表示・全ページ到達＆スパース保存・開始ウィンドウのモデルを厳格継承）</td></tr>
+    <tr><td>設定と協調機能</td><td>ルーティング／予算設定ナビゲーション、チャット上部ステータス表示、動的タスク引き受け・オーナーマージ・独立レビュー回避</td></tr>
     <tr><td>チケット並行数</td><td>既定 3 チケット + 人間の追撃用に 1 枠を予約</td></tr>
     <tr><td>コンテキストリレー</td><td>60% 到達で世代交代リレー（メイン / ワーカー / サブエージェント / 分担すべて対応）</td></tr>
-    <tr><td>レビュー＆スキル</td><td>最大 3 ラウンドの独立レビュー + 内蔵 14 スキル + 永続チェックリストツール</td></tr>
-    <tr><td>品質検証</td><td>自動テスト 1,354 件合格、独立検収 37/37 件合格、プリフライト検査 0 件検出</td></tr>
+    <tr><td>レビュー＆測定ツール</td><td>最大 3 ラウンドの独立レビュー + 内蔵 14 スキル + <code>orchestrator_division_todo</code> + <code>scripts/benchmark-throughput.mjs</code></td></tr>
+    <tr><td>品質検証</td><td>自動テスト 1,361 件合格、独立検収 37/37 件合格、プリフライト検査 0 件検出</td></tr>
     <tr><td>ライセンス</td><td>MIT License</td></tr>
   </table>
 </section>
@@ -110,7 +111,7 @@
 </main>
 
 <footer>
-  <p>Super Agent v0.3.16 for DeepSeek Harness · MIT License</p>
+  <p>Super Agent v0.3.17 for DeepSeek Harness · MIT License</p>
   <p class="footer-note">DeepSeek Harness 上に構築されたコミュニティ版オープンソース配布物です。</p>
 </footer>
 

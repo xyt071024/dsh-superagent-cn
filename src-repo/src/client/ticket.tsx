@@ -188,6 +188,23 @@ export function TicketPage({ id }: { id: string }) {
           <div className="dt-row-actions"><SessionButton variant="outline" sessionId={data.plan.review.sessionId} /></div>
         </li>}
       </ul>
+      {data.plan.workItems && data.plan.workItems.length > 0 && <Section title={t('divisionsWorkItems')} count={data.plan.workItems.length}>
+        <ul className="dt-list">
+          {data.plan.workItems.map(item => <li key={item.itemId} className="dt-row">
+            <Dot state={item.status === 'merged' ? 'done' : item.status === 'claimed' || item.status === 'submitted' ? 'ongoing' : item.status === 'failed' ? 'error' : 'idle'}
+              label={item.status} />
+            <div className="dt-row-main">
+              <div className="dt-row-title">{item.title} <Tag tone="neutral">{item.status}</Tag></div>
+              <div className="dt-row-meta">
+                <span>{t('divisionsWorkItemOwner', { owner: item.ownerDivisionId })}</span>
+                {item.assigneeDivisionId && <span>{t('divisionsWorkItemAssignee', { assignee: item.assigneeDivisionId })}</span>}
+                {item.mergedBy && <span>{t('divisionsWorkItemMergedBy', { merger: item.mergedBy })}</span>}
+              </div>
+              {item.summary && <Hint>{item.summary}</Hint>}
+            </div>
+          </li>)}
+        </ul>
+      </Section>}
     </Section>}
     {undelivered.length > 0 && <Section title={t('undeliveredInputs')} count={undelivered.length}>
       <Hint>{data.deliveryError ? t('inputRetryHint') : data.paused ? t('inputPausedHint') : t('inputWaitingHint')}</Hint>

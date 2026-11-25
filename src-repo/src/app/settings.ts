@@ -8,6 +8,7 @@ import type { SourceHost } from '../sources/host.ts'
 import type { HealthBoard, HealthEntry } from '../infra/health.ts'
 import type { SourceRegistry } from '../sources/registry.ts'
 import { resolveRoleModel } from './role-models.ts'
+import { configuredSlotEntries, configuredSlotModel } from './routing.ts'
 import { changedPaths, settingsNotice } from './notices.ts'
 import type { Sessions } from './sessions.ts'
 import { setupChanged, type Setup } from './setup.ts'
@@ -180,8 +181,11 @@ export class Settings {
     }
     if (block === 'routing') {
       const checked = new Set<string>()
-      for (const [index, selected] of candidate.routing.sessionModels.entries()) {
-        if (!selected || JSON.stringify(selected) === JSON.stringify(current.routing.sessionModels[index])) continue
+      // 同时兼容旧 sessionModels 数组与稀疏 sessionModelOverrides，只校验实际发生变动的非空模型（O(已配置数)，M07-m2）
+      const entries = configuredSlotEntries(candidate.routing, Number.MAX_SAFE_INTEGER)
+      for (const [index, selected] of entries) {
+        const prev = configuredSlotModel(current.routing, index)
+        if (JSON.stringify(selected) === JSON.stringify(prev)) continue
         const keyId = `${selected.provider}/${selected.model}/${selected.reasoningEffort ?? ''}`
         if (checked.has(keyId)) continue
         try { await resolveRoleModel(this.host.context, selected); checked.add(keyId) }

@@ -44,7 +44,7 @@ export interface RelaySessions {
     parentId: string; ticketId?: string | undefined; slot?: number | undefined; model?: RoleModel | null | undefined; autoHard?: boolean | undefined
   }): Promise<Agent>
   ensureDivision?(id: string, cwd: string, title: string, options: {
-    taskId: string; divisionId: string; model: RoleModel | null; autoHard?: boolean | undefined
+    taskId: string; divisionId: string; model: RoleModel | null; autoHard?: boolean | undefined; workspaceId?: string | undefined
   }): Promise<Agent>
   subagentContext?(agent: Agent): { parentId?: string; ticketId?: string; slot?: number; model: RoleModel | null; autoHard?: boolean }
   prompt(sessionId: string, requestId: string, text: string, mode: 'queue' | 'steer' | { inject: string }): Promise<void>
@@ -624,8 +624,8 @@ export class SessionRelay {
         const plan = this.host.store.get(KV.sessions.divisions(taskId))
         const div = plan?.divisions.find(item => item.divisionId === divisionId)
         if (plan && div) {
-          await this.host.sessions.ensureDivision(target, plan.directory, `${div.title} (r${generation})`, {
-            taskId, divisionId, model: div.model, autoHard: plan.complexity.hard,
+          await this.host.sessions.ensureDivision(target, plan.directory, `${plan.title} · ${div.title} (r${generation})`, {
+            taskId, divisionId, model: div.model, autoHard: plan.complexity.hard, workspaceId: plan.workspaceId,
           })
         }
       }
@@ -740,8 +740,8 @@ export class SessionRelay {
         return { refused: why }
       }
       try {
-        await sessions.ensureDivision(target, plan.directory, `${div.title} (r${generation})`, {
-          taskId, divisionId, model: div.model, autoHard: plan.complexity.hard,
+        await sessions.ensureDivision(target, plan.directory, `${plan.title} · ${div.title} (r${generation})`, {
+          taskId, divisionId, model: div.model, autoHard: plan.complexity.hard, workspaceId: plan.workspaceId,
         })
         if (!await sessions.holds(target, requestId)) {
           await sessions.prompt(target, requestId, summary, { inject: 'handover from the earlier division Session' })
@@ -1022,14 +1022,31 @@ export class SessionRelay {
       if (!body) continue
       recent.push(`${event.type === 'user/message' ? 'user/coordinator said' : 'division said'}: ${body}`)
     }
+    const ownedItems = (plan.workItems ?? []).filter(item => item.ownerDivisionId === div.divisionId)
+    const claimedItems = (plan.workItems ?? []).filter(item => item.assigneeDivisionId === div.divisionId)
+    const workItemLines: string[] = []
+    if (claimedItems.length > 0) {
+      workItemLines.push('', '## Claimed work items (preserve assignment & report back to owner)')
+      for (const item of claimedItems) {
+        workItemLines.push(`- [${item.itemId}] "${item.title}" status=${item.status} owner=${item.ownerDivisionId} (report back to ${item.ownerDivisionId} via orchestrator_division_submit_item)`)
+      }
+    }
+    if (ownedItems.length > 0) {
+      workItemLines.push('', '## Owned module work items')
+      for (const item of ownedItems) {
+        workItemLines.push(`- [${item.itemId}] "${item.title}" status=${item.status}${item.assigneeDivisionId ? ` assignee=${item.assigneeDivisionId}` : ''}${item.mergedBy ? ` mergedBy=${item.mergedBy}` : ''}`)
+      }
+    }
     const head = [
       `This Session continues division "${div.title}" (${div.divisionId}) of task ${plan.taskId} ("${plan.title}") generation ${generation}, because ${fromSession} filled ${Math.round(percent * 100)}% of its context window.`,
       `- slot: ${div.slot}${div.model ? ` (${div.model.provider}/${div.model.model})` : ''}`,
-      `- working directory: ${plan.directory}`,
+      `- working directory: ${plan.directory}${plan.workspaceId ? ` (workspace ${plan.workspaceId})` : ''}`,
+      `- origin coordinator session: ${plan.originSessionId}`,
       `- status before handover: ${div.status}${div.latestProgress ? ` — ${div.latestProgress}` : ''}`,
       '',
       '## Division brief',
       fit(div.brief, ASSIGNMENT_CHARS, 'the start'),
+      ...workItemLines,
       '',
       '## The earlier division Session\'s recent history',
     ]

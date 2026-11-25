@@ -128,7 +128,7 @@ it('lists the settings groups stages first, opens each stage\'s group from its s
   async () => {
   await mount()
   await click(tab(zh['tab.settings']))
-  expect(all('.dt-settings-link').map(link => link.textContent)).toEqual(['来源', '评估', '执行', '提示词', '部署'])
+  expect(all('.dt-settings-link').map(link => link.textContent)).toEqual(['来源', '评估', '执行', '会话分工与模型', '上下文与预算', '提示词', '部署'])
   expect(document.querySelector('.dt-settings-link[aria-current="page"]')?.textContent).toBe(zh['term.source'])
   for (const [tab, group] of [['来源', '来源'], ['评估', '评估'], ['执行', '执行']] as const) {
     await click(find(tab, '[role="tab"]'))
@@ -144,4 +144,64 @@ it('lists the settings groups stages first, opens each stage\'s group from its s
   await remount()
   await click(tab(zh['tab.settings']))
   expect(document.querySelector('.dt-settings-link[aria-current="page"]')?.textContent).toBe(zh['promptPart.runtime/work'])
+})
+
+it('opens Routing and Budget settings from navigation, navigates arbitrary pages via next/jump (M07-m1), and stores high slot models sparsely (M07-m2)', async () => {
+  await mount()
+  await click(tab(zh['tab.settings']))
+  await click(find(zh['settingsGroup.routing'], '.dt-settings-link'))
+  expect(document.querySelector('.dt-settings-title')?.textContent).toBe(zh['settingsGroup.routing'])
+  // 开启自动分工，将上限设为 385，并分别访问和设置第 352、353、384、385 位不同模型，保存并重挂载核对
+  await click(zh.routingAuto)
+  await type(field<HTMLInputElement>(zh.routingMaxSessions), '385')
+  const targets: Array<[number, string, string]> = [
+    [352, 'prov-352', 'model-352'],
+    [353, 'prov-353', 'model-353'],
+    [384, 'prov-384', 'model-384'],
+    [385, 'prov-385', 'model-385'],
+  ]
+  for (const [slotNumber, prov, model] of targets) {
+    const jumpInput = document.getElementById('dt-slot-jump') as HTMLInputElement
+    await type(jumpInput, String(slotNumber))
+    await click(zh.routingSlotJumpAction)
+    const provInput = document.querySelector<HTMLInputElement>(`input[list="dt-session-model-${slotNumber - 1}-providers"]`)!
+    const modelInput = document.querySelector<HTMLInputElement>(`input[list="dt-session-model-${slotNumber - 1}-models"]`)!
+    expect(provInput).not.toBeNull()
+    expect(modelInput).not.toBeNull()
+    await type(provInput, prov)
+    await type(modelInput, model)
+  }
+  await click(zh.save)
+  expect(server.settings.routing.maxSessions).toBe(385)
+  expect(server.settings.routing.sessionModels).toEqual([])
+  expect(server.settings.routing.sessionModelOverrides).toEqual({
+    '351': { provider: 'prov-352', model: 'model-352' },
+    '352': { provider: 'prov-353', model: 'model-353' },
+    '383': { provider: 'prov-384', model: 'model-384' },
+    '384': { provider: 'prov-385', model: 'model-385' },
+  })
+  // 验证给第 5000 位配置模型时仍采用稀疏表示，体积与实际配置数成正比而非 5000 个 null
+  await type(field<HTMLInputElement>(zh.routingMaxSessions), '5000')
+  const jump5000 = document.getElementById('dt-slot-jump') as HTMLInputElement
+  await type(jump5000, '5000')
+  await click(zh.routingSlotJumpAction)
+  const p5000 = document.querySelector<HTMLInputElement>('input[list="dt-session-model-4999-providers"]')!
+  const m5000 = document.querySelector<HTMLInputElement>('input[list="dt-session-model-4999-models"]')!
+  await type(p5000, 'prov-end')
+  await type(m5000, 'model-end')
+  await click(zh.save)
+  expect(server.settings.routing.sessionModels).toEqual([])
+  expect(server.settings.routing.sessionModelOverrides?.['4999']).toEqual({ provider: 'prov-end', model: 'model-end' })
+  expect(Buffer.byteLength(JSON.stringify(server.settings.routing))).toBeLessThan(600)
+
+  // 重挂载回到会话分工与模型，验证保存内容仍在
+  await remount()
+  expect(field<HTMLInputElement>(zh.routingMaxSessions).value).toBe('5000')
+
+  // 切换到上下文与预算设置组并保存
+  await click(find(zh['settingsGroup.budget'], '.dt-settings-link'))
+  expect(document.querySelector('.dt-settings-title')?.textContent).toBe(zh['settingsGroup.budget'])
+  await type(field<HTMLInputElement>(zh.budgetArchivePercent), '55')
+  await click(zh.save)
+  expect(server.settings.budget.archivePercent).toBe(55)
 })

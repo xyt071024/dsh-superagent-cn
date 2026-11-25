@@ -9,7 +9,7 @@ import { ticketMark } from './marks.ts'
 import { GLOSSARY, GLOSSARY_VALUES, en, zh, type DshSuperagentKey } from './locales.ts'
 import { OverviewPage } from './overview.tsx'
 import { PanelProvider, usePanel, usePanelData } from './provider.tsx'
-import { HOME, TABS, initialLocation, lastSettingsGroup, remember, routeLabel, settingsRoute, type Location, type Route,
+import { HOME, PANEL_NAVIGATE_EVENT, TABS, initialLocation, lastSettingsGroup, remember, routeLabel, settingsRoute, type Location, type Route,
   type Tab } from './route.ts'
 import { SettingsPage } from './settings.tsx'
 import { SourceStatus } from './source.tsx'
@@ -182,6 +182,14 @@ export function App({ t, openSession, deploymentForm }: AppProps) {
   const back = useCallback(() => move(current => ({ route: current.stack.at(-1) ?? HOME, stack: current.stack.slice(0, -1) })), [move])
   const openTab = useCallback((tab: Tab) => move(current => ({ stack: [], route: tab === 'settings'
     ? settingsRoute(lastSettingsGroup(current)) : { page: tab, id: undefined } })), [move])
+  useEffect(() => {
+    const onExternalNavigate = (event: Event) => {
+      const target = (event as CustomEvent<Route>).detail
+      if (target) navigate(target, true)
+    }
+    window.addEventListener(PANEL_NAVIGATE_EVENT, onExternalNavigate)
+    return () => { window.removeEventListener(PANEL_NAVIGATE_EVENT, onExternalNavigate) }
+  }, [navigate])
   return <PanelProvider t={t} openSession={openSession} navigate={navigate} back={back} backLabel={routeLabel(t, location.stack.at(-1) ?? HOME)}>
     <Pages route={location.route} openTab={openTab} deploymentForm={deploymentForm} />
   </PanelProvider>

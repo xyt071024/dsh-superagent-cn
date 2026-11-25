@@ -6,7 +6,7 @@ import type { T } from './text.ts'
 
 export const TABS = ['overview', 'source', 'trigger', 'eval', 'execution', 'settings'] as const
 export type Tab = typeof TABS[number]
-export const SETTINGS_GROUPS = ['source', 'eval', 'execution', 'prompts', 'deployment'] as const
+export const SETTINGS_GROUPS = ['source', 'eval', 'execution', 'routing', 'budget', 'prompts', 'deployment'] as const
 export type SettingsGroup = typeof SETTINGS_GROUPS[number]
 export type Route = { page: 'overview' | 'source'; id?: undefined; query?: undefined }
   | { page: 'trigger'; id?: undefined; query?: { filter?: ThreadFilter } }
@@ -62,6 +62,12 @@ export function initialLocation(): Location {
   }
   return { route: HOME, stack: [] }
 }
+export const PANEL_NAVIGATE_EVENT = 'dsh-superagent:navigate'
 export function remember(location: Location): void {
   try { sessionStorage.setItem(ROUTE_KEY, JSON.stringify(location)) } catch (failure) { void failure /* Route memory is a convenience. */ }
+}
+/** 跨面板/插件配置页跳转到指定 Super Agent 页面（同时持久化并通知已挂载的面板）。 */
+export function navigatePanelTo(route: Route): void {
+  remember({ route, stack: [], group: route.page === 'settings' ? route.query.group : undefined })
+  try { window.dispatchEvent(new CustomEvent<Route>(PANEL_NAVIGATE_EVENT, { detail: route })) } catch { /* ignore in non-DOM envs */ }
 }

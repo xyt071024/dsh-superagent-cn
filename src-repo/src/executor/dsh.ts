@@ -17,7 +17,7 @@ import { executionRoot, type Variable } from '../app/execution-environment.ts'
 import type { Sessions } from '../app/sessions.ts'
 import { WorktreeNameSchema } from '../app/assessment.ts'
 import { resultRelay } from '../app/notices.ts'
-import { isHard, multiSession } from '../app/routing.ts'
+import { configuredSlotEntries, isHard, multiSession } from '../app/routing.ts'
 import type { HealthEntry } from '../infra/health.ts'
 import { cancelled, collectJob, killJobs, runningJobs, stopBackground, stopSubagents, until, untilQuiet } from './background.ts'
 import { reviewSnapshot } from '../app/review-snapshot.ts'
@@ -666,10 +666,8 @@ export class DshExecutor implements Executor {
     // instruction can go: `worker.md` has a 1000-character cap and applies to every ticket, while this text is sent to one
     // worker on one ticket and has no length limit. Without it `multiSession` was a setting that changed nothing.
     const configuredModels = !told && multiSession(reading) && hard
-      ? Object.fromEntries(reading.sessionModels
-        .flatMap((model, index) => model && index < reading.maxSessions
-          ? [[index + 1, `${model.provider}/${model.model}`] as const]
-          : []))
+      ? Object.fromEntries(configuredSlotEntries(reading)
+        .map(([index, model]) => [index + 1, `${model.provider}/${model.model}`] as const))
       : {}
     const split = !told && multiSession(reading) && hard ? {
       team: TEAM_INSTRUCTION,

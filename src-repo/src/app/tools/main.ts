@@ -23,7 +23,7 @@ export interface MainToolsHost {
   readonly engine: Pick<EngineForMainSession, 'decide' | 'attach' | 'reply' | 'requestStatus' | 'note'> & EngineForPeople
   readonly store: Pick<Store, 'tickets' | 'triggers' | 'threads' | 'atomic' | 'replyStatus' | 'settings'>
   readonly prompts: Pick<Prompts, 'preview' | 'save'>
-  readonly sessions: Pick<Sessions, 'status' | 'notify' | 'delivery' | 'modelRetry'>
+  readonly sessions: Pick<Sessions, 'status' | 'notify' | 'delivery' | 'modelRetry'> & Partial<Pick<Sessions, 'isChatCoordinator'>>
   readonly settings: Pick<Settings, 'view' | 'block' | 'save' | 'pause' | 'sync'>
   readonly assessor: Pick<MasterAssessor, 'context' | 'read' | 'decide'>
   readonly resources: ResourceHost
@@ -302,11 +302,12 @@ export function mainTools(host: MainToolsHost, agent: Agent): Tool[] {
     ...(host.divisions ? [
       tool({
         name: 'orchestrator_dispatch',
-        description: 'Plan/dispatch a task.',
+        description: 'Dispatch task divisions.',
         schema: z.object({
           task_id: z.string().optional(),
           title: z.string(),
           brief: z.string(),
+          workspace_id: z.string().optional(),
           directory: z.string().optional(),
           difficulty: z.number().optional(),
           reason: z.string().optional(),
@@ -316,28 +317,44 @@ export function mainTools(host: MainToolsHost, agent: Agent): Tool[] {
             title: z.string(),
             brief: z.string(),
             depends_on: z.array(z.string()).optional(),
+            work_items: z.array(z.unknown()).optional(),
           })).optional(),
         }),
         execute: async args => {
+          const WorkItemArg = z.object({
+            item_id: z.string().min(1),
+            title: z.string().min(1),
+            brief: z.string().min(1),
+            depends_on: z.array(z.string()).optional(),
+          })
           const { plan, reused, extraSessions } = await host.divisions!.dispatch({
             taskId: args.task_id,
             title: args.title,
             originSessionId: agent.id,
+            workspaceId: args.workspace_id,
             directory: args.directory,
             brief: args.brief,
             difficulty: args.difficulty,
             reason: args.reason,
             planKey: args.plan_key,
+            chatAutoDivision: host.sessions.isChatCoordinator?.(agent.id) ?? false,
             divisions: args.divisions?.map(d => ({
               divisionId: d.division_id,
               title: d.title,
               brief: d.brief,
               dependsOn: d.depends_on,
+              workItems: d.work_items?.map(raw => {
+                const i = WorkItemArg.parse(raw)
+                return { itemId: i.item_id, title: i.title, brief: i.brief, dependsOn: i.depends_on }
+              }),
             })),
           })
           return {
             task_id: plan.taskId,
             origin_session_id: plan.originSessionId,
+            ...(plan.workspaceId ? { workspace_id: plan.workspaceId } : {}),
+            directory: plan.directory,
+            origin_model: plan.originModel,
             reused,
             extra_sessions: extraSessions,
             complexity: plan.complexity,
@@ -350,6 +367,7 @@ export function mainTools(host: MainToolsHost, agent: Agent): Tool[] {
               status: d.status,
               depends_on: d.dependsOn,
             })),
+            ...(plan.workItems?.length ? { work_items: plan.workItems } : {}),
             ...(plan.deferredDivisions?.length ? {
               deferred_divisions: plan.deferredDivisions.map(d => ({
                 division_id: d.divisionId,

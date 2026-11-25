@@ -478,6 +478,7 @@ The GitHub, Feishu, OneBot, mail and official QQ bot Sources have separate plugi
 | `tests/source-probe.spec.ts` | On-demand source checks, including error redaction and no message delivery |
 | `tests/update-check.spec.ts` | Read-only stable release comparison and unavailable-network handling |
 | `tests/divisions-and-m06-m08.spec.ts` | Post-handover dispatch, subagent/division 60% relay, multi-session planning, version info, and routing/budget HTTP save validation |
+| `tests/workspace-collaboration-v0317.spec.ts` | Sparse large-N slot overrides, workspace-bound interactive auto-division, strict origin model inheritance, peer work-item claiming/merging/review independence, and SSE throughput benchmarking |
 
 `tests/fixtures/` holds what several tests share: `host.ts`, a simulated DeepSeek Harness host; `panel-server.ts` and `panel.tsx`, the fake management API and the panel around a page; `deployment.ts`, a resolved deployment; `git.ts`, the environment of every git the tests start, which names no repository; and `async.ts`.
 
