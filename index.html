@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Super Agent v0.3.16 · DeepSeek Harness 全天候多会话自治工程智能体</title>
+<title>Super Agent for DeepSeek Harness</title>
 <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
@@ -13,7 +13,7 @@
     <div class="brand">
       <span class="logo">◆</span>
       <span class="brand-name">Super Agent</span>
-      <span class="brand-sub">v0.3.16 · for DeepSeek Harness</span>
+      <span class="brand-sub">for DeepSeek Harness</span>
     </div>
 
     <nav class="lang-switch" aria-label="Language">
@@ -27,54 +27,43 @@
 <main>
 
 <section class="hero">
-  <h1>全天候主动接活的多会话工程智能体</h1>
+  <h1>会自己找活干的智能体</h1>
   <p class="hero-sub">
-    七大入口异步收活 · 三层代码门禁鉴权 · 难题自主拆分为独立可打开对话并混配模型 · 60% 无损上下文接力 · 独立审查闭环
+    从任意入口收到工作 · 判断该不该接 · 难题拆给多个模型协同 · 完成后回来告诉你
   </p>
   <div class="hero-actions">
-    <a href="install.html" class="btn btn-primary">立即安装 v0.3.16</a>
-    <a href="docs/zh/01-overview.html" class="btn btn-ghost">阅读架构文档</a>
-    <a href="https://github.com/xyt071024/dsh-superagent-cn/releases/latest" class="btn btn-ghost">下载全平台发行包</a>
+    <a href="docs/zh/01-overview.html" class="btn btn-primary">开始阅读</a>
+    <a href="https://github.com/xyt071024/dsh-superagent-cn" class="btn btn-ghost">GitHub 仓库</a>
   </div>
-  <p style="margin-top:2rem;text-align:center;">
-    <img src="assets/hero-cover.jpg" alt="Super Agent Overview" style="max-width:100%;border-radius:12px;border:1px solid rgba(148,163,184,0.2);">
-  </p>
 </section>
 
 <section class="cards">
   <div class="card">
     <div class="card-icon">⇄</div>
-    <h3>七源异步接入</h3>
-    <p>GitHub、飞书、个人 QQ、官方 QQBot、微信、企业微信、IMAP/SMTP 邮箱（含 Gmail）与本地聊天统一调度。</p>
+    <h3>多源接入</h3>
+    <p>GitHub、飞书、企业微信、邮箱、QQ、微信，统一入口。谁来都能接住。</p>
   </div>
   <div class="card">
     <div class="card-icon">⛊</div>
-    <h3>三层硬隔离权限</h3>
-    <p>代码白名单网关 → 语义评估 → 受控凭证包装器。外部消息与网页内容永远无法放大权限。</p>
+    <h3>三层权限</h3>
+    <p>网关（代码）→ 评估（模型）→ 授权（凭证）。消息内容改不了权限。</p>
   </div>
   <div class="card">
     <div class="card-icon">⋔</div>
-    <h3>弹性多对话与异构模型</h3>
-    <p>默认允许 5 个独立分工对话（用户可自由调大或调小，无硬性上限），逐槽位指定模型或留空继承，完成后经只读独立复查把关。</p>
+    <h3>多会话协同</h3>
+    <p>难题自动拆成多个子会话，不同模型并行，卡住了互相救援。</p>
   </div>
   <div class="card">
     <div class="card-icon">↻</div>
-    <h3>60% 无损上下文接力</h3>
-    <p>主会话、工单、子代理与分工对话达 60% 自动提炼意图与尾部进度，原子切换至新代会话（r1→r2→r3），旧窗追问自动跟随。</p>
+    <h3>自我进化</h3>
+    <p>复盘 → 记经验 → 优化自己。同类任务一次比一次做得好。</p>
   </div>
-</section>
-
-<section class="doc-index">
-  <h2>全景架构</h2>
-  <p style="margin:1rem 0;text-align:center;">
-    <img src="assets/architecture-flow.svg" alt="Super Agent Architecture" style="max-width:100%;border-radius:12px;">
-  </p>
 </section>
 
 <section class="doc-index">
   <h2>开始使用</h2>
   <ol class="toc">
-    <li><a href="install.html"><span class="num">→</span><span class="title">安装与无损升级（v0.3.16）</span><span class="desc">一行命令脚本、四平台零依赖内置 ZIP 包与独立插件包</span></a></li>
+    <li><a href="install.html"><span class="num">→</span><span class="title">安装与接入</span><span class="desc">插件版与内置包，两种方式怎么装、怎么接</span></a></li>
   </ol>
 </section>
 
@@ -83,36 +72,38 @@
   <ol class="toc">
     <li><a href="docs/zh/01-overview.html"><span class="num">01</span><span class="title">项目定位与核心概念</span><span class="desc">它是什么、三层权限、设计哲学</span></a></li>
     <li><a href="docs/zh/02-flow.html"><span class="num">02</span><span class="title">完整任务流程</span><span class="desc">一条消息从进来到出去的每一步</span></a></li>
-    <li><a href="docs/zh/03-collaboration.html"><span class="num">03</span><span class="title">多会话协同机制</span><span class="desc">难题怎么拆、怎么互救、怎么独立复查</span></a></li>
-    <li><a href="docs/zh/04-settings.html"><span class="num">04</span><span class="title">设置界面设计</span><span class="desc">路由、槽位模型、预算与准入字段级说明</span></a></li>
+    <li><a href="docs/zh/03-collaboration.html"><span class="num">03</span><span class="title">多会话协同机制</span><span class="desc">难题怎么拆、怎么互救、怎么回测</span></a></li>
+    <li><a href="docs/zh/04-settings.html"><span class="num">04</span><span class="title">设置界面设计</span><span class="desc">八个分组，字段级说明</span></a></li>
     <li><a href="docs/zh/05-sources.html"><span class="num">05</span><span class="title">连接源与稳定性</span><span class="desc">七个入口怎么接、怎么保证不掉线</span></a></li>
     <li><a href="docs/zh/06-proxy.html"><span class="num">06</span><span class="title">代理方案</span><span class="desc">三层架构与切换策略</span></a></li>
-    <li><a href="docs/zh/07-evolution.html"><span class="num">07</span><span class="title">自我进化机制</span><span class="desc">它怎么持续沉淀技能与优化提示词</span></a></li>
-    <li><a href="docs/zh/08-cost.html"><span class="num">08</span><span class="title">省流与成本控制</span><span class="desc">简单任务 0 额外会话与每日 Token 预算</span></a></li>
-    <li><a href="docs/zh/09-deployment.html"><span class="num">09</span><span class="title">部署与工程量</span><span class="desc">一键引导、自检与守护运行</span></a></li>
+    <li><a href="docs/zh/07-evolution.html"><span class="num">07</span><span class="title">自我进化机制</span><span class="desc">它怎么优化自己</span></a></li>
+    <li><a href="docs/zh/08-cost.html"><span class="num">08</span><span class="title">省流与成本控制</span><span class="desc">高 API 用量下的应对</span></a></li>
+    <li><a href="docs/zh/09-deployment.html"><span class="num">09</span><span class="title">部署与工程量</span><span class="desc">怎么装、要多久</span></a></li>
   </ol>
 </section>
 
+
 <section class="quickfacts">
-  <h2>v0.3.16 要点速览</h2>
+  <h2>要点速览</h2>
   <table>
     <tr><th>项目</th><th>说明</th></tr>
-    <tr><td>交付形态</td><td>轻量插件包（<code>.tgz</code>） / 四平台零依赖自带 Node+DSH 内置包（<code>.zip</code>）</td></tr>
-    <tr><td>每任务分工对话</td><td>默认最多 <strong>5</strong> 个独立可打开分工对话，支持用户自由调大或调小（无硬性 16 上限），逐槽位混配模型或留空继承</td></tr>
-    <tr><td>并发工单槽位</td><td>默认 3 个并发执行工单 + 1 个人工追问专属预留槽位</td></tr>
-    <tr><td>上下文接力</td><td>默认 60% 窗口占比触发无损代际接力（覆盖主会话 / 工单 / 子代理 / 分工对话）</td></tr>
-    <tr><td>独立复查与技能</td><td>最多 3 轮只读独立复查（绑定成果集版本指纹） + 内置 14 项工程与渠道技能 + 结构化步骤清单工具</td></tr>
-    <tr><td>质量门禁</td><td>1,354 项自动化测试通过、37 项历轮黑盒独立验收全绿、发行包安全隐私预检 0 告警</td></tr>
-    <tr><td>开源许可证</td><td>MIT License</td></tr>
+    <tr><td>运行形态</td><td>装进现有 DSH（插件包）/ 自带运行时（内置包）</td></tr>
+    <tr><td>运行状态</td><td>对话态（可见）/ 静默态（后台，消息唤醒）</td></tr>
+    <tr><td>连接源</td><td>7 个，全部可单独启停</td></tr>
+    <tr><td>并发</td><td>默认 3 个工单 + 1 个预留给人</td></tr>
+    <tr><td>子会话</td><td>最多 6 个，可配不同模型与思考深度</td></tr>
+    <tr><td>消息上限</td><td>IM 回复 100 词（硬约束）</td></tr>
+    <tr><td>许可证</td><td>MIT</td></tr>
   </table>
 </section>
 
 </main>
 
 <footer>
-  <p>Super Agent v0.3.16 for DeepSeek Harness · MIT License</p>
-  <p class="footer-note">基于 DeepSeek 开源原型扩展构建（非官方社区增强发行版）。</p>
+  <p>Super Agent for DeepSeek Harness · MIT License</p>
+  <p class="footer-note">基于 DeepSeek Harness 构建，核心流程完全复用官方实现。</p>
 </footer>
 
 </body>
 </html>
+
