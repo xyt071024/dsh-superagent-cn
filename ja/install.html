@@ -31,10 +31,10 @@
 <p>Node も DSH も事前インストール不要です。お使いのシステム用パッケージをダウンロードし、解凍して起動スクリプトを実行します。</p>
 
 <table><thead><tr><th>システム</th><th>ダウンロード</th></tr></thead><tbody>
-<tr><td><strong>Windows x64</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.16/Super-Agent-Bundled-Windows-x64-v0.3.16.zip">Super-Agent-Bundled-Windows-x64-v0.3.16.zip</a> · 195 MB</td></tr>
-<tr><td><strong>macOS Apple Silicon</strong><br>(M1/M2/M3/M4)</td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.16/Super-Agent-Bundled-macOS-arm64-v0.3.16.zip">Super-Agent-Bundled-macOS-arm64-v0.3.16.zip</a> · 194 MB</td></tr>
-<tr><td><strong>macOS Intel</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.16/Super-Agent-Bundled-macOS-x64-v0.3.16.zip">Super-Agent-Bundled-macOS-x64-v0.3.16.zip</a> · 193 MB</td></tr>
-<tr><td><strong>Linux x64</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.16/Super-Agent-Bundled-Linux-x64-v0.3.16.zip">Super-Agent-Bundled-Linux-x64-v0.3.16.zip</a> · 202 MB</td></tr>
+<tr><td><strong>Windows x64</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.11/Super-Agent-Bundled-Windows-x64-v0.3.11.zip">Super-Agent-Bundled-Windows-x64-v0.3.11.zip</a> · 196 MB</td></tr>
+<tr><td><strong>macOS Apple Silicon</strong><br>(M1/M2/M3/M4)</td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.11/Super-Agent-Bundled-macOS-arm64-v0.3.11.zip">Super-Agent-Bundled-macOS-arm64-v0.3.11.zip</a> · 194 MB</td></tr>
+<tr><td><strong>macOS Intel</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.11/Super-Agent-Bundled-macOS-x64-v0.3.11.zip">Super-Agent-Bundled-macOS-x64-v0.3.11.zip</a> · 193 MB</td></tr>
+<tr><td><strong>Linux x64</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.11/Super-Agent-Bundled-Linux-x64-v0.3.11.zip">Super-Agent-Bundled-Linux-x64-v0.3.11.zip</a> · 202 MB</td></tr>
 </tbody></table>
 
 <h3>手順</h3>
@@ -60,7 +60,7 @@
 ターミナルに <code>http://127.0.0.1:3087</code> のようなアドレスが表示されます。</li>
 </ol>
 
-<p class="note"><strong>プロファイルが既に存在する場合</strong>、起動スクリプトが自動でバックアップを取り、既存の <code>cordis.patch.yml</code> と他プラグインを保持したまま <code>dsh-superagent</code> をアップグレードします。</p>
+<p class="note"><strong>プロファイルが既に存在すると表示された場合</strong>、<code>~/.dsh/profiles/superagent</code> を別の場所に移動してから再実行してください。</p>
 
 <hr>
 
@@ -68,13 +68,13 @@
 
 <p>DSH が既にインストール済みの場合。</p>
 
-<pre><code>dsh plugin add ./Super-Agent-Plugin-v0.3.16.tgz</code></pre>
+<pre><code>dsh plugin add ./Super-Agent-Plugin-v0.3.11.tgz</code></pre>
 
 <p>プロファイルを指定する場合：</p>
 
-<pre><code>dsh plugin --profile superagent add ./Super-Agent-Plugin-v0.3.16.tgz</code></pre>
+<pre><code>dsh plugin --profile superagent add ./Super-Agent-Plugin-v0.3.11.tgz</code></pre>
 
-<p>ダウンロード：<a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.16/Super-Agent-Plugin-v0.3.16.tgz">Super-Agent-Plugin-v0.3.16.tgz</a> · 0.4 MB</p>
+<p>ダウンロード：<a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.11/Super-Agent-Plugin-v0.3.11.tgz">Super-Agent-Plugin-v0.3.11.tgz</a> · 0.4 MB</p>
 
 <p class="muted">Node.js 22.19+ と DSH 0.2.2 が必要です。</p>
 
@@ -113,11 +113,16 @@
 
 <h2>既知の制限</h2>
 
+<p><strong>しきい値に達するとセッションを圧縮します。新しいセッションは開始しません。</strong></p>
+<p>設定のパーセントは「アーカイブしきい値」です。実際の動作は現在のセッションを圧縮し、同じセッションで続行します。セッション間の引き継ぎは未実装です。</p>
+
 <p><strong>マルチセッションと独立レビューは既定でオフです。</strong></p>
 
 <p><strong>各チャネルの実送受信は未検証です。</strong> プロトコル動作とエラーマッピングは検証済みですが、実アカウントでのログイン・送受信・再接続は未検証です。</p>
 
 <p><strong>macOS / Linux は実機で起動検証していません。</strong> パッケージ構造とネイティブモジュールは正しいですが、実際には起動していません。</p>
+
+<p><strong>Windows では約 35 件のテストが失敗します。</strong> POSIX コマンド、シンボリックリンク、パーミッションに依存しているためです。機能的な不具合ではありません。</p>
 
 <hr>
 
