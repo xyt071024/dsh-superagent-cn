@@ -14,11 +14,12 @@
  */
 import fs from 'node:fs'
 import path from 'node:path'
+import crypto from 'node:crypto'
 
 const DIST = 'C:/Users/ASUS/Desktop/Super-Agent-项目完整备份-20261115/_work/dist'
 const OWNER = 'xyt071024'
 const REPO = 'dsh-superagent-cn'
-const TAG = process.argv.includes('--tag') ? process.argv[process.argv.indexOf('--tag') + 1] : 'v0.3.12'
+const TAG = process.argv.includes('--tag') ? process.argv[process.argv.indexOf('--tag') + 1] : 'v0.3.16'
 /**
  * The token lives outside %TEMP%: Windows disk cleanup removes that directory, and a token that disappears takes
  * the whole release pipeline with it. `GH_TOKEN` wins, then the two known files, and a miss says which paths it tried.
@@ -54,11 +55,14 @@ const api = async (url, options = {}) => {
   return { status: res.status, json }
 }
 
-/** 找到（或建出）目标 Release，返回它的 id 与已有 asset 的名字。 */
+/** 找到（或建出）目标 Release，返回它的 id 与已有 asset 的信息。 */
 async function release() {
   const got = await api(`https://api.github.com/repos/${OWNER}/${REPO}/releases/tags/${TAG}`)
   if (got.status === 200) {
-    return { id: got.json.id, assets: new Map((got.json.assets ?? []).map(a => [a.name, a.id])) }
+    return {
+      id: got.json.id,
+      assets: new Map((got.json.assets ?? []).map(a => [a.name, { id: a.id, size: a.size, state: a.state, digest: a.digest }])),
+    }
   }
   if (got.status !== 404) throw new Error(`release lookup failed: ${got.status} ${JSON.stringify(got.json).slice(0, 200)}`)
   const made = await api(`https://api.github.com/repos/${OWNER}/${REPO}/releases`, {
@@ -70,43 +74,60 @@ async function release() {
   return { id: made.json.id, assets: new Map() }
 }
 
+const FORCE = process.argv.includes('--force')
+
 /**
- * 上传一个 asset。已有同名 asset 先删掉 —— Releases 不允许同名覆盖，
- * 直接传会 422 "already_exists"，而这里要的正是「用新构建替换旧构建」。
+ * 上传一个 asset。若远端已存在同名且 sha256/大小完全一致的 uploaded asset（且未传 --force），直接跳过避免重复传 200MB；
+ * 否则先删掉旧/半截 asset 再上传，并带 3 次自动重试应对瞬时网络抖动。
  */
 async function uploadAsset(releaseId, existing, file) {
   const name = path.basename(file)
-  const size = fs.statSync(file).size
-  if (existing.has(name)) {
-    if (DRY) { console.log(`  would replace ${name}`); return true }
-    const id = existing.get(name)
-    const del = await api(`https://api.github.com/repos/${OWNER}/${REPO}/releases/assets/${id}`, { method: 'DELETE' })
-    if (del.status !== 204) throw new Error(`delete ${name} failed: ${del.status}`)
-  }
-  if (DRY) { console.log(`  would upload ${name} (${(size / 1048576).toFixed(1)} MB)`); return true }
-
   const body = fs.readFileSync(file)
-  const began = Date.now()
-  const res = await fetch(
-    `https://uploads.github.com/repos/${OWNER}/${REPO}/releases/${releaseId}/assets?name=${encodeURIComponent(name)}`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${TOKEN}`,
-        Accept: 'application/vnd.github+json',
-        'Content-Type': 'application/zip',
-        'Content-Length': String(body.length),
-        'User-Agent': 'upload-dist',
-      },
-      body,
-    },
-  )
-  const text = await res.text()
-  if (res.status !== 201) throw new Error(`upload ${name} failed: ${res.status} ${text.slice(0, 300)}`)
-  const json = JSON.parse(text)
-  const seconds = ((Date.now() - began) / 1000).toFixed(0)
-  console.log(`  ✓ ${name}  ${(json.size / 1048576).toFixed(1)} MB  ${seconds}s`)
-  return true
+  const size = body.length
+  const sha256 = crypto.createHash('sha256').update(body).digest('hex')
+  const prev = existing.get(name)
+  if (prev && !FORCE && prev.state === 'uploaded' && prev.size === size && prev.digest === `sha256:${sha256}`) {
+    console.log(`  ✓ ${name}  ${(size / 1048576).toFixed(1)} MB  (already uploaded, sha256 matches)`)
+    return true
+  }
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const curRel = attempt === 1 ? { assets: existing } : await release()
+      const curPrev = curRel.assets.get(name)
+      if (curPrev) {
+        if (DRY) { console.log(`  would replace ${name}`); return true }
+        const del = await api(`https://api.github.com/repos/${OWNER}/${REPO}/releases/assets/${curPrev.id}`, { method: 'DELETE' })
+        if (del.status !== 204 && del.status !== 404) throw new Error(`delete ${name} failed: ${del.status}`)
+      }
+      if (DRY) { console.log(`  would upload ${name} (${(size / 1048576).toFixed(1)} MB)`); return true }
+
+      const began = Date.now()
+      const res = await fetch(
+        `https://uploads.github.com/repos/${OWNER}/${REPO}/releases/${releaseId}/assets?name=${encodeURIComponent(name)}`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${TOKEN}`,
+            Accept: 'application/vnd.github+json',
+            'Content-Type': 'application/zip',
+            'Content-Length': String(body.length),
+            'User-Agent': 'upload-dist',
+          },
+          body,
+        },
+      )
+      const text = await res.text()
+      if (res.status !== 201) throw new Error(`upload ${name} failed: ${res.status} ${text.slice(0, 300)}`)
+      const json = JSON.parse(text)
+      const seconds = ((Date.now() - began) / 1000).toFixed(0)
+      console.log(`  ✓ ${name}  ${(json.size / 1048576).toFixed(1)} MB  ${seconds}s`)
+      return true
+    } catch (err) {
+      if (attempt === 3) throw err
+      console.warn(`  ! ${name} attempt ${attempt} failed (${err.message}), retrying in 4s...`)
+      await new Promise(resolve => setTimeout(resolve, 4000))
+    }
+  }
 }
 
 // ---- 主流程 ----

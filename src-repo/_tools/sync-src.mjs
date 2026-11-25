@@ -35,7 +35,8 @@ const api = async (url, options = {}) => {
 const DIRS = ['src', 'tests', 'prompts', 'skills', 'locale', 'docs', 'examples', 'scripts']
 const FILES = ['package.json', 'tsdown.config.ts', 'cordis.patch.yml', 'README.md', 'LICENSE', 'tsconfig.json',
   'SETUP.md', 'pnpm-lock.yaml', 'vitest.config.ts', '.gitignore']
-const TOOLS = ['build-packages.mjs', 'make-dist.mjs', 'make-dist-zips.mjs', 'install-native.mjs']
+const TOOLS = ['build-packages.mjs', 'make-dist.mjs', 'make-dist-zips.mjs', 'install-native.mjs',
+  'sync-src.mjs', 'upload-dist.mjs', 'upload-docs.mjs']
 const SKIP = /\.(bak|log|pyc)$|__pycache__|node_modules|\.DS_Store|^_t/
 
 function collect() {
@@ -57,9 +58,10 @@ function collect() {
     const full = path.join(SRC, name)
     if (fs.existsSync(full)) out.push({ repo: `${PREFIX}/${name}`, local: full })
   }
+  // 构建脚本在 _build/，发布脚本在 _tools/；两处都找，避免同名脚本只同步一半。
   for (const name of TOOLS) {
-    const full = path.join(ROOT, '_build', name)
-    if (fs.existsSync(full)) out.push({ repo: `${PREFIX}/_tools/${name}`, local: full })
+    const full = [path.join(ROOT, '_build', name), path.join(ROOT, '_tools', name)].find(p => fs.existsSync(p))
+    if (full) out.push({ repo: `${PREFIX}/_tools/${name}`, local: full })
   }
   return out
 }
