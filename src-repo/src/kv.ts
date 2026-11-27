@@ -161,6 +161,7 @@ export type WorkItemVerificationFailureReason =
   | 'untrusted_claim'
   | 'test_failed'
   | 'stale_verification'
+  | 'incompatible_verification_mode'
   | 'conflict'
   | 'concurrent_in_flight'
 
@@ -282,7 +283,7 @@ export interface SpeculativeDraftDeliveryRecord {
   deliveryKey: string
   draftId: string
   claimToken: string
-  state: 'claimed' | 'dispatched' | 'acknowledged' | 'failed'
+  state: 'claimed' | 'queued' | 'dispatched' | 'acknowledged' | 'failed'
   externalDeliveryId?: string | undefined
   error?: string | undefined
   updatedAt: string
@@ -299,6 +300,8 @@ export interface SpeculativeDraft {
   /** 绑定的真实渠道 Outbox 或会话目标，供真实事件/工具/HTTP 入口直接外发。 */
   target?: SpeculativeDraftTarget | undefined
   status: 'draft' | 'delivering' | 'delivered' | 'delivery_failed' | 'revoked' | 'discarded'
+  /** 关联 Outbox 权威回执状态：仅 sent 时草稿才转为 delivered；pending 时保持 delivering 待发态；dropped 时转为 delivery_failed。 */
+  receiptStatus?: 'pending' | 'sent' | 'dropped' | undefined
   claimToken?: string | undefined
   deliveryAttempts?: number | undefined
   reason?: string | undefined

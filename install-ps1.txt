@@ -111,7 +111,7 @@ function Install-SuperAgent {
 
     # The pinned address is the fallback for a run that cannot reach the API at all (offline, proxy, rate limit). It
     # names one exact asset, so it moves together with the version and never guesses.
-    $SaPinnedVersion = '0.3.19'
+    $SaPinnedVersion = '0.3.20'
     $SaPinnedUrl = "https://github.com/xyt071024/dsh-superagent-cn/releases/download/v$SaPinnedVersion/Super-Agent-Plugin-v$SaPinnedVersion.tgz"
 
     function Resolve-SaBundle([string]$given, [bool]$purge) {

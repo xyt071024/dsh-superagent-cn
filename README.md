@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/xyt071024/dsh-superagent-cn/releases"><img src="https://img.shields.io/badge/Release-v0.3.19-10b981?style=flat-square" alt="Release v0.3.19"></a>
+  <a href="https://github.com/xyt071024/dsh-superagent-cn/releases"><img src="https://img.shields.io/badge/Release-v0.3.20-10b981?style=flat-square" alt="Release v0.3.20"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-38bdf8?style=flat-square" alt="MIT License"></a>
   <img src="https://img.shields.io/badge/Node.js-22.19%2B%20%7C%2024%2B-339933?style=flat-square" alt="Node.js">
   <img src="https://img.shields.io/badge/DSH-0.2.1%2B-6366f1?style=flat-square" alt="DeepSeek Harness">
@@ -138,11 +138,11 @@ curl -fsSL https://xyt071024.github.io/dsh-superagent-cn/install.sh | bash
 
 | 适用环境 | 发行包文件名 | 启动方式 |
 |---|---|---|
-| **Windows x64**（免装环境开箱即用） | `Super-Agent-Bundled-Windows-x64-v0.3.19.zip` | 解压后双击或运行 `start.cmd` |
-| **macOS Apple Silicon (M1–M4)** | `Super-Agent-Bundled-macOS-arm64-v0.3.19.zip` | 解压后运行 `./start.sh` |
-| **macOS Intel (x64)** | `Super-Agent-Bundled-macOS-x64-v0.3.19.zip` | 解压后运行 `./start.sh` |
-| **Linux x64** | `Super-Agent-Bundled-Linux-x64-v0.3.19.zip` | 解压后运行 `./start.sh` |
-| **已有 DSH 环境（仅装插件包）** | `Super-Agent-Plugin-v0.3.19.tgz` | 运行 `dsh plugin add ./Super-Agent-Plugin-v0.3.19.tgz` |
+| **Windows x64**（免装环境开箱即用） | `Super-Agent-Bundled-Windows-x64-v0.3.20.zip` | 解压后双击或运行 `start.cmd` |
+| **macOS Apple Silicon (M1–M4)** | `Super-Agent-Bundled-macOS-arm64-v0.3.20.zip` | 解压后运行 `./start.sh` |
+| **macOS Intel (x64)** | `Super-Agent-Bundled-macOS-x64-v0.3.20.zip` | 解压后运行 `./start.sh` |
+| **Linux x64** | `Super-Agent-Bundled-Linux-x64-v0.3.20.zip` | 解压后运行 `./start.sh` |
+| **已有 DSH 环境（仅装插件包）** | `Super-Agent-Plugin-v0.3.20.tgz` | 运行 `dsh plugin add ./Super-Agent-Plugin-v0.3.20.tgz` |
 
 > **无损升级保障**：内置包的 `start.cmd` / `start.sh` 启动前会自动运行 `profile-bootstrap` 自检：全新环境自动建库选端口；检测到旧版插件或缺依赖时自动对 `package.json` 做加法合并升级，**原样保留你已配置的 `cordis.patch.yml`、模型连接、第三方插件（含原有自定义插件）与历史数据库**，任一步骤异常自动原子回滚。升级前仍建议备份 `<stateDir>/orchestrator.sqlite`。
 
@@ -158,7 +158,7 @@ curl -fsSL https://xyt071024.github.io/dsh-superagent-cn/install.sh | bash
 | **全量自动化测试套件 (Windows)** | ✅ **1,370 通过 / 0 失败 / 15 跳过** | 77 个测试文件通过（含三渠道解析、主动补位与超时、真实双文件测试合并门禁、真实审查入口与投机草稿；仅 15 项 POSIX 专属守护脚本用例在 Windows 跳过） |
 | **GitHub Actions 跨平台测试 (Linux & Windows CI)** | ✅ **4 作业全绿** | Linux 全量 Vitest + Unix 打包/引导自测 + Python 预检单测 + Windows 打包/引导自测 + 双平台安装脚本与兜底版本解析 |
 | **历轮独立黑盒验收套件 (第 41–50 号)** | ✅ **37 / 37 全部通过** | 完整覆盖接力竞态、多代路由、复杂工单自动多分工、复查防串轮、修订计划保成果/换复查/停旧会话、默认 5 会话与大槽位上限 |
-| **Windows 隔离实包安装 / 修复 / 升级** | ✅ **HTTP 200 验证通过** | 正式 ZIP 在干净临时目录实测空白安装、缺插件自动修复、旧版升级保留用户配置，随包宿主 `/orchestrator/api/state` 返回 `200` 且 `loaded = installed = 0.3.19` |
+| **Windows 隔离实包安装 / 修复 / 升级** | ✅ **HTTP 200 验证通过** | 正式 ZIP 在干净临时目录实测空白安装、缺插件自动修复、旧版升级保留用户配置，随包宿主 `/orchestrator/api/state` 返回 `200` 且 `loaded = installed = 0.3.20` |
 | **安全与隐私发布预检 (`release_preflight`)** | ✅ **0 告警通过** | 五件发行产物全字节扫描私钥、Token、URL 凭据、危险链接、Unix 可执行权限位与本机路径，命中数为 `0` |
 | **macOS / Linux 物理机桌面完整启停** | ⚠️ **待真机补证** | 已通过 Linux CI 代码测试、ZIP64 结构与 `0755` 权限位校验，尚未在物理 macOS / Linux 桌面走完 GUI 全流程 |
 | **七大外部渠道真实商业账号收发** | ⚠️ **待真号补证** | 已通过本地加密 IMAP/SMTP、OneBot WebSocket、飞书与 GitHub 模拟协议回归测试；为保护用户真实生产账号未在自动化测试中挂载私密凭据 |

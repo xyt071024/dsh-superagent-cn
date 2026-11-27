@@ -117,7 +117,7 @@ function SpeculativeDrafts() {
     <Hint>{t('draftsHint')}</Hint>
     <ul className="dt-list">{active.map(draft => <li key={draft.draftId} className="dt-row">
       <div className="dt-row-main">
-        <div className="dt-row-title">{draft.title} <span className="dt-mono">({draft.status})</span></div>
+        <div className="dt-row-title">{draft.title} <span className="dt-mono">({draft.status}{draft.receiptStatus === 'pending' ? ' · pending' : ''})</span></div>
         <Hint>{draft.content.slice(0, 240)}</Hint>
       </div>
       <div className="dt-row-actions">

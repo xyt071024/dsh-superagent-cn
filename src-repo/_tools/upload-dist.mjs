@@ -19,7 +19,7 @@ import crypto from 'node:crypto'
 const DIST = 'C:/Users/ASUS/Desktop/Super-Agent-项目完整备份-20261115/_work/dist'
 const OWNER = 'xyt071024'
 const REPO = 'dsh-superagent-cn'
-const TAG = process.argv.includes('--tag') ? process.argv[process.argv.indexOf('--tag') + 1] : 'v0.3.19'
+const TAG = process.argv.includes('--tag') ? process.argv[process.argv.indexOf('--tag') + 1] : 'v0.3.20'
 /**
  * The token lives outside %TEMP%: Windows disk cleanup removes that directory, and a token that disappears takes
  * the whole release pipeline with it. `GH_TOKEN` wins, then the two known files, and a miss says which paths it tried.

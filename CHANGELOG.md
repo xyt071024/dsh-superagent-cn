@@ -8,6 +8,20 @@
 
 ## [Unreleased]
 
+## [0.3.20] - 2026-11-27
+
+本版修复 2026-11-27 `v0.3.19` 桌面独立复验指出的两项关键边界问题：
+
+### 修复
+
+1. **代码工作项严禁走人工验收（创建/发布服务端拒收 + 历史记录合并兜底）**
+   - `src/app/divisions.ts` 新增 `allowsManualAcceptance()`（仅允许 `docs` 与 `research`）与 `assertCompatibleWorkItemVerificationMode()`，在 `dispatch()`、`publishWorkItems()` 与分工工具入口直接拒绝为 `code`（含缺省未声明类型）、`config` 等非文档/调研工作项显式指定 `verificationMode: 'manual_acceptance'`；`resolveWorkItemVerificationMode()` 对非文档/调研类一律返回 `'test_required'`。
+   - `mergeWorkItem()` 增加历史持久化记录二次兜底校验：若旧 SQLite 记录存在 `kind !== 'docs' && kind !== 'research'` 且 `verificationMode === 'manual_acceptance'`，强制纠正为 `'test_required'`，在缺少当前版本受控实测凭据时以 `failureReason: 'incompatible_verification_mode'` 明确拒绝并保持下游依赖锁定；文档项人工验收与代码项实测通过两条正向路径照常工作。
+
+2. **投机草稿状态与 Outbox 权威回执严格对齐（暂停 / 离线 / 恢复仅发一次 / 丢弃 / 重启一致）**
+   - `src/app/outbox.ts` 在 `OutboxHost` 增加 `onSettled(id, status, outcome)` 回调，由 `src/app/runtime.ts` 接入 `divisions.syncDraftWithOutboxReceipt()`；`src/kv.ts`、`src/app/api.ts`、`src/client/overview.tsx` 新增 `SpeculativeDraft.receiptStatus` 展示待发状态。
+   - `deliverDraftViaHost()` 与 `confirmSpeculativeDraft()` 以同一 `deliveryKey` 的 Outbox 回执为准：仅 `receipt.status === 'sent'` 才进入 `delivered`；暂停处理或渠道离线使回执保持 `'pending'` 时，返回 `{ delivered: false, pending: true, receiptStatus: 'pending' }` 且草稿保持 `delivering` 待发态（0 次渠道外发、409 禁撤销）；解除暂停或渠道恢复在线后依据同一 `deliveryKey` 仅发送 **1 次**并自动同步为 `delivered`；被渠道永久丢弃（`channelGone` / `channelIgnored`）同步为 `delivery_failed`（`receiptStatus: 'dropped'`）；回执仍 `pending` 期间重启进程时，`recoverSpeculativeDrafts()` 保持 `delivering` + `receiptStatus: 'pending'` 与发件箱一致，恢复后仍恰好外发 1 次。
+
 ## [0.3.19] - 2026-11-27
 
 本版针对 2026-11-27 `v0.3.18` 桌面独立复验指出的四项关键架构问题完成全面加固与真实入口接通：

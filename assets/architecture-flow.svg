@@ -50,7 +50,7 @@
 
   <!-- Title Bar -->
   <text x="36" y="42" fill="#f8fafc" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="18" font-weight="700">
-    Super Agent (dsh-superagent v0.3.19) · 全链路自治执行与多会话协作架构
+    Super Agent (dsh-superagent v0.3.20) · 全链路自治执行与多会话协作架构
   </text>
   <text x="36" y="64" fill="#94a3b8" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12">
     Multi-Channel Intake → Three-Layer Policy Gate → Autonomous Division Coordinator → 60% Context Relay → Independent Review

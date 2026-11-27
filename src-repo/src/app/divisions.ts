@@ -83,7 +83,9 @@ export interface MergeWorkItemResult {
 
 export interface ConfirmSpeculativeDraftResult {
   delivered: boolean
+  pending?: boolean | undefined
   deduplicated: boolean
+  receiptStatus?: 'pending' | 'sent' | 'dropped' | undefined
   draft: SpeculativeDraft
 }
 
@@ -95,13 +97,35 @@ export interface ConfirmSpeculativeDraftOptions {
   beforeCommit?: (draft: SpeculativeDraft, deliveryId: string) => Promise<void> | void
 }
 
+/** 仅文档（docs）与调研（research）工作项允许人工验收；代码/配置/默认工作项一律要求受控测试验证。 */
+export function allowsManualAcceptance(kind?: WorkItemKind): boolean {
+  return kind === 'docs' || kind === 'research'
+}
+
+/**
+ * 在创建或更新工作项时校验 kind 与 verificationMode 的兼容性：
+ * 若为代码类（或未声明类别、配置类等非文档/调研项）却显式指定 manual_acceptance，服务端直接拒绝。
+ */
+export function assertCompatibleWorkItemVerificationMode(
+  kind?: WorkItemKind,
+  explicit?: WorkItemVerificationMode,
+): WorkItemVerificationMode {
+  const normalizedKind: WorkItemKind = kind ?? 'code'
+  if (explicit === 'manual_acceptance' && !allowsManualAcceptance(normalizedKind)) {
+    throw new Error(`Incompatible verification mode: work item kind "${normalizedKind}" requires "test_required" and cannot use "manual_acceptance".`)
+  }
+  return resolveWorkItemVerificationMode(normalizedKind, explicit)
+}
+
 export function resolveWorkItemVerificationMode(
   kind?: WorkItemKind,
   explicit?: WorkItemVerificationMode,
 ): WorkItemVerificationMode {
-  if (explicit) return explicit
-  if (kind === 'docs' || kind === 'research') return 'manual_acceptance'
-  return 'test_required'
+  const normalizedKind: WorkItemKind = kind ?? 'code'
+  if (!allowsManualAcceptance(normalizedKind)) {
+    return 'test_required'
+  }
+  return explicit ?? 'manual_acceptance'
 }
 
 export function workItemDeliverableVersion(submitCount: number, deliverable?: string, summary?: string): string {
@@ -651,6 +675,11 @@ export class DivisionCoordinator {
     if (duplicate) throw new Error(`Duplicate divisionId: ${duplicate.divisionId}`)
     const cycleError = detectCycle(allSpecs)
     if (cycleError) throw new Error(`Invalid division dependencies: ${cycleError}`)
+    for (const spec of allSpecs) {
+      for (const wi of spec.workItems ?? []) {
+        assertCompatibleWorkItemVerificationMode(wi.kind ?? 'code', wi.verificationMode)
+      }
+    }
 
     // M07-m: 超过所设 maxSessions 时不突破用户限额；按拓扑依赖与既有进度选取前 maxSessions 项创建独立会话，其余工作保留在 deferredDivisions 中可见
     const specs: DivisionSpec[] = []
@@ -812,12 +841,13 @@ export class DivisionCoordinator {
       for (const wi of spec.workItems ?? []) {
         if (workItems.some(item => item.itemId === wi.itemId)) continue
         const kind = wi.kind ?? 'code'
+        const verificationMode = assertCompatibleWorkItemVerificationMode(kind, wi.verificationMode)
         workItems.push({
           itemId: wi.itemId,
           title: wi.title,
           brief: wi.brief,
           kind,
-          verificationMode: resolveWorkItemVerificationMode(kind, wi.verificationMode),
+          verificationMode,
           deliverableVersion: workItemDeliverableVersion(0, wi.title, wi.brief),
           ownerDivisionId: spec.divisionId,
           dependsOn: [...(wi.dependsOn ?? [])],
@@ -1582,14 +1612,15 @@ export class DivisionCoordinator {
       const timestamp = now()
       const list = [...(plan.workItems ?? [])]
       for (const spec of input.items) {
-        if (list.some(existing => existing.itemId === spec.itemId)) continue
         const kind = spec.kind ?? 'code'
+        const verificationMode = assertCompatibleWorkItemVerificationMode(kind, spec.verificationMode)
+        if (list.some(existing => existing.itemId === spec.itemId)) continue
         list.push({
           itemId: spec.itemId,
           title: spec.title,
           brief: spec.brief,
           kind,
-          verificationMode: resolveWorkItemVerificationMode(kind, spec.verificationMode),
+          verificationMode,
           deliverableVersion: workItemDeliverableVersion(0, spec.title, spec.brief),
           ownerDivisionId: input.ownerDivisionId,
           dependsOn: [...(spec.dependsOn ?? [])],
@@ -2365,7 +2396,9 @@ export class DivisionCoordinator {
 
       const currentVersion = item.deliverableVersion ?? workItemDeliverableVersion(item.submitEventIds.length, item.deliverable, item.summary)
       item.deliverableVersion = currentVersion
-      const mode = resolveWorkItemVerificationMode(item.kind, item.verificationMode)
+      const effectiveKind: WorkItemKind = item.kind ?? 'code'
+      const legacyIncompatibleManual = item.verificationMode === 'manual_acceptance' && !allowsManualAcceptance(effectiveKind)
+      const mode = resolveWorkItemVerificationMode(effectiveKind, item.verificationMode)
       item.verificationMode = mode
       const timestamp = now()
 
@@ -2391,6 +2424,27 @@ export class DivisionCoordinator {
 
       const cmd = input.verificationCommand?.trim()
       const wantsRun = Boolean(cmd) && input.runCheck !== false
+
+      // 1e-bis) 历史持久化记录防御性二次校验：若旧数据将代码项标为 manual_acceptance 且未执行受控测试，坚决拒绝并保持下游锁定
+      if (legacyIncompatibleManual && !wantsRun) {
+        const cred = item.verificationCredential
+        const hasValidCurrentCred = Boolean(cred && cred.source === 'controlled_runner' && cred.passed && cred.deliverableVersion === currentVersion)
+        if (!hasValidCurrentCred) {
+          shouldFlushAfterImmediate = true
+          immediateOutcome = this.recordMergeRejectionInTx(plan, item, {
+            eventId: input.eventId,
+            mergerDivisionId: input.mergerDivisionId,
+            mergeNote: input.mergeNote,
+            status: 'merge_failed',
+            failureReason: 'incompatible_verification_mode',
+            historyStatus: 'rejected',
+            runId: `incompatible-mode:${input.eventId}`,
+            deliverableVersion: currentVersion,
+            detailMessage: `Work item "${item.itemId}" (kind="${effectiveKind}") cannot use manual_acceptance; automated test verification is required.`,
+          })
+          return
+        }
+      }
 
       // 1f) 未执行受控命令时的严格凭据 / 策略门禁
       if (!wantsRun) {
@@ -2815,8 +2869,116 @@ export class DivisionCoordinator {
     return undefined
   }
 
-  /** 默认宿主真实投递实现：渠道草稿经 Outbox（稳定 id=deliveryKey）外发，会话草稿经 sessions.prompt（requestId=deliveryKey）投递。 */
-  private async deliverDraftViaHost(draft: SpeculativeDraft, deliveryKey: string): Promise<string> {
+  /**
+   * 当 Outbox 将某条消息回执落定（sent / dropped）或保持 pending 时，按稳定 deliveryKey 原子同步对应投机草稿状态：
+   * - sent -> delivered（receiptStatus='sent'）
+   * - dropped -> delivery_failed（receiptStatus='dropped'）
+   * - pending -> 保留 delivering（receiptStatus='pending'），绝不提前标为 delivered
+   */
+  syncDraftWithOutboxReceipt(
+    deliveryKey: string,
+    status: 'pending' | 'sent' | 'dropped',
+    detail?: string,
+  ): void {
+    const { store } = this.host
+    store.atomic(() => {
+      const ledger = store.get(KV.sessions.speculativeDelivery(deliveryKey))
+      const draftId = ledger?.draftId ?? (deliveryKey.startsWith('spec-draft:') ? deliveryKey.slice('spec-draft:'.length) : undefined)
+      if (!draftId) return
+      const latest = store.get(KV.sessions.speculativeDraft(draftId))
+      if (!latest || latest.deliveryKey !== deliveryKey) return
+      const timestamp = now()
+
+      if (status === 'sent') {
+        if (latest.status === 'delivered' && latest.receiptStatus === 'sent') return
+        latest.status = 'delivered'
+        latest.receiptStatus = 'sent'
+        latest.deliveryId = deliveryKey
+        latest.confirmedAt = latest.confirmedAt ?? timestamp
+        delete latest.claimToken
+        delete latest.lastError
+        latest.updatedAt = timestamp
+        store.set(KV.sessions.speculativeDraft(draftId), latest)
+        store.set(KV.sessions.speculativeDelivery(deliveryKey), {
+          deliveryKey,
+          draftId,
+          claimToken: ledger?.claimToken ?? 'outbox',
+          state: 'acknowledged',
+          externalDeliveryId: deliveryKey,
+          updatedAt: timestamp,
+        })
+        return
+      }
+
+      if (status === 'dropped') {
+        const dropError = detail
+          ? `Outbound delivery for speculative draft ${draftId} was dropped by channel (${detail})`
+          : `Outbound delivery for speculative draft ${draftId} was dropped by channel`
+        if (latest.status === 'delivery_failed' && latest.receiptStatus === 'dropped' && latest.lastError === dropError) return
+        latest.status = 'delivery_failed'
+        latest.receiptStatus = 'dropped'
+        latest.lastError = dropError
+        delete latest.claimToken
+        latest.updatedAt = timestamp
+        store.set(KV.sessions.speculativeDraft(draftId), latest)
+        store.set(KV.sessions.speculativeDelivery(deliveryKey), {
+          deliveryKey,
+          draftId,
+          claimToken: ledger?.claimToken ?? 'outbox',
+          state: 'failed',
+          error: dropError,
+          updatedAt: timestamp,
+        })
+        return
+      }
+
+      if (latest.status === 'delivering' && latest.receiptStatus !== 'pending') {
+        latest.receiptStatus = 'pending'
+        latest.updatedAt = timestamp
+        store.set(KV.sessions.speculativeDraft(draftId), latest)
+        store.set(KV.sessions.speculativeDelivery(deliveryKey), {
+          deliveryKey,
+          draftId,
+          claimToken: ledger?.claimToken ?? 'outbox',
+          state: 'queued',
+          updatedAt: timestamp,
+        })
+      }
+    })
+  }
+
+  /** 读取单条草稿前若其关联 Outbox 回执已变化，先以权威回执对齐状态，保证草稿与发件箱始终一致。 */
+  private reconcileDraftReceipt(draft: SpeculativeDraft): SpeculativeDraft {
+    if (!draft.deliveryKey) return draft
+    const receipt = this.host.store.receipts.get(draft.deliveryKey)
+    if (!receipt) return draft
+    if (receipt.status === 'sent' && (draft.status !== 'delivered' || draft.receiptStatus !== 'sent')) {
+      this.syncDraftWithOutboxReceipt(draft.deliveryKey, 'sent', 'sent')
+      return this.host.store.get(KV.sessions.speculativeDraft(draft.draftId)) ?? draft
+    }
+    if (receipt.status === 'dropped' && (draft.status !== 'delivery_failed' || draft.receiptStatus !== 'dropped')) {
+      this.syncDraftWithOutboxReceipt(draft.deliveryKey, 'dropped', receipt.dropped?.reason)
+      return this.host.store.get(KV.sessions.speculativeDraft(draft.draftId)) ?? draft
+    }
+    if (receipt.status === 'pending' && draft.status === 'delivering' && draft.receiptStatus !== 'pending') {
+      this.syncDraftWithOutboxReceipt(draft.deliveryKey, 'pending')
+      return this.host.store.get(KV.sessions.speculativeDraft(draft.draftId)) ?? draft
+    }
+    return draft
+  }
+
+  /**
+   * 默认宿主真实投递实现：
+   * - 渠道草稿经 Outbox（稳定 id=deliveryKey）入队并尝试刷发，以该条回执状态为准：
+   *   仅 status==='sent' 视为已送达；status==='pending'（暂停或渠道离线）保持待发态；status==='dropped' 视为投递失败；
+   * - 会话草稿经 sessions.prompt（requestId=deliveryKey）投递。
+   */
+  private async deliverDraftViaHost(draft: SpeculativeDraft, deliveryKey: string): Promise<{
+    outcome: 'sent' | 'pending' | 'dropped'
+    deliveryId: string
+    receiptStatus?: 'pending' | 'sent' | 'dropped' | undefined
+    error?: string | undefined
+  }> {
     const target = draft.target ?? this.resolveDraftTargetFromTrigger(draft.triggerId)
     if (target?.kind === 'outbox' && target.channel && this.host.outbox) {
       this.host.outbox.send({
@@ -2827,22 +2989,33 @@ export class DivisionCoordinator {
         ...(target.ticketId ? { ticketId: target.ticketId } : {}),
       })
       await this.host.outbox.sent()
-      const status = this.host.outbox.status(deliveryKey)
-      if (status === 'dropped') {
-        throw new Error(`Outbound delivery for speculative draft ${draft.draftId} was dropped by channel`)
+      const receipt = this.host.store.receipts.get(deliveryKey)
+      const status = receipt?.status ?? this.host.outbox.status(deliveryKey)
+      if (status === 'sent') {
+        return { outcome: 'sent', deliveryId: deliveryKey, receiptStatus: 'sent' }
       }
-      return deliveryKey
+      if (status === 'dropped') {
+        const dropReason = receipt?.dropped?.reason
+        const error = dropReason
+          ? `Outbound delivery for speculative draft ${draft.draftId} was dropped by channel (${dropReason})`
+          : `Outbound delivery for speculative draft ${draft.draftId} was dropped by channel`
+        return { outcome: 'dropped', deliveryId: deliveryKey, receiptStatus: 'dropped', error }
+      }
+      // 暂停处理、渠道离线或重试排队中：回执仍为 pending，严禁提前标为 delivered
+      return { outcome: 'pending', deliveryId: deliveryKey, receiptStatus: 'pending' }
     }
     const targetSession = this.host.relay.route(target?.sessionId ?? this.host.masterId)
     if (!await this.host.sessions.holds(targetSession, deliveryKey)) {
       await this.host.sessions.prompt(targetSession, deliveryKey, `[speculative_draft_confirmed] draft=${draft.draftId} title="${draft.title}"\n${draft.content}`, 'queue')
     }
-    return deliveryKey
+    return { outcome: 'sent', deliveryId: deliveryKey }
   }
 
   /**
-   * §4.2 投机执行：原子认领 + 稳定投递键 + 并发合流 + 发送/撤销明确边界 + 崩溃重启无重复恢复。
+   * §4.2 投机执行：原子认领 + 稳定投递键 + 并发合流 + Outbox 权威回执对齐 + 发送/撤销明确边界 + 崩溃重启无重复恢复。
    * - 第二个并发确认看到 status='delivering' 时直接合流到同一个在途 promise，绝不二次调用投递回调；
+   * - 当渠道草稿经 Outbox 入队后回执为 pending（暂停/离线），返回 { delivered: false, pending: true, receiptStatus: 'pending' }，
+   *   草稿保持 delivering 待发态，待恢复发件后由 Outbox onSettled 依据同一 deliveryKey 自动收口为 delivered（仅发 1 次）或 delivery_failed；
    * - 发送边界一旦进入 delivering，撤销/丢弃将被 DraftBoundaryError 拒绝，杜绝“既撤销又已发送”的矛盾状态；
    * - 若进程在外部发送完成之后、写回 KV 状态之前崩溃，重启后调用 recoverSpeculativeDrafts 或再次确认会先探测发件记录并直接收口为 delivered（0 次重发）。
    */
@@ -2855,8 +3028,13 @@ export class DivisionCoordinator {
     const options: ConfirmSpeculativeDraftOptions = (typeof deliverOrOptions === 'function' ? maybeOptions : deliverOrOptions) ?? {}
     const { store } = this.host
 
+    // 若关联 Outbox 回执在后台已落定（例如解暂停/重连后自动发出或丢弃），先对齐持久化状态
+    const pre = store.get(KV.sessions.speculativeDraft(draftId))
+    if (pre) this.reconcileDraftReceipt(pre)
+
     let immediate: ConfirmSpeculativeDraftResult | undefined
     let joinInFlight = false
+    let pendingOutboxDraft: SpeculativeDraft | undefined
     let needsCrashRecovery: SpeculativeDraft | undefined
     let claimedDraft: SpeculativeDraft | undefined
     let claimToken: string | undefined
@@ -2865,20 +3043,45 @@ export class DivisionCoordinator {
       const latest = store.get(KV.sessions.speculativeDraft(draftId))
       if (!latest) throw new DraftNotFoundError(`Speculative draft ${draftId} not found`)
       if (!latest.deliveryKey) latest.deliveryKey = `spec-draft:${latest.draftId}`
+      const receipt = store.receipts.get(latest.deliveryKey)
 
       if (latest.status === 'delivered') {
-        immediate = { delivered: true, deduplicated: true, draft: { ...latest } }
+        immediate = {
+          delivered: true,
+          pending: false,
+          deduplicated: true,
+          ...(latest.receiptStatus ? { receiptStatus: latest.receiptStatus } : {}),
+          draft: { ...latest },
+        }
         return
       }
       if (latest.status === 'revoked' || latest.status === 'discarded') {
         throw new DraftBoundaryError(`Speculative draft ${draftId} is already ${latest.status} and cannot be delivered`)
+      }
+      // Outbox 已永久丢弃同一投递键：不可误报成功，也不可重复创建同键发件
+      if (!deliverFn && receipt?.status === 'dropped') {
+        const dropError = receipt.dropped?.reason
+          ? `Outbound delivery for speculative draft ${draftId} was dropped by channel (${receipt.dropped.reason})`
+          : `Outbound delivery for speculative draft ${draftId} was dropped by channel`
+        latest.status = 'delivery_failed'
+        latest.receiptStatus = 'dropped'
+        latest.lastError = dropError
+        delete latest.claimToken
+        latest.updatedAt = now()
+        store.set(KV.sessions.speculativeDraft(draftId), latest)
+        throw new Error(dropError)
       }
       if (latest.status === 'delivering') {
         if (this.inFlightDraftDeliveries.has(draftId)) {
           joinInFlight = true
           return
         }
-        // 无本地在途 promise 但持久化状态为 delivering -> 属于上次进程中途崩溃遗留，进入重启恢复探测分支
+        // 已入 Outbox 且回执仍为 pending（暂停、离线或重启后仍在排队）：不得再次入队或标为已发，先尝试刷发并按回执返回
+        if (!deliverFn && receipt?.status === 'pending') {
+          pendingOutboxDraft = { ...latest }
+          return
+        }
+        // 无本地在途 promise 且无 pending Outbox 回执 -> 属于上次进程中途崩溃遗留，进入重启恢复探测分支
         needsCrashRecovery = { ...latest }
         return
       }
@@ -2915,8 +3118,33 @@ export class DivisionCoordinator {
       const shared = this.inFlightDraftDeliveries.get(draftId)
       if (shared) {
         const result = await shared
-        return { delivered: result.delivered, deduplicated: true, draft: result.draft }
+        return {
+          delivered: result.delivered,
+          ...(result.pending !== undefined ? { pending: result.pending } : {}),
+          deduplicated: true,
+          ...(result.receiptStatus ? { receiptStatus: result.receiptStatus } : {}),
+          draft: result.draft,
+        }
       }
+    }
+
+    // Outbox 回执处于 pending 时再次确认：尝试刷发当前可运行队列，但绝不重复入队；以权威回执为准收口或维持待发
+    if (pendingOutboxDraft) {
+      await this.host.outbox?.sent()
+      const receipt = store.receipts.get(pendingOutboxDraft.deliveryKey)
+      if (receipt?.status === 'sent') {
+        this.syncDraftWithOutboxReceipt(pendingOutboxDraft.deliveryKey, 'sent', 'sent')
+        const updated = store.get(KV.sessions.speculativeDraft(draftId))!
+        return { delivered: true, pending: false, deduplicated: true, receiptStatus: 'sent', draft: updated }
+      }
+      if (receipt?.status === 'dropped') {
+        this.syncDraftWithOutboxReceipt(pendingOutboxDraft.deliveryKey, 'dropped', receipt.dropped?.reason)
+        const updated = store.get(KV.sessions.speculativeDraft(draftId))
+        throw new Error(updated?.lastError ?? `Outbound delivery for speculative draft ${draftId} was dropped by channel`)
+      }
+      this.syncDraftWithOutboxReceipt(pendingOutboxDraft.deliveryKey, 'pending')
+      const updated = store.get(KV.sessions.speculativeDraft(draftId))!
+      return { delivered: false, pending: true, deduplicated: true, receiptStatus: 'pending', draft: updated }
     }
 
     // 重启恢复分支：先探测外部通道/持久台账是否已按稳定 deliveryKey 发出，避免发完崩溃重启后重复发送
@@ -2929,6 +3157,7 @@ export class DivisionCoordinator {
           if (!latest) throw new DraftNotFoundError(`Speculative draft ${draftId} not found`)
           const timestamp = now()
           latest.status = 'delivered'
+          if (store.receipts.get(latest.deliveryKey)?.status === 'sent') latest.receiptStatus = 'sent'
           latest.deliveryId = recoveredId
           latest.confirmedAt = latest.confirmedAt ?? timestamp
           delete latest.claimToken
@@ -2945,14 +3174,20 @@ export class DivisionCoordinator {
           })
           reconciled = { ...latest }
         })
-        return { delivered: true, deduplicated: true, draft: reconciled }
+        return {
+          delivered: true,
+          pending: false,
+          deduplicated: true,
+          ...(reconciled.receiptStatus ? { receiptStatus: reconciled.receiptStatus } : {}),
+          draft: reconciled,
+        }
       }
       // 外部确认尚未发出：复用同一稳定 deliveryKey 原子重新认领再投递
       store.atomic(() => {
         const latest = store.get(KV.sessions.speculativeDraft(draftId))
         if (!latest) throw new DraftNotFoundError(`Speculative draft ${draftId} not found`)
         if (latest.status === 'delivered') {
-          immediate = { delivered: true, deduplicated: true, draft: { ...latest } }
+          immediate = { delivered: true, pending: false, deduplicated: true, ...(latest.receiptStatus ? { receiptStatus: latest.receiptStatus } : {}), draft: { ...latest } }
           return
         }
         const timestamp = now()
@@ -2979,13 +3214,115 @@ export class DivisionCoordinator {
     const activeToken = claimToken!
     const deliveryPromise = (async (): Promise<ConfirmSpeculativeDraftResult> => {
       let deliveryId: string
+      let receiptStatus: 'pending' | 'sent' | 'dropped' | undefined
       let dispatchedExternally = false
       try {
-        const out = deliverFn
-          ? await deliverFn(activeDraft, activeDraft.deliveryKey)
-          : await this.deliverDraftViaHost(activeDraft, activeDraft.deliveryKey)
-        deliveryId = out ?? activeDraft.deliveryKey
-        dispatchedExternally = true
+        if (deliverFn) {
+          const out = await deliverFn(activeDraft, activeDraft.deliveryKey)
+          deliveryId = out ?? activeDraft.deliveryKey
+          dispatchedExternally = true
+        } else {
+          const hostRes = await this.deliverDraftViaHost(activeDraft, activeDraft.deliveryKey)
+          deliveryId = hostRes.deliveryId
+          receiptStatus = hostRes.receiptStatus
+          if (hostRes.outcome === 'pending') {
+            // Outbox 回执仍为 pending（如暂停或渠道离线）：保持 delivering + receiptStatus='pending'，不提前标为 delivered
+            let queuedDraft!: SpeculativeDraft
+            let droppedInRaceError: string | undefined
+            store.atomic(() => {
+              const latest = store.get(KV.sessions.speculativeDraft(draftId))
+              if (!latest) throw new DraftNotFoundError(`Speculative draft ${draftId} not found`)
+              // 若在原子切换瞬间 Outbox 已异步落定，仍以权威回执为准
+              const liveReceipt = store.receipts.get(latest.deliveryKey)
+              const timestamp = now()
+              if (liveReceipt?.status === 'sent') {
+                latest.status = 'delivered'
+                latest.receiptStatus = 'sent'
+                latest.deliveryId = deliveryId
+                latest.confirmedAt = latest.confirmedAt ?? timestamp
+                delete latest.claimToken
+                delete latest.lastError
+                latest.updatedAt = timestamp
+                store.set(KV.sessions.speculativeDraft(draftId), latest)
+                store.set(KV.sessions.speculativeDelivery(latest.deliveryKey), {
+                  deliveryKey: latest.deliveryKey,
+                  draftId: latest.draftId,
+                  claimToken: activeToken,
+                  state: 'acknowledged',
+                  externalDeliveryId: deliveryId,
+                  updatedAt: timestamp,
+                })
+                queuedDraft = { ...latest }
+                return
+              }
+              if (liveReceipt?.status === 'dropped') {
+                const reason = liveReceipt.dropped?.reason
+                droppedInRaceError = reason
+                  ? `Outbound delivery for speculative draft ${draftId} was dropped by channel (${reason})`
+                  : `Outbound delivery for speculative draft ${draftId} was dropped by channel`
+                latest.status = 'delivery_failed'
+                latest.receiptStatus = 'dropped'
+                latest.lastError = droppedInRaceError
+                delete latest.claimToken
+                latest.updatedAt = timestamp
+                store.set(KV.sessions.speculativeDraft(draftId), latest)
+                store.set(KV.sessions.speculativeDelivery(latest.deliveryKey), {
+                  deliveryKey: latest.deliveryKey,
+                  draftId: latest.draftId,
+                  claimToken: activeToken,
+                  state: 'failed',
+                  error: droppedInRaceError,
+                  updatedAt: timestamp,
+                })
+                queuedDraft = { ...latest }
+                return
+              }
+              latest.status = 'delivering'
+              latest.receiptStatus = 'pending'
+              delete latest.claimToken
+              delete latest.lastError
+              latest.updatedAt = timestamp
+              store.set(KV.sessions.speculativeDraft(draftId), latest)
+              store.set(KV.sessions.speculativeDelivery(latest.deliveryKey), {
+                deliveryKey: latest.deliveryKey,
+                draftId: latest.draftId,
+                claimToken: activeToken,
+                state: 'queued',
+                updatedAt: timestamp,
+              })
+              queuedDraft = { ...latest }
+            })
+            if (droppedInRaceError) throw new Error(droppedInRaceError)
+            if (queuedDraft.status === 'delivered') {
+              return { delivered: true, pending: false, deduplicated: false, receiptStatus: 'sent', draft: queuedDraft }
+            }
+            return { delivered: false, pending: true, deduplicated: false, receiptStatus: 'pending', draft: queuedDraft }
+          }
+          if (hostRes.outcome === 'dropped') {
+            const dropErr = hostRes.error ?? `Outbound delivery for speculative draft ${draftId} was dropped by channel`
+            store.atomic(() => {
+              const latest = store.get(KV.sessions.speculativeDraft(draftId))
+              if (!latest) return
+              const timestamp = now()
+              latest.status = 'delivery_failed'
+              latest.receiptStatus = 'dropped'
+              latest.lastError = dropErr
+              delete latest.claimToken
+              latest.updatedAt = timestamp
+              store.set(KV.sessions.speculativeDraft(draftId), latest)
+              store.set(KV.sessions.speculativeDelivery(latest.deliveryKey), {
+                deliveryKey: latest.deliveryKey,
+                draftId: latest.draftId,
+                claimToken: activeToken,
+                state: 'failed',
+                error: dropErr,
+                updatedAt: timestamp,
+              })
+            })
+            throw new Error(dropErr)
+          }
+          dispatchedExternally = true
+        }
         if (options.beforeCommit) {
           await options.beforeCommit(activeDraft, deliveryId)
         }
@@ -2998,6 +3335,7 @@ export class DivisionCoordinator {
             if (!latest || latest.claimToken !== activeToken || latest.status !== 'delivering') return
             const timestamp = now()
             latest.status = 'delivery_failed'
+            if (receiptStatus) latest.receiptStatus = receiptStatus
             latest.lastError = reason
             delete latest.claimToken
             latest.updatedAt = timestamp
@@ -3021,6 +3359,7 @@ export class DivisionCoordinator {
         if (!latest) throw new DraftNotFoundError(`Speculative draft ${draftId} not found`)
         const timestamp = now()
         latest.status = 'delivered'
+        if (receiptStatus) latest.receiptStatus = receiptStatus
         latest.deliveryId = deliveryId
         latest.confirmedAt = timestamp
         delete latest.claimToken
@@ -3037,7 +3376,13 @@ export class DivisionCoordinator {
         })
         finalized = { ...latest }
       })
-      return { delivered: true, deduplicated: false, draft: finalized }
+      return {
+        delivered: true,
+        pending: false,
+        deduplicated: false,
+        ...(receiptStatus ? { receiptStatus } : {}),
+        draft: finalized,
+      }
     })()
 
     this.inFlightDraftDeliveries.set(draftId, deliveryPromise)
@@ -3056,6 +3401,8 @@ export class DivisionCoordinator {
    */
   revokeSpeculativeDraft(draftId: string, reason = 'revoked before confirmation'): SpeculativeDraft {
     const { store } = this.host
+    const pre = store.get(KV.sessions.speculativeDraft(draftId))
+    if (pre) this.reconcileDraftReceipt(pre)
     let updated!: SpeculativeDraft
     store.atomic(() => {
       const draft = store.get(KV.sessions.speculativeDraft(draftId))
@@ -3087,6 +3434,8 @@ export class DivisionCoordinator {
   /** §4.2 投机执行：无价值候选静默丢弃，零打扰零外发（同样遵守发送边界约束）。 */
   discardSpeculativeDraft(draftId: string, reason = 'low-value silent discard'): SpeculativeDraft {
     const { store } = this.host
+    const pre = store.get(KV.sessions.speculativeDraft(draftId))
+    if (pre) this.reconcileDraftReceipt(pre)
     let updated!: SpeculativeDraft
     store.atomic(() => {
       const draft = store.get(KV.sessions.speculativeDraft(draftId))
@@ -3116,30 +3465,54 @@ export class DivisionCoordinator {
   }
 
   getSpeculativeDraft(draftId: string): SpeculativeDraft | undefined {
-    return this.host.store.get(KV.sessions.speculativeDraft(draftId))
+    const draft = this.host.store.get(KV.sessions.speculativeDraft(draftId))
+    return draft ? this.reconcileDraftReceipt(draft) : undefined
   }
 
   listSpeculativeDrafts(status?: SpeculativeDraft['status']): SpeculativeDraft[] {
     const all = this.host.store.keys(KV.sessions.speculativeDraft)
       .map(name => this.host.store.get(name))
       .filter((d): d is SpeculativeDraft => d !== undefined)
+      .map(d => this.reconcileDraftReceipt(d))
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     return status ? all.filter(d => d.status === status) : all
   }
 
   /**
-   * 重启恢复：扫描所有遗留在 delivering 状态的草稿，通过发件台账 / Outbox / 会话 / 外部探针核实是否已实际发出：
-   * - 已发出：直接收口为 delivered（0 次重发）；
-   * - 未发出：转为 delivery_failed 以便安全重试或撤销。
+   * 重启恢复：扫描所有遗留在 delivering 状态的草稿，优先以 Outbox 权威回执对账，再结合发件台账 / 会话 / 外部探针核实：
+   * - Outbox 回执为 sent 或外部确认已发出：直接收口为 delivered（0 次重发）；
+   * - Outbox 回执仍为 pending（例如重启后仍处于暂停或渠道离线）：保持 delivering 与 receiptStatus='pending' 等待发件箱恢复后自动收口；
+   * - Outbox 回执为 dropped 或确认未发出：转为 delivery_failed。
    */
   async recoverSpeculativeDrafts(
     probeDelivered?: ConfirmSpeculativeDraftOptions['probeDelivered'],
-  ): Promise<{ reconciledDelivered: string[]; markedFailed: string[] }> {
+  ): Promise<{ reconciledDelivered: string[]; stillPending: string[]; markedFailed: string[] }> {
     const reconciledDelivered: string[] = []
+    const stillPending: string[] = []
     const markedFailed: string[] = []
-    const delivering = this.listSpeculativeDrafts('delivering')
+    const delivering = this.host.store.keys(KV.sessions.speculativeDraft)
+      .map(name => this.host.store.get(name))
+      .filter((d): d is SpeculativeDraft => d !== undefined && d.status === 'delivering')
     for (const draft of delivering) {
       if (this.inFlightDraftDeliveries.has(draft.draftId)) continue
+      const receipt = this.host.store.receipts.get(draft.deliveryKey)
+      if (receipt) {
+        if (receipt.status === 'sent') {
+          this.syncDraftWithOutboxReceipt(draft.deliveryKey, 'sent', 'sent')
+          reconciledDelivered.push(draft.draftId)
+          continue
+        }
+        if (receipt.status === 'dropped') {
+          this.syncDraftWithOutboxReceipt(draft.deliveryKey, 'dropped', receipt.dropped?.reason)
+          markedFailed.push(draft.draftId)
+          continue
+        }
+        if (receipt.status === 'pending') {
+          this.syncDraftWithOutboxReceipt(draft.deliveryKey, 'pending')
+          stillPending.push(draft.draftId)
+          continue
+        }
+      }
       const existingDeliveryId = await this.probeDraftAlreadyDelivered(draft, probeDelivered)
       this.host.store.atomic(() => {
         const latest = this.host.store.get(KV.sessions.speculativeDraft(draft.draftId))
@@ -3180,7 +3553,7 @@ export class DivisionCoordinator {
         }
       })
     }
-    return { reconciledDelivered, markedFailed }
+    return { reconciledDelivered, stillPending, markedFailed }
   }
 
   /**

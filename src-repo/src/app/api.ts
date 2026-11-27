@@ -30,7 +30,7 @@ export interface Api {
   'GET self-inspect': { response: { inspection: ReturnType<typeof inspect>; hygiene: ReturnType<typeof hygiene>; version?: RuntimeVersionInfo } }
   'GET divisions': { response: { plans: TaskPlan[] } }
   'GET drafts': { query?: { status?: SpeculativeDraft['status'] }; response: { drafts: SpeculativeDraft[] } }
-  'POST drafts/:id/confirm': { response: { delivered: boolean; deduplicated: boolean; draft: SpeculativeDraft } }
+  'POST drafts/:id/confirm': { response: { delivered: boolean; pending?: boolean; deduplicated: boolean; receiptStatus?: 'pending' | 'sent' | 'dropped'; draft: SpeculativeDraft } }
   'POST drafts/:id/revoke': { body: { reason?: string }; response: { draft: SpeculativeDraft } }
   'POST drafts/:id/discard': { body: { reason?: string }; response: { draft: SpeculativeDraft } }
   'GET update-check': { response: UpdateCheck }
