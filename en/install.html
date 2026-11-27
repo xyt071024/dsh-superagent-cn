@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Install · Super Agent</title>
-<link rel="stylesheet" href="assets/style.css">
+<title>Install &amp; Upgrade · Super Agent v0.4.0</title>
+<link rel="stylesheet" href="../assets/style.css">
 </head>
 <body>
 
@@ -13,34 +13,46 @@
     <div class="brand">
       <span class="logo">◆</span>
       <span class="brand-name">Super Agent</span>
-      <span class="brand-sub">for DeepSeek Harness</span>
+      <span class="brand-sub">v0.4.0 · for DeepSeek Harness</span>
     </div>
     <nav class="lang-switch" aria-label="Language"><details class="lang-menu"><summary>English</summary><div class="lang-list"><a href="../install.html" data-lang="zh">中文</a><a href="../ja/install.html" data-lang="ja">日本語</a></div></details></nav>
   </div>
 </header>
 
 <main class="doc">
-<h1>Install</h1>
+<h1>Install &amp; Lossless Upgrade (v0.4.0)</h1>
 
-<p>Two ways. Pick the one that fits your setup.</p>
+<p>Three ways to install. Pick the one that fits your setup.</p>
 
 <hr>
 
-<h2>Option 1: Bundled</h2>
+<h2>Option 1: One-Line Installer</h2>
 
-<p>No need to pre-install Node or DSH. Download the package for your system, unzip, run the start script.</p>
+<p>For machines that already have Node.js 22.19+ (or 24+) and DSH 0.2.2+. Dynamically resolves the latest stable release, verifies gzip magic bytes and SHA-256, and configures an isolated <code>superagent</code> profile without overwriting existing settings.</p>
 
-<table><thead><tr><th>System</th><th>Download</th></tr></thead><tbody>
-<tr><td><strong>Windows x64</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.20/Super-Agent-Bundled-Windows-x64-v0.3.20.zip">Super-Agent-Bundled-Windows-x64-v0.3.20.zip</a> · 195 MB</td></tr>
-<tr><td><strong>macOS Apple Silicon</strong><br>(M1/M2/M3/M4)</td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.20/Super-Agent-Bundled-macOS-arm64-v0.3.20.zip">Super-Agent-Bundled-macOS-arm64-v0.3.20.zip</a> · 194 MB</td></tr>
-<tr><td><strong>macOS Intel</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.20/Super-Agent-Bundled-macOS-x64-v0.3.20.zip">Super-Agent-Bundled-macOS-x64-v0.3.20.zip</a> · 193 MB</td></tr>
-<tr><td><strong>Linux x64</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.20/Super-Agent-Bundled-Linux-x64-v0.3.20.zip">Super-Agent-Bundled-Linux-x64-v0.3.20.zip</a> · 202 MB</td></tr>
+<p><strong>Windows (PowerShell):</strong></p>
+<pre><code>irm https://xyt071024.github.io/dsh-superagent-cn/install.ps1 | iex</code></pre>
+
+<p><strong>macOS / Linux (Bash):</strong></p>
+<pre><code>curl -fsSL https://xyt071024.github.io/dsh-superagent-cn/install.sh | bash</code></pre>
+
+<hr>
+
+<h2>Option 2: Zero-Dependency Bundled Archives</h2>
+
+<p>No need to pre-install Node or DSH. Download the package for your system, unzip, and run the start script.</p>
+
+<table><thead><tr><th>System</th><th>Download (v0.4.0)</th></tr></thead><tbody>
+<tr><td><strong>Windows x64</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.4.0/Super-Agent-Bundled-Windows-x64-v0.4.0.zip">Super-Agent-Bundled-Windows-x64-v0.4.0.zip</a> · ~195 MB</td></tr>
+<tr><td><strong>macOS Apple Silicon</strong><br>(M1/M2/M3/M4)</td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.4.0/Super-Agent-Bundled-macOS-arm64-v0.4.0.zip">Super-Agent-Bundled-macOS-arm64-v0.4.0.zip</a> · ~194 MB</td></tr>
+<tr><td><strong>macOS Intel</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.4.0/Super-Agent-Bundled-macOS-x64-v0.4.0.zip">Super-Agent-Bundled-macOS-x64-v0.4.0.zip</a> · ~193 MB</td></tr>
+<tr><td><strong>Linux x64</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.4.0/Super-Agent-Bundled-Linux-x64-v0.4.0.zip">Super-Agent-Bundled-Linux-x64-v0.4.0.zip</a> · ~202 MB</td></tr>
 </tbody></table>
 
 <h3>Steps</h3>
 
 <ol>
-<li><strong>Unzip</strong> anywhere<br>
+<li><strong>Unzip</strong> into any writable directory<br>
 <span class="muted">Avoid <code>C:\Program Files</code> or locations needing admin rights.</span></li>
 
 <li><strong>Run the start script</strong>
@@ -60,64 +72,51 @@
 The terminal prints the address, e.g. <code>http://127.0.0.1:3087</code>.</li>
 </ol>
 
-<p class="note"><strong>If the profile already exists</strong>, the launcher backs up and upgrades <code>dsh-superagent</code> in place while preserving your existing <code>cordis.patch.yml</code> and other plugins.</p>
+<div class="callout">
+<p><strong>Lossless upgrade &amp; crash recovery:</strong> If the profile already exists, the launcher backs up and upgrades <code>dsh-superagent</code> in place while preserving your <code>cordis.patch.yml</code> and other plugins. <code>v0.4.0</code> adds PID-aware state directory locking so live instances are never clobbered while hard-killed Windows instances recover immediately at 0s.</p>
+</div>
 
 <hr>
 
-<h2>Option 2: Plugin package</h2>
+<h2>Option 3: Standalone Plugin Package</h2>
 
-<p>If DSH is already installed, use this.</p>
+<p>If DSH is already installed and you prefer offline installation:</p>
 
-<pre><code>dsh plugin add ./Super-Agent-Plugin-v0.3.20.tgz</code></pre>
+<pre><code>dsh plugin add ./Super-Agent-Plugin-v0.4.0.tgz</code></pre>
 
 <p>Or a specific profile:</p>
 
-<pre><code>dsh plugin --profile superagent add ./Super-Agent-Plugin-v0.3.20.tgz</code></pre>
+<pre><code>dsh plugin --profile superagent add ./Super-Agent-Plugin-v0.4.0.tgz</code></pre>
 
-<p>Download: <a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.20/Super-Agent-Plugin-v0.3.20.tgz">Super-Agent-Plugin-v0.3.20.tgz</a> · 0.4 MB</p>
+<p>Download: <a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.4.0/Super-Agent-Plugin-v0.4.0.tgz">Super-Agent-Plugin-v0.4.0.tgz</a> · ~0.4 MB</p>
 
-<p class="muted">Requires Node.js 22.19+ and DSH 0.2.2.</p>
+<p class="muted">Requires Node.js 22.19+ (or 24+) and DSH 0.2.2+.</p>
 
 <hr>
 
-<h2>After installing</h2>
+<h2>After Installing</h2>
 
-<h3>1. Configure sources</h3>
+<h3>1. Configure models &amp; division slots</h3>
+<p>Connect a model in DSH, then review <strong>Settings → Division &amp; Models</strong> (default allowance 5, freely adjustable, per-slot overrides or strict origin-window inheritance) and <strong>Context &amp; Budget</strong> (60% relay threshold).</p>
 
-<p>Open Settings → Sources and configure the channels you need:</p>
+<h3>2. Try a read-only task first</h3>
+<p>Open a chat in your workspace with the Super Agent preset and try a read-only multi-file review before connecting external accounts.</p>
 
+<h3>3. Optional sources &amp; independent review</h3>
 <ul>
-<li><strong>QQ</strong> — OneBot gateway URL and token; "Check" actually connects</li>
-<li><strong>Email</strong> — address and password; IMAP and SMTP are checked separately</li>
-<li><strong>GitHub</strong> — token and repository</li>
-<li><strong>Feishu</strong> — App ID / Secret</li>
+<li><strong>Sources:</strong> GitHub, Feishu, Personal QQ / WeChat / WeCom (OneBot), Official QQBot, and IMAP/SMTP Email (including Gmail).</li>
+<li><strong>Independent review:</strong> Spawns a read-only reviewer (never the author) for up to 3 rework rounds; code work items always enforce real managed test verification.</li>
 </ul>
 
-<p>A misconfiguration names what is missing instead of just showing "waiting for deployment check".</p>
-
-<h3>2. Optional: multi-agent collaboration</h3>
-
-<p>Single-agent execution is the default. To split one ticket across several members:</p>
-
-<p>Settings → Execution → Multi-session → <code>auto</code></p>
-
-<p class="muted">Splitting significantly increases token usage.</p>
-
-<h3>3. Optional: independent review</h3>
-
-<p>Settings → Execution → Independent review → on</p>
-
-<p>A read-only reviewer is spawned after complex tickets. It never sees the execution trace. Up to 3 review rounds.</p>
-
 <hr>
 
-<h2>Known limitations</h2>
+<h2>Verification Scope &amp; Known Limitations</h2>
 
-<p><strong>Multi-session and independent review are off by default.</strong></p>
+<p><strong>Multi-session division and independent review are off by default</strong> (enable in Settings; splitting increases token usage).</p>
 
-<p><strong>No real send/receive verification for any channel.</strong> Protocol behaviour and error mapping are verified; real-account login, send, receive and reconnect are not.</p>
+<p><strong>Live channels &amp; commercial models:</strong> Protocol behavior and regressions are verified; live external account send/receive and commercial LLM API throughput should be validated in your own environment.</p>
 
-<p><strong>macOS / Linux not verified on real hardware.</strong> Package structure and native modules are correct, but neither has been launched on those systems.</p>
+<p><strong>macOS / Linux physical hardware:</strong> Linux CI runs 1,393 automated tests and ZIP structure/permissions/native modules are verified, but physical desktop launches on macOS/Linux have not been executed here.</p>
 
 <hr>
 
@@ -136,9 +135,9 @@ The terminal prints the address, e.g. <code>http://127.0.0.1:3087</code>.</li>
 <h2>Troubleshooting</h2>
 
 <ul>
-<li><strong>Start script closes instantly</strong> — run it from a terminal to see the error</li>
-<li><strong>Port in use</strong> — it picks another one automatically; check the address printed</li>
-<li><strong>Panel won't open</strong> — make sure the port after <code>127.0.0.1</code> matches what the terminal printed</li>
+<li><strong>Start script closes instantly</strong> — run it from a terminal to see the full error</li>
+<li><strong>State lock held (<code>ELOCKED</code>)</strong> — the message prints the live owning PID; stop that instance cleanly instead of removing lock files manually</li>
+<li><strong>Port in use</strong> — it picks a free port automatically; open the exact <code>127.0.0.1:&lt;port&gt;</code> printed in the terminal</li>
 </ul>
 
 <p>File an issue: <a href="https://github.com/xyt071024/dsh-superagent-cn/issues">github.com/xyt071024/dsh-superagent-cn/issues</a></p>
@@ -146,7 +145,7 @@ The terminal prints the address, e.g. <code>http://127.0.0.1:3087</code>.</li>
 </main>
 
 <footer>
-  <p><a href="index.html" style="color:inherit">首页</a> · MIT License</p>
+  <p><a href="index.html" style="color:inherit">Home</a> · Super Agent v0.4.0 · MIT License</p>
 </footer>
 
 </body>

@@ -12,7 +12,7 @@ import type {} from '@deepseek-ai/dsh-skill'
 import type {} from '@deepseek-ai/dsh-subprocess'
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { lockSync } from 'proper-lockfile'
+import { acquireStateLock } from '../infra/state-lock.ts'
 import { Engine, key, reasonText, type EngineForSettings, type ReceiveResult, type Ticket, type Trigger } from '../core/index.ts'
 import { allowedSender, settingsPolicy } from '../policy.ts'
 import { SourceRegistry } from '../sources/registry.ts'
@@ -116,8 +116,12 @@ export class Runtime extends Service implements SourceHost {
     // Lock the state directory before opening the database so another process cannot migrate or write concurrently.
     mkdirSync(machine.stateDir, { recursive: true, mode: 0o700 })
     const compromised = (error: Error) => { this.runtimeHealth.set({ state: 'error', detail: error.message }); this.stopped.abort() }
-    const release = lockSync(machine.stateDir, { stale: 30_000, onCompromised: compromised })
-    this.releaseLock = async () => { release() }
+    const stateLock = acquireStateLock(machine.stateDir, {
+      staleMs: 30_000,
+      onCompromised: compromised,
+      log: message => { ctx.logger.warn('dsh-superagent: %s', message) },
+    })
+    this.releaseLock = async () => { stateLock.release() }
     let opened: Store | undefined
     try {
       const report = (error: unknown) => { ctx.logger.warn('dsh-superagent: %s', String(error)) }
@@ -235,7 +239,7 @@ export class Runtime extends Service implements SourceHost {
       this.ready = this.initialize()
     } catch (error) {
       // Release the database and state lock if initialization fails so an in-process restart can reacquire them.
-      try { opened?.close() } finally { release() }
+      try { opened?.close() } finally { stateLock.release() }
       throw error
     }
   }

@@ -1,101 +1,81 @@
-# 安装 Super Agent
+# 安装 Super Agent（v0.4.0）
 
-两种装法，看你的情况选。
+三种装法，按你的环境选择。
 
 ---
 
-## 方式一：内置包（不需要预装 Node 或 DSH）
+## 方式一：一键在线安装脚本（已装 Node 22.19+ 与 DSH）
 
-下载对应你系统的包，解压，运行启动脚本。
+自动查询 GitHub 最新正式版、校验 gzip 头与 SHA-256，并在独立 `superagent` profile 中完成安装与配置（不会覆盖已有 `cordis.patch.yml`）：
+
+**Windows（PowerShell）：**
+
+```powershell
+irm https://xyt071024.github.io/dsh-superagent-cn/install.ps1 | iex
+```
+
+**macOS / Linux（Bash）：**
+
+```bash
+curl -fsSL https://xyt071024.github.io/dsh-superagent-cn/install.sh | bash
+```
+
+---
+
+## 方式二：四平台零依赖内置包（不需要预装 Node 或 DSH）
+
+下载对应系统的整包，解压后直接运行启动脚本。
 
 | 系统 | 下载 |
 |---|---|
-| **Windows x64** | [Super-Agent-Bundled-Windows-x64-v0.3.20.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.20/Super-Agent-Bundled-Windows-x64-v0.3.20.zip) |
-| **macOS Apple Silicon**（M1/M2/M3/M4） | [Super-Agent-Bundled-macOS-arm64-v0.3.20.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.20/Super-Agent-Bundled-macOS-arm64-v0.3.20.zip) |
-| **macOS Intel** | [Super-Agent-Bundled-macOS-x64-v0.3.20.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.20/Super-Agent-Bundled-macOS-x64-v0.3.20.zip) |
-| **Linux x64** | [Super-Agent-Bundled-Linux-x64-v0.3.20.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.20/Super-Agent-Bundled-Linux-x64-v0.3.20.zip) |
+| **Windows x64** | [Super-Agent-Bundled-Windows-x64-v0.4.0.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.4.0/Super-Agent-Bundled-Windows-x64-v0.4.0.zip) |
+| **macOS Apple Silicon**（M1/M2/M3/M4） | [Super-Agent-Bundled-macOS-arm64-v0.4.0.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.4.0/Super-Agent-Bundled-macOS-arm64-v0.4.0.zip) |
+| **macOS Intel** | [Super-Agent-Bundled-macOS-x64-v0.4.0.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.4.0/Super-Agent-Bundled-macOS-x64-v0.4.0.zip) |
+| **Linux x64** | [Super-Agent-Bundled-Linux-x64-v0.4.0.zip](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.4.0/Super-Agent-Bundled-Linux-x64-v0.4.0.zip) |
 
 ### 步骤
 
-1. **解压**到任意目录
+1. **解压**到任意可写目录（不要放 `C:\Program Files` 或需要管理员权限的位置）。
+2. **运行启动脚本**：Windows 双击 `start.cmd`，macOS / Linux 执行 `./start.sh`。
+3. **自动初始化**：把 profile 装到 `~/.dsh/profiles/superagent`，选一个空闲端口（3082–3182）并启动面板。
+4. **打开面板**：访问终端打印的本地地址（形如 `http://127.0.0.1:3087`）。
 
-   > 不要放 `C:\Program Files` 或需要管理员权限的位置。
-
-2. **运行启动脚本**
-
-   | 系统 | 运行 |
-   |---|---|
-   | Windows | 双击 `start.cmd` |
-   | macOS / Linux | `./start.sh` |
-
-3. **它会自动做三件事**
-
-   - 把 profile 装到 `~/.dsh/profiles/superagent`
-   - 选一个空闲端口（3082–3182）
-   - 启动面板
-
-4. **打开面板**
-
-   终端会打印地址，形如 `http://127.0.0.1:3087`。
-
-> **如果已有旧版 profile**，启动脚本会自动备份并无损升级 `dsh-superagent` 插件，保留你原有的 `cordis.patch.yml` 及其他插件。
+> **无损升级与崩溃恢复**：如果已有旧版 profile，启动脚本会自动备份并无损升级 `dsh-superagent` 插件，保留原有的 `cordis.patch.yml` 及其他插件。`v0.4.0` 新增 PID 感知状态目录锁：运行中的实例绝不会被误抢锁，Windows 异常强杀后无需等待 30 秒即可立即安全重启。
 
 ---
 
-## 方式二：插件包（已装 DSH）
+## 方式三：独立插件包（已装 DSH）
 
 ```bash
-dsh plugin add ./Super-Agent-Plugin-v0.3.20.tgz
+dsh plugin add ./Super-Agent-Plugin-v0.4.0.tgz
 ```
 
 或指定 profile：
 
 ```bash
-dsh plugin --profile superagent add ./Super-Agent-Plugin-v0.3.20.tgz
+dsh plugin --profile superagent add ./Super-Agent-Plugin-v0.4.0.tgz
 ```
 
-下载：[Super-Agent-Plugin-v0.3.20.tgz](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.20/Super-Agent-Plugin-v0.3.20.tgz)
+下载：[Super-Agent-Plugin-v0.4.0.tgz](https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.4.0/Super-Agent-Plugin-v0.4.0.tgz)
 
-> 插件需要 Node.js 22.19+ 与已安装的 DSH（0.2.2）。
+> 插件需要 Node.js 22.19+（或 24+）与已安装的 DSH（0.2.2+）。
 
 ---
 
 ## 装完之后
 
-### 1. 配置来源
-
-打开 设置 → 来源，配置你要用的通道：
-
-- **QQ** —— 填 OneBot 网关地址与 token，点「检查」会实际连接网关
-- **邮箱** —— 填地址与密码，IMAP 与 SMTP 分别检查
-- **GitHub** —— 填 token 与仓库
-- **飞书** —— 填 App ID / Secret
-
-配错时会明确告诉你缺什么，不会只显示「等待部署检查」。
-
-### 2. 可选：开启多人协作
-
-默认是单人执行。想要一个工单拆多人：
-
-设置 → 执行 → 多会话 → 选 `auto`
-
-> 拆分会显著增加 token 消耗。
-
-### 3. 可选：开启独立复查
-
-设置 → 执行 → 独立复查 → 打开
-
-复杂工单完成后会另开一个只读审查员，看不到执行过程。最多复审 3 轮。
+1. **先配模型与分工设置**：在 DSH 配置可用模型，进入「超级代理人 → 设置」查看「会话分工与模型」（默认每任务最多 5 个独立分工，可自由调大并逐槽位混配模型或留空继承）和「上下文与预算」（默认 60% 接力阈值）。
+2. **推荐先跑一个只读任务**：在工作区选择 Super Agent 自动分工预设，试着输入「请分别核对项目的安装说明、配置示例和更新日志，各自给出文件依据，最后汇总」。
+3. **按需配置外部来源**：在 设置 → 来源 中按需配置 GitHub、飞书、个人 QQ / 微信 / 企业微信（OneBot）、官方 QQBot 或 IMAP/SMTP 邮箱（含 Gmail）。
+4. **按需开启独立复查**：在 设置 → 路由 / 执行 中打开后，复杂工单完成后会另开只读独立审查员（作者不可自审），最多复审 3 轮；代码工作项始终强制校验受控测试凭据。
 
 ---
 
-## 已知限制
+## 验证边界与已知限制
 
-**多会话与独立复查默认关闭。** 需在 设置 → 路由 / 执行 中按需开启。
-
-**各通道未做真实外部账号收发验收。** 已验证协议行为与错误映射；真实外部账号的登录、收发、断线恢复未在本机联网验证。
-
-**macOS / Linux 未在物理真机桌面启动验证。** 包结构、原生模块、Unix 权限位与引导脚本已校验，但未在物理 macOS / Linux 机器双击实跑。
+- **自动分工与独立复查默认关闭**：需在设置页按需启用（拆分多人协作会增加 token 消耗）。
+- **外部渠道与真实模型吞吐**：已通过协议测试、错误映射与多轮回归验证；七条外部渠道的真实账号收发与真实商业模型 API Key 下的吞吐请按你的环境实测。
+- **macOS / Linux 真机桌面运行**：已通过 Linux CI 全量测试（1,393 通过）、ZIP 权限位、原生模块与引导脚本校验，尚未在物理 macOS / Linux 真机双击实跑。
 
 ---
 
@@ -105,7 +85,7 @@ dsh plugin --profile superagent add ./Super-Agent-Plugin-v0.3.20.tgz
 dsh plugin remove dsh-superagent
 ```
 
-内置包装的还要删掉 profile：
+内置包装的还可删除独立 profile：
 
 ```bash
 rm -rf ~/.dsh/profiles/superagent
@@ -117,7 +97,7 @@ Windows：`rmdir /s %USERPROFILE%\.dsh\profiles\superagent`
 
 ## 遇到问题
 
-- **启动脚本一闪就关** —— 在终端里跑，看报错
-- **端口被占** —— 它会自动换，实在不行看终端打印的地址
-- **面板打不开** —— 确认 `127.0.0.1` 后面的端口和终端打印的一致
+- **启动脚本一闪就关** —— 在终端里运行查看完整报错
+- **提示状态目录被占用（`ELOCKED`）** —— 报错会列出当前持有锁的活跃 PID，请勿强删锁目录，先正常关闭旧实例或重启
+- **端口被占** —— 会自动切换空闲端口，以终端打印的 `127.0.0.1:<port>` 为准
 - 提 issue：https://github.com/xyt071024/dsh-superagent-cn/issues

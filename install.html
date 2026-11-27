@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>安装与接入 · Super Agent</title>
+<title>安装与无损升级 · Super Agent v0.4.0</title>
 <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
@@ -13,33 +13,45 @@
     <div class="brand">
       <span class="logo">◆</span>
       <span class="brand-name">Super Agent</span>
-      <span class="brand-sub">for DeepSeek Harness</span>
+      <span class="brand-sub">v0.4.0 · for DeepSeek Harness</span>
     </div>
     <nav class="lang-switch" aria-label="Language"><details class="lang-menu"><summary>中文</summary><div class="lang-list"><a href="en/install.html" data-lang="en">English</a><a href="ja/install.html" data-lang="ja">日本語</a></div></details></nav>
   </div>
 </header>
 <main class="doc">
-<h1>安装</h1>
+<h1>安装与无损升级（v0.4.0）</h1>
 
-<p>两种装法，看你的情况选。</p>
+<p>三种装法，按你的环境选择。</p>
 
 <hr>
 
-<h2>方式一：内置包</h2>
+<h2>方式一：一键在线安装脚本</h2>
+
+<p>适合已安装 Node.js 22.19+（或 24+）与 DSH（0.2.2+）的环境。脚本会自动解析 GitHub 最新正式版、校验 gzip 与 SHA-256，并在独立 <code>superagent</code> profile 中完成安装。</p>
+
+<p><strong>Windows（PowerShell）：</strong></p>
+<pre><code>irm https://xyt071024.github.io/dsh-superagent-cn/install.ps1 | iex</code></pre>
+
+<p><strong>macOS / Linux（Bash）：</strong></p>
+<pre><code>curl -fsSL https://xyt071024.github.io/dsh-superagent-cn/install.sh | bash</code></pre>
+
+<hr>
+
+<h2>方式二：四平台零依赖内置包</h2>
 
 <p>不需要预装 Node 或 DSH。下载对应你系统的包，解压，运行启动脚本。</p>
 
-<table><thead><tr><th>系统</th><th>下载</th></tr></thead><tbody>
-<tr><td><strong>Windows x64</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.20/Super-Agent-Bundled-Windows-x64-v0.3.20.zip">Super-Agent-Bundled-Windows-x64-v0.3.20.zip</a> · 195 MB</td></tr>
-<tr><td><strong>macOS Apple Silicon</strong><br>（M1/M2/M3/M4）</td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.20/Super-Agent-Bundled-macOS-arm64-v0.3.20.zip">Super-Agent-Bundled-macOS-arm64-v0.3.20.zip</a> · 194 MB</td></tr>
-<tr><td><strong>macOS Intel</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.20/Super-Agent-Bundled-macOS-x64-v0.3.20.zip">Super-Agent-Bundled-macOS-x64-v0.3.20.zip</a> · 193 MB</td></tr>
-<tr><td><strong>Linux x64</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.20/Super-Agent-Bundled-Linux-x64-v0.3.20.zip">Super-Agent-Bundled-Linux-x64-v0.3.20.zip</a> · 202 MB</td></tr>
+<table><thead><tr><th>系统</th><th>下载（v0.4.0）</th></tr></thead><tbody>
+<tr><td><strong>Windows x64</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.4.0/Super-Agent-Bundled-Windows-x64-v0.4.0.zip">Super-Agent-Bundled-Windows-x64-v0.4.0.zip</a> · 约 195 MB</td></tr>
+<tr><td><strong>macOS Apple Silicon</strong><br>（M1/M2/M3/M4）</td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.4.0/Super-Agent-Bundled-macOS-arm64-v0.4.0.zip">Super-Agent-Bundled-macOS-arm64-v0.4.0.zip</a> · 约 194 MB</td></tr>
+<tr><td><strong>macOS Intel</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.4.0/Super-Agent-Bundled-macOS-x64-v0.4.0.zip">Super-Agent-Bundled-macOS-x64-v0.4.0.zip</a> · 约 193 MB</td></tr>
+<tr><td><strong>Linux x64</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.4.0/Super-Agent-Bundled-Linux-x64-v0.4.0.zip">Super-Agent-Bundled-Linux-x64-v0.4.0.zip</a> · 约 202 MB</td></tr>
 </tbody></table>
 
 <h3>步骤</h3>
 
 <ol>
-<li><strong>解压</strong>到任意目录<br>
+<li><strong>解压</strong>到任意可写目录<br>
 <span class="muted">不要放 <code>C:\Program Files</code> 或需要管理员权限的位置。</span></li>
 
 <li><strong>运行启动脚本</strong>
@@ -59,64 +71,58 @@
 终端会打印地址，形如 <code>http://127.0.0.1:3087</code>。</li>
 </ol>
 
-<p class="note"><strong>如果已有旧版 profile</strong>，启动脚本会自动备份并无损升级 <code>dsh-superagent</code> 插件，保留原有的 <code>cordis.patch.yml</code> 与其他插件。</p>
+<div class="callout">
+<p><strong>无损升级与强杀恢复：</strong>如果已有旧版 profile，启动脚本会自动备份并无损升级 <code>dsh-superagent</code> 插件，保留原有的 <code>cordis.patch.yml</code> 与其他插件。<code>v0.4.0</code> 新增 PID 感知状态目录锁：活实例绝不会被并发启动误抢锁，Windows 异常强杀后无需等待 30 秒即可 0 秒安全重启。</p>
+</div>
 
 <hr>
 
-<h2>方式二：插件包</h2>
+<h2>方式三：独立插件包</h2>
 
-<p>已经装了 DSH 的话，用这个。</p>
+<p>已经装了 DSH 且需要离线安装时使用。</p>
 
-<pre><code>dsh plugin add ./Super-Agent-Plugin-v0.3.20.tgz</code></pre>
+<pre><code>dsh plugin add ./Super-Agent-Plugin-v0.4.0.tgz</code></pre>
 
 <p>或指定 profile：</p>
 
-<pre><code>dsh plugin --profile superagent add ./Super-Agent-Plugin-v0.3.20.tgz</code></pre>
+<pre><code>dsh plugin --profile superagent add ./Super-Agent-Plugin-v0.4.0.tgz</code></pre>
 
-<p>下载：<a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.20/Super-Agent-Plugin-v0.3.20.tgz">Super-Agent-Plugin-v0.3.20.tgz</a> · 0.4 MB</p>
+<p>下载：<a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.4.0/Super-Agent-Plugin-v0.4.0.tgz">Super-Agent-Plugin-v0.4.0.tgz</a> · 约 0.4 MB</p>
 
-<p class="muted">需要 Node.js 22.19+ 与已安装的 DSH（0.2.2）。</p>
+<p class="muted">需要 Node.js 22.19+（或 24+）与已安装的 DSH（0.2.2+）。</p>
 
 <hr>
 
 <h2>装完之后</h2>
 
-<h3>1. 配置来源</h3>
+<h3>1. 配置模型与分工参数</h3>
 
-<p>打开 设置 → 来源，配置你要用的通道：</p>
-
+<p>先在 DSH 中配置可用模型，再打开「超级代理人 → 设置」检查：</p>
 <ul>
-<li><strong>QQ</strong> —— 填 OneBot 网关地址与 token，点「检查」会实际连接网关</li>
-<li><strong>邮箱</strong> —— 填地址与密码，IMAP 与 SMTP 分别检查</li>
-<li><strong>GitHub</strong> —— 填 token 与仓库</li>
-<li><strong>飞书</strong> —— 填 App ID / Secret</li>
+<li><strong>会话分工与模型</strong> —— 默认每任务最多 5 个独立分工对话（无固定上限），可按槽位指定不同模型或留空严格继承主对话模型</li>
+<li><strong>上下文与预算</strong> —— 默认 60% 上下文接力阈值与每日 Token 预算</li>
 </ul>
 
-<p>配错时会明确告诉你缺什么，不会只显示「等待部署检查」。</p>
+<h3>2. 推荐先跑一个只读任务</h3>
 
-<h3>2. 可选：开启多人协作</h3>
+<p>在目标工作区新建聊天并选择 Super Agent 自动分工预设，输入例如：「请分别核对项目的安装说明、配置示例和更新日志，各自给出文件依据，最后汇总」，体验多对话独立协作后再按需启用外部来源。</p>
 
-<p>默认是单人执行。想要一个工单拆多人：</p>
+<h3>3. 按需配置外部来源与独立复查</h3>
 
-<p>设置 → 执行 → 多会话 → 选 <code>auto</code></p>
-
-<p class="muted">拆分会显著增加 token 消耗。</p>
-
-<h3>3. 可选：开启独立复查</h3>
-
-<p>设置 → 执行 → 独立复查 → 打开</p>
-
-<p>复杂工单完成后会另开一个只读审查员，看不到执行过程。最多复审 3 轮。</p>
+<ul>
+<li><strong>GitHub / 飞书 / 个人 QQ、微信、企业微信（OneBot）/ 官方 QQBot / IMAP+SMTP 邮箱（含 Gmail）</strong> —— 在「设置 → 来源」中按向导配置并点击检查，缺项会精确报错。</li>
+<li><strong>独立复查</strong> —— 在「设置 → 执行 / 路由」开启后，复杂工单完成后会另开只读独立审查员（作者不可自审），最多复审 3 轮；代码工作项始终强制校验受控测试凭据。</li>
+</ul>
 
 <hr>
 
-<h2>已知限制</h2>
+<h2>验证边界与已知限制</h2>
 
-<p><strong>多会话与独立复查默认关闭。</strong></p>
+<p><strong>自动分工与独立复查默认关闭。</strong> 拆分多人协作会增加 token 消耗，请在设置页按需启用。</p>
 
-<p><strong>各通道未做真实收发验收。</strong> 已验证协议行为与错误映射；真实账号的登录、收发、断线恢复未验证。</p>
+<p><strong>外部渠道与商业模型实测：</strong> 已验证协议行为、错误映射与自动化回归；七条外部渠道的真实账号收发与真实商业模型吞吐请按你的环境实测。</p>
 
-<p><strong>macOS / Linux 未在真机启动验证。</strong> 包结构与原生模块正确，但未实际运行过。</p>
+<p><strong>macOS / Linux 物理真机：</strong> 已通过 Linux CI 全量 1,393 项测试、包结构、Unix 权限位与原生模块校验，但尚未在物理 macOS / Linux 桌面双击实跑。</p>
 
 <hr>
 
@@ -124,7 +130,7 @@
 
 <pre><code>dsh plugin remove dsh-superagent</code></pre>
 
-<p>内置包装的还要删掉 profile：</p>
+<p>内置包装的还可删掉独立 profile：</p>
 
 <pre><code>rm -rf ~/.dsh/profiles/superagent</code></pre>
 
@@ -135,16 +141,16 @@
 <h2>遇到问题</h2>
 
 <ul>
-<li><strong>启动脚本一闪就关</strong> —— 在终端里跑，看报错</li>
-<li><strong>端口被占</strong> —— 它会自动换，实在不行看终端打印的地址</li>
-<li><strong>面板打不开</strong> —— 确认 <code>127.0.0.1</code> 后面的端口和终端打印的一致</li>
+<li><strong>启动脚本一闪就关</strong> —— 在终端里运行查看完整报错</li>
+<li><strong>提示状态目录被占用（<code>ELOCKED</code>）</strong> —— 报错会列出当前持有锁的活跃 PID，请先正常关闭旧实例</li>
+<li><strong>端口被占</strong> —— 它会自动切换，确认 <code>127.0.0.1</code> 后的端口与终端打印一致</li>
 </ul>
 
 <p>提 issue：<a href="https://github.com/xyt071024/dsh-superagent-cn/issues">github.com/xyt071024/dsh-superagent-cn/issues</a></p>
 </main>
 
 <footer>
-  <p><a href="index.html" style="color:inherit">首页</a> · MIT License</p>
+  <p><a href="index.html" style="color:inherit">首页</a> · Super Agent v0.4.0 · MIT License</p>
 </footer>
 
 </body>

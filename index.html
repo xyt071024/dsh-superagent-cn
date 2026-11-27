@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Super Agent v0.3.20 · DeepSeek Harness 全天候多会话自治工程智能体</title>
+<title>Super Agent v0.4.0 · DeepSeek Harness 全天候多会话自治工程智能体</title>
 <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
@@ -13,7 +13,7 @@
     <div class="brand">
       <span class="logo">◆</span>
       <span class="brand-name">Super Agent</span>
-      <span class="brand-sub">v0.3.20 · for DeepSeek Harness</span>
+      <span class="brand-sub">v0.4.0 · for DeepSeek Harness</span>
     </div>
 
     <nav class="lang-switch" aria-label="Language">
@@ -27,54 +27,68 @@
 <main>
 
 <section class="hero">
-  <h1>全天候主动接活的多会话工程智能体</h1>
+  <h1>工作区聊天、外部渠道与后台工单一体化的多会话工程智能体</h1>
   <p class="hero-sub">
-    七大入口异步收活 · 三层代码门禁鉴权 · 难题自主拆分为独立可打开对话并混配模型 · 60% 无损上下文接力 · 独立审查闭环
+    在一个主对话中布置复杂项目任务，让多个独立可打开的分工对话并行推进、逐槽位混配模型、强制代码实测验收与独立复查，再结合 60% 无损上下文接力、Outbox 权威回执与 PID 感知崩毁恢复，把结果干净地汇回主会话。
   </p>
   <div class="hero-actions">
-    <a href="install.html" class="btn btn-primary">立即安装 v0.3.20</a>
+    <a href="install.html" class="btn btn-primary">立即安装 v0.4.0</a>
     <a href="docs/zh/01-overview.html" class="btn btn-ghost">阅读架构文档</a>
     <a href="https://github.com/xyt071024/dsh-superagent-cn/releases/latest" class="btn btn-ghost">下载全平台发行包</a>
+    <a href="https://github.com/xyt071024/dsh-superagent-cn" class="btn btn-ghost">GitHub 仓库</a>
   </div>
   <p style="margin-top:2rem;text-align:center;">
-    <img src="assets/hero-cover.jpg" alt="Super Agent Overview" style="max-width:100%;border-radius:12px;border:1px solid rgba(148,163,184,0.2);">
+    <img src="assets/hero-cover.jpg" alt="Super Agent v0.4.0 Overview" style="max-width:100%;border-radius:12px;border:1px solid rgba(148,163,184,0.2);">
   </p>
 </section>
 
 <section class="cards">
   <div class="card">
     <div class="card-icon">⇄</div>
-    <h3>七源异步接入</h3>
-    <p>GitHub、飞书、个人 QQ、官方 QQBot、微信、企业微信、IMAP/SMTP 邮箱（含 Gmail）与本地聊天统一调度。</p>
-  </div>
-  <div class="card">
-    <div class="card-icon">⛊</div>
-    <h3>三层硬隔离权限</h3>
-    <p>代码白名单网关 → 语义评估 → 受控凭证包装器。外部消息与网页内容永远无法放大权限。</p>
+    <h3>七源异步接入与三层代码门禁</h3>
+    <p>统一调度 DSH 工作区聊天、GitHub、飞书、个人 QQ、官方 QQBot、微信、企业微信与 IMAP/SMTP 邮箱（含 Gmail）；代码白名单 → 语义评估 → 受控凭证包装，外部消息永远无法越权。</p>
   </div>
   <div class="card">
     <div class="card-icon">⋔</div>
-    <h3>弹性多对话与异构模型</h3>
-    <p>默认允许 5 个独立分工对话（用户可自由调大或调小，无硬性上限），逐槽位指定模型或留空继承，完成后经只读独立复查把关。</p>
+    <h3>弹性独立分工与异构模型槽位</h3>
+    <p>默认每任务最多 5 个独立可打开分工对话（可自由调大，无固定上限，支持分页直达与稀疏存储），逐槽位指定模型或严格继承主对话模型；支持成员定向沟通与动态补位领取。</p>
+  </div>
+  <div class="card">
+    <div class="card-icon">✓</div>
+    <h3>强制代码实测验收与独立复查</h3>
+    <p>代码工作项禁止绕过走人工验收，必须提交本次交付版本的受控测试凭据；开启独立复查后作者不可自审，只读审查员可触发最多 3 轮精准返工。</p>
   </div>
   <div class="card">
     <div class="card-icon">↻</div>
-    <h3>60% 无损上下文接力</h3>
-    <p>主会话、工单、子代理与分工对话达 60% 自动提炼意图与尾部进度，原子切换至新代会话（r1→r2→r3），旧窗追问自动跟随。</p>
+    <h3>60% 无损接力与崩毁瞬时恢复</h3>
+    <p>全角色达 60% 自动提炼意图与尾部进度切至新代会话（r1→r2→r3）；预写草稿与 Outbox 回执严格对齐；v0.4.0 新增 PID 感知状态锁，活实例绝不删锁，强杀后 0 秒即可安全重启。</p>
   </div>
 </section>
 
 <section class="doc-index">
-  <h2>全景架构</h2>
+  <h2>从一个任务开始：多会话并行协作</h2>
+  <p class="section-note">
+    在 DSH 工作区选择 Super Agent 自动分工预设后，复杂需求会拆为同一工作区侧栏可分别点开的独立分工对话；你可以随时介入补充要求，也可以回到主对话统一看汇总、实测结果与复查结论。简单任务留在当前窗口，0 额外开销。
+  </p>
   <p style="margin:1rem 0;text-align:center;">
-    <img src="assets/architecture-flow.svg" alt="Super Agent Architecture" style="max-width:100%;border-radius:12px;">
+    <img src="assets/multi-session-collab.jpg" alt="多会话独立分工、动态互助与独立复查" style="max-width:100%;border-radius:12px;border:1px solid rgba(148,163,184,0.2);">
   </p>
 </section>
 
 <section class="doc-index">
-  <h2>开始使用</h2>
+  <h2>全景架构与 60% 上下文接力</h2>
+  <p style="margin:1rem 0;text-align:center;">
+    <img src="assets/architecture-flow.svg" alt="Super Agent v0.4.0 Architecture" style="max-width:100%;border-radius:12px;">
+  </p>
+  <p style="margin:1.25rem 0 0;text-align:center;">
+    <img src="assets/context-relay-engine.jpg" alt="60% 阈值无损上下文接力引擎" style="max-width:100%;border-radius:12px;border:1px solid rgba(148,163,184,0.2);">
+  </p>
+</section>
+
+<section class="doc-index">
+  <h2>快速安装 v0.4.0</h2>
   <ol class="toc">
-    <li><a href="install.html"><span class="num">→</span><span class="title">安装与无损升级（v0.3.20）</span><span class="desc">一行命令脚本、四平台零依赖内置 ZIP 包与独立插件包</span></a></li>
+    <li><a href="install.html"><span class="num">→</span><span class="title">安装与无损升级指南（v0.4.0）</span><span class="desc">一行在线安装脚本（动态解析 + SHA-256）、四平台零依赖内置 ZIP 包与独立插件包</span></a></li>
   </ol>
 </section>
 
@@ -94,24 +108,27 @@
 </section>
 
 <section class="quickfacts">
-  <h2>v0.3.20 要点速览</h2>
+  <h2>v0.4.0 要点速览</h2>
   <table>
     <tr><th>项目</th><th>说明</th></tr>
-    <tr><td>交付形态</td><td>轻量插件包（<code>.tgz</code>） / 四平台零依赖自带 Node+DSH 内置包（<code>.zip</code>）</td></tr>
-    <tr><td>每任务分工对话</td><td>默认最多 <strong>5</strong> 个独立可打开分工对话（同工作区侧栏顶层展示），无固定上限；全页可达与稀疏存储，逐槽位混配模型或严格继承发起窗口模型</td></tr>
-    <tr><td>设置与协作闭环</td><td>设置页直达「会话分工与模型」「上下文与预算」与聊天顶栏快捷状态；支持成员双向互通、动态补位领取、原负责人合并与独立复查回避</td></tr>
-    <tr><td>并发工单槽位</td><td>默认 3 个并发执行工单 + 1 个人工追问专属预留槽位</td></tr>
-    <tr><td>上下文接力</td><td>默认 60% 窗口占比触发无损代际接力（覆盖主会话 / 工单 / 子代理 / 分工对话，保留认领与归属）</td></tr>
-    <tr><td>独立复查与工具</td><td>最多 3 轮只读独立复查 + 内置 14 项技能 + <code>orchestrator_division_todo</code> + <code>scripts/benchmark-throughput.mjs</code> 吞吐测速工具</td></tr>
-    <tr><td>质量门禁</td><td>1,370 项自动化测试通过、37 项历轮黑盒独立验收全绿、发行包安全隐私预检 0 告警</td></tr>
-    <tr><td>开源许可证</td><td>MIT License</td></tr>
+    <tr><td>交付形态</td><td>一键在线脚本（<code>install.ps1</code> / <code>install.sh</code>） / 轻量插件包（<code>.tgz</code>） / 四平台零依赖自带 Node+DSH 内置包（<code>.zip</code>）</td></tr>
+    <tr><td>每任务分工对话</td><td>默认最多 <strong>5</strong> 个独立可打开分工对话（同工作区侧栏顶层展示），无固定上限；全页可达与稀疏存储，逐槽位混配模型或严格继承主对话模型</td></tr>
+    <tr><td>代码门禁与协作闭环</td><td>代码/默认/配置工作项禁用 <code>manual_acceptance</code>（覆盖创建、发布、合并与旧 SQLite 数据）；支持成员定向沟通、动态补位领取、原负责人合并与只读独立复查回避</td></tr>
+    <tr><td>外发与崩溃恢复</td><td>预写草稿（<code>SpeculativeDraft</code>）严格对齐 Outbox 权威回执；<code>v0.4.0</code> 新增 PID 感知状态目录锁，保护活实例并发抢占并在 Windows 强杀后 0s / 5s / 35s / 60s 安全恢复</td></tr>
+    <tr><td>并发与上下文接力</td><td>默认 3 个并发执行工单 + 1 个人工追问预留槽位；默认 60% 窗口占比触发全角色无损代际接力（<code>r1 → r2 → r3</code>）</td></tr>
+    <tr><td>内置能力与工具</td><td>最多 3 轮只读独立复查 + 内置 14 项工程/渠道技能 + <code>orchestrator_division_todo</code> + <code>scripts/benchmark-throughput.mjs</code></td></tr>
+    <tr><td>跨平台验证门禁</td><td>Windows Vitest <strong>1,380</strong> 通过（0 失败，15 项 POSIX 跳过）；Linux CI Vitest <strong>1,393</strong> 通过（0 失败，2 项跳过）；历轮 41–50 号验收 <strong>37/37</strong>；严格实包打包测试 <strong>0 跳过</strong>；安全隐私预检 <strong>0 告警</strong></td></tr>
+    <tr><td>开源来源与许可</td><td>基于 <a href="https://github.com/deepseek-ai/dsh-superagent-prototype">deepseek-ai/dsh-superagent-prototype</a> 扩展 · 社区独立维护 · MIT License</td></tr>
   </table>
+  <div class="callout">
+    <p><strong>验证边界透明说明：</strong>本版已完成跨平台源码自动化回归、安全预检与 Windows 隔离实包全周期（全新安装、旧版升级、活实例锁保护及强杀 0/5/35/60s 恢复）。真实商业模型 API Key 吞吐、七条外部渠道真实账号联调及 Linux / macOS 物理真机桌面启动仍请按实际环境实测；云端离线续跑、跨月记忆与独立看门狗自动纠偏不在本版承诺范围内。</p>
+  </div>
 </section>
 
 </main>
 
 <footer>
-  <p>Super Agent v0.3.20 for DeepSeek Harness · MIT License</p>
+  <p>Super Agent v0.4.0 for DeepSeek Harness · MIT License</p>
   <p class="footer-note">基于 DeepSeek 开源原型扩展构建（非官方社区增强发行版）。</p>
 </footer>
 

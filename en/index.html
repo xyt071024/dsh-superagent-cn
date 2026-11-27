@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Super Agent v0.3.20 · Autonomous Multi-Session Orchestrator for DeepSeek Harness</title>
+<title>Super Agent v0.4.0 · Autonomous Multi-Session Orchestrator for DeepSeek Harness</title>
 <link rel="stylesheet" href="../assets/style.css">
 </head>
 <body>
@@ -13,7 +13,7 @@
     <div class="brand">
       <span class="logo">◆</span>
       <span class="brand-name">Super Agent</span>
-      <span class="brand-sub">v0.3.20 · for DeepSeek Harness</span>
+      <span class="brand-sub">v0.4.0 · for DeepSeek Harness</span>
     </div>
 
     <nav class="lang-switch" aria-label="Language">
@@ -27,54 +27,68 @@
 <main>
 
 <section class="hero">
-  <h1>An Always-On Multi-Session Engineering Agent</h1>
+  <h1>Workspace Chat, External Channels, and Multi-Session Engineering in One Agent</h1>
   <p class="hero-sub">
-    Multi-channel intake · Three-layer code authorization · Elastic division sessions with per-slot model routing · 60% lossless context relay · Independent review
+    Assign complex work from a main chat, let independent division sessions run parallel parts with per-slot model routing, enforce real test verification and independent review, and rely on 60% lossless context relay, Outbox-authoritative delivery, and PID-aware crash recovery.
   </p>
   <div class="hero-actions">
-    <a href="install.html" class="btn btn-primary">Install v0.3.20</a>
+    <a href="install.html" class="btn btn-primary">Install v0.4.0</a>
     <a href="../docs/en/01-overview.html" class="btn btn-ghost">Read Documentation</a>
     <a href="https://github.com/xyt071024/dsh-superagent-cn/releases/latest" class="btn btn-ghost">GitHub Releases</a>
+    <a href="https://github.com/xyt071024/dsh-superagent-cn" class="btn btn-ghost">Repository</a>
   </div>
   <p style="margin-top:2rem;text-align:center;">
-    <img src="../assets/hero-cover.jpg" alt="Super Agent Overview" style="max-width:100%;border-radius:12px;border:1px solid rgba(148,163,184,0.2);">
+    <img src="../assets/hero-cover.jpg" alt="Super Agent v0.4.0 Overview" style="max-width:100%;border-radius:12px;border:1px solid rgba(148,163,184,0.2);">
   </p>
 </section>
 
 <section class="cards">
   <div class="card">
     <div class="card-icon">⇄</div>
-    <h3>Multi-Source Intake</h3>
-    <p>GitHub, Feishu, Personal QQ, Official QQBot, WeChat, WeCom, IMAP/SMTP Mail (Gmail), and local DSH chat.</p>
-  </div>
-  <div class="card">
-    <div class="card-icon">⛊</div>
-    <h3>Three-Layer Code Gate</h3>
-    <p>Allowlist gate → semantic assessment → scoped credential wrappers. Untrusted messages never alter permissions.</p>
+    <h3>7-Channel Intake &amp; Code Gate</h3>
+    <p>Unifies DSH workspace chat, GitHub, Feishu, Personal QQ, Official QQBot, WeChat, WeCom, and IMAP/SMTP Mail (Gmail) behind allowlist gates, semantic checks, and scoped credentials.</p>
   </div>
   <div class="card">
     <div class="card-icon">⋔</div>
     <h3>Elastic Divisions &amp; Models</h3>
-    <p>Defaults to 5 independent division sessions per task (freely adjustable with no fixed cap), per-slot model overrides or task-start inheritance.</p>
+    <p>Defaults to 5 independent division sessions per task (freely adjustable with no fixed cap, paginated UI, sparse storage), per-slot model overrides or strict task-start model inheritance, plus peer coordination.</p>
+  </div>
+  <div class="card">
+    <div class="card-icon">✓</div>
+    <h3>Mandatory Code Checks &amp; Review</h3>
+    <p>Code work items reject manual acceptance and require managed test evidence bound to the delivered revision; read-only independent reviewers forbid self-review and guide up to 3 rework rounds.</p>
   </div>
   <div class="card">
     <div class="card-icon">↻</div>
-    <h3>60% Context Relay</h3>
-    <p>Main, worker, subagent, and division sessions hand over cleanly at 60% context with head+tail summaries and live follow-up routing.</p>
+    <h3>60% Relay &amp; Instant Crash Recovery</h3>
+    <p>All session roles hand over cleanly at 60% context (r1→r2→r3); speculative drafts track authoritative Outbox receipts; v0.4.0 PID-aware state locking protects live instances and recovers at 0s after hard-kill.</p>
   </div>
 </section>
 
 <section class="doc-index">
-  <h2>Architecture Flow</h2>
+  <h2>Start from a Task: Parallel Collaboration</h2>
+  <p class="section-note">
+    Select the Super Agent preset in your DSH workspace to split complex tasks into real openable division chats in the same sidebar while keeping simple tasks in the current chat with zero extra overhead.
+  </p>
   <p style="margin:1rem 0;text-align:center;">
-    <img src="../assets/architecture-flow.svg" alt="Super Agent Architecture" style="max-width:100%;border-radius:12px;">
+    <img src="../assets/multi-session-collab.jpg" alt="Multi-Session Collaboration & Independent Review" style="max-width:100%;border-radius:12px;border:1px solid rgba(148,163,184,0.2);">
+  </p>
+</section>
+
+<section class="doc-index">
+  <h2>Architecture Flow &amp; Context Relay</h2>
+  <p style="margin:1rem 0;text-align:center;">
+    <img src="../assets/architecture-flow.svg" alt="Super Agent v0.4.0 Architecture" style="max-width:100%;border-radius:12px;">
+  </p>
+  <p style="margin:1.25rem 0 0;text-align:center;">
+    <img src="../assets/context-relay-engine.jpg" alt="60% Lossless Context Relay Engine" style="max-width:100%;border-radius:12px;border:1px solid rgba(148,163,184,0.2);">
   </p>
 </section>
 
 <section class="doc-index">
   <h2>Getting Started</h2>
   <ol class="toc">
-    <li><a href="install.html"><span class="num">→</span><span class="title">Install &amp; Lossless Upgrade (v0.3.20)</span><span class="desc">One-line installer, zero-dependency platform ZIPs, and standalone plugin</span></a></li>
+    <li><a href="install.html"><span class="num">→</span><span class="title">Install &amp; Lossless Upgrade (v0.4.0)</span><span class="desc">One-line installer, zero-dependency platform ZIPs, and standalone plugin</span></a></li>
   </ol>
 </section>
 
@@ -94,24 +108,27 @@
 </section>
 
 <section class="quickfacts">
-  <h2>v0.3.20 At a Glance</h2>
+  <h2>v0.4.0 At a Glance</h2>
   <table>
     <tr><th>Item</th><th>Detail</th></tr>
-    <tr><td>Deliverables</td><td>Standalone plugin (<code>.tgz</code>) / 4 zero-dependency bundled platform archives (<code>.zip</code>)</td></tr>
-    <tr><td>Division Sessions</td><td>Default allowance of <strong>5</strong> per task in the originating workspace sidebar, operator-adjustable with full pagination, sparse slot overrides, and strict origin-window model inheritance</td></tr>
-    <tr><td>Settings &amp; Peer Collaboration</td><td>Direct Routing &amp; Budget settings navigation, chat header status badge, atomic work-item claiming/merging, owner handoff, and independent reviewer guard</td></tr>
-    <tr><td>Ticket Concurrency</td><td>3 concurrent tickets by default + 1 reserved slot for human follow-ups</td></tr>
-    <tr><td>Context Relay</td><td>60% context threshold generational handover across orchestrator, worker, subagent, and division sessions</td></tr>
-    <tr><td>Review &amp; Benchmark</td><td>Up to 3-round read-only independent review + 14 bundled skills + <code>orchestrator_division_todo</code> + <code>scripts/benchmark-throughput.mjs</code></td></tr>
-    <tr><td>Verification</td><td>1,370 automated tests passed, 37/37 acceptance tests green, 0 release-preflight issues</td></tr>
-    <tr><td>License</td><td>MIT License</td></tr>
+    <tr><td>Deliverables</td><td>One-line scripts (<code>install.ps1</code> / <code>install.sh</code>) / Standalone plugin (<code>.tgz</code>) / 4 zero-dependency platform ZIPs</td></tr>
+    <tr><td>Division Sessions</td><td>Default allowance of <strong>5</strong> per task in the originating workspace sidebar, freely adjustable with full pagination, sparse overrides, and strict origin-window model inheritance</td></tr>
+    <tr><td>Verification &amp; Peer Flow</td><td>Code/default/config items reject <code>manual_acceptance</code> across create, publish, merge, and legacy SQLite rows; peer messaging, atomic claiming/merging, and non-author review</td></tr>
+    <tr><td>Outbox &amp; Crash Recovery</td><td><code>SpeculativeDraft</code> strictly aligns with authoritative Outbox receipts; <code>v0.4.0</code> PID-aware state lock guards live instances and reclaims orphaned locks at 0s / 5s / 35s / 60s on Windows</td></tr>
+    <tr><td>Concurrency &amp; Relay</td><td>3 concurrent tickets + 1 reserved slot for human follow-ups; 60% generational context relay across orchestrator, worker, subagent, and division sessions</td></tr>
+    <tr><td>Review &amp; Bundled Skills</td><td>Up to 3-round read-only independent review + 14 bundled skills + <code>orchestrator_division_todo</code> + <code>scripts/benchmark-throughput.mjs</code></td></tr>
+    <tr><td>Verification Gate</td><td>Windows Vitest <strong>1,380</strong> passed (0 failed, 15 POSIX skipped); Linux CI Vitest <strong>1,393</strong> passed (0 failed, 2 skipped); <strong>37/37</strong> acceptance tests; strict bundle checks <strong>0 skipped</strong>; <strong>0</strong> preflight findings</td></tr>
+    <tr><td>Origin &amp; License</td><td>Community-maintained extension of <a href="https://github.com/deepseek-ai/dsh-superagent-prototype">deepseek-ai/dsh-superagent-prototype</a> · MIT License</td></tr>
   </table>
+  <div class="callout">
+    <p><strong>Honest verification scope:</strong> Automated cross-platform CI, security preflight, and isolated Windows bundle full-lifecycle checks (fresh install, in-place upgrade, live-instance lock guard, hard-kill 0/5/35/60s restarts) are verified. Live commercial LLM throughput, real external channel accounts, and physical Linux/macOS desktop runs should be verified in your target setup; offline cloud continuation, cross-month memory, and independent watchdog auto-remediation are out of scope.</p>
+  </div>
 </section>
 
 </main>
 
 <footer>
-  <p>Super Agent v0.3.20 for DeepSeek Harness · MIT License</p>
+  <p>Super Agent v0.4.0 for DeepSeek Harness · MIT License</p>
   <p class="footer-note">Community-maintained open-source distribution built on DeepSeek Harness.</p>
 </footer>
 

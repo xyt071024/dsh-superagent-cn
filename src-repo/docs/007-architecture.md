@@ -361,6 +361,7 @@ Some generic modules still refer directly to GitHub or Feishu:
 | `src/infra/paths.ts` | The package's root, where packaged files are |
 | `src/infra/text.ts` | Word counts and the chat message limit, `fill` and `sameName` |
 | `src/infra/health.ts` | The `HealthBoard`, every part's health entry, each claimed by its one writer |
+| `src/infra/state-lock.ts` | PID-aware, live-instance-safe state directory lock wrapper around `proper-lockfile` that preserves live locks and reclaims verified orphaned locks left by hard-killed processes |
 | `src/sources/kind.ts` | The `SourceKind` protocol |
 | `src/sources/registry.ts` | `SourceRegistry` |
 | `src/sources/host.ts` | `SourceHost`, `SourceContext`, `Health`, `health` and the fixed health texts |
@@ -481,6 +482,7 @@ The GitHub, Feishu, OneBot, mail and official QQ bot Sources have separate plugi
 | `tests/workspace-collaboration-v0317.spec.ts` | Sparse large-N slot overrides, workspace-bound interactive auto-division, strict origin model inheritance, peer work-item claiming/merging/review independence, and SSE throughput benchmarking |
 | `tests/channels-and-review-v0318.spec.ts` | GitHub title mentions, QQ reply-id permission checks & image attachments, Feishu post rich-text parsing, proactive idle peer offers & no-response timeout fallback, real file merge/test gating, real-entry review independence enforcement, speculative draft lifecycle, and Git wrapper config pre-checks |
 | `tests/gates-and-speculative-v0319.spec.ts` | Atomic pre-execution merge gate & counting test double, mandatory controlled test credentials across all five states plus docs manual acceptance, concurrent/crash-recovery speculative draft state machine, and real incoming-event to HTTP/Outbox speculative draft lifecycle |
+| `tests/state-lock.spec.ts` | Live-instance lock preservation, immediate orphaned lock reclamation after hard-killing a real spawned holder process, legacy metadata-free lock refusal, and inode race guard |
 
 `tests/fixtures/` holds what several tests share: `host.ts`, a simulated DeepSeek Harness host; `panel-server.ts` and `panel.tsx`, the fake management API and the panel around a page; `deployment.ts`, a resolved deployment; `git.ts`, the environment of every git the tests start, which names no repository; and `async.ts`.
 

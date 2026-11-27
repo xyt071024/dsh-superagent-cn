@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>インストール · Super Agent</title>
-<link rel="stylesheet" href="assets/style.css">
+<title>インストールと無損失アップグレード · Super Agent v0.4.0</title>
+<link rel="stylesheet" href="../assets/style.css">
 </head>
 <body>
 
@@ -13,34 +13,46 @@
     <div class="brand">
       <span class="logo">◆</span>
       <span class="brand-name">Super Agent</span>
-      <span class="brand-sub">for DeepSeek Harness</span>
+      <span class="brand-sub">v0.4.0 · for DeepSeek Harness</span>
     </div>
     <nav class="lang-switch" aria-label="Language"><details class="lang-menu"><summary>日本語</summary><div class="lang-list"><a href="../install.html" data-lang="zh">中文</a><a href="../en/install.html" data-lang="en">English</a></div></details></nav>
   </div>
 </header>
 
 <main class="doc">
-<h1>インストール</h1>
+<h1>インストールと無損失アップグレード（v0.4.0）</h1>
 
-<p>2 通りの方法があります。環境に合わせて選んでください。</p>
+<p>3 通りの導入方法があります。環境に合わせて選んでください。</p>
 
 <hr>
 
-<h2>方法 1：バンドル版</h2>
+<h2>方法 1：ワンライナー導入スクリプト</h2>
+
+<p>Node.js 22.19+（または 24+）と DSH 0.2.2+ が導入済みの環境向けです。GitHub 最新安定版を動的に取得し、gzip と SHA-256 を検証して独立 <code>superagent</code> プロファイルに構成します。</p>
+
+<p><strong>Windows（PowerShell）：</strong></p>
+<pre><code>irm https://xyt071024.github.io/dsh-superagent-cn/install.ps1 | iex</code></pre>
+
+<p><strong>macOS / Linux（Bash）：</strong></p>
+<pre><code>curl -fsSL https://xyt071024.github.io/dsh-superagent-cn/install.sh | bash</code></pre>
+
+<hr>
+
+<h2>方法 2：4 プラットフォーム同梱バンドル版</h2>
 
 <p>Node も DSH も事前インストール不要です。お使いのシステム用パッケージをダウンロードし、解凍して起動スクリプトを実行します。</p>
 
-<table><thead><tr><th>システム</th><th>ダウンロード</th></tr></thead><tbody>
-<tr><td><strong>Windows x64</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.20/Super-Agent-Bundled-Windows-x64-v0.3.20.zip">Super-Agent-Bundled-Windows-x64-v0.3.20.zip</a> · 195 MB</td></tr>
-<tr><td><strong>macOS Apple Silicon</strong><br>(M1/M2/M3/M4)</td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.20/Super-Agent-Bundled-macOS-arm64-v0.3.20.zip">Super-Agent-Bundled-macOS-arm64-v0.3.20.zip</a> · 194 MB</td></tr>
-<tr><td><strong>macOS Intel</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.20/Super-Agent-Bundled-macOS-x64-v0.3.20.zip">Super-Agent-Bundled-macOS-x64-v0.3.20.zip</a> · 193 MB</td></tr>
-<tr><td><strong>Linux x64</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.20/Super-Agent-Bundled-Linux-x64-v0.3.20.zip">Super-Agent-Bundled-Linux-x64-v0.3.20.zip</a> · 202 MB</td></tr>
+<table><thead><tr><th>システム</th><th>ダウンロード（v0.4.0）</th></tr></thead><tbody>
+<tr><td><strong>Windows x64</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.4.0/Super-Agent-Bundled-Windows-x64-v0.4.0.zip">Super-Agent-Bundled-Windows-x64-v0.4.0.zip</a> · 約 195 MB</td></tr>
+<tr><td><strong>macOS Apple Silicon</strong><br>(M1/M2/M3/M4)</td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.4.0/Super-Agent-Bundled-macOS-arm64-v0.4.0.zip">Super-Agent-Bundled-macOS-arm64-v0.4.0.zip</a> · 約 194 MB</td></tr>
+<tr><td><strong>macOS Intel</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.4.0/Super-Agent-Bundled-macOS-x64-v0.4.0.zip">Super-Agent-Bundled-macOS-x64-v0.4.0.zip</a> · 約 193 MB</td></tr>
+<tr><td><strong>Linux x64</strong></td><td><a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.4.0/Super-Agent-Bundled-Linux-x64-v0.4.0.zip">Super-Agent-Bundled-Linux-x64-v0.4.0.zip</a> · 約 202 MB</td></tr>
 </tbody></table>
 
 <h3>手順</h3>
 
 <ol>
-<li><strong>任意の場所に解凍</strong><br>
+<li><strong>書き込み可能な任意の場所へ解凍</strong><br>
 <span class="muted"><code>C:\Program Files</code> など管理者権限が必要な場所は避けてください。</span></li>
 
 <li><strong>起動スクリプトを実行</strong>
@@ -60,64 +72,51 @@
 ターミナルに <code>http://127.0.0.1:3087</code> のようなアドレスが表示されます。</li>
 </ol>
 
-<p class="note"><strong>プロファイルが既に存在する場合</strong>、起動スクリプトが自動でバックアップを取り、既存の <code>cordis.patch.yml</code> と他プラグインを保持したまま <code>dsh-superagent</code> をアップグレードします。</p>
+<div class="callout">
+<p><strong>無損失アップグレード＆強制終了復旧：</strong>プロファイルが既に存在する場合、起動スクリプトが自動でバックアップを取り、既存の <code>cordis.patch.yml</code> と他プラグインを保持したまま <code>dsh-superagent</code> をアップグレードします。<code>v0.4.0</code> の PID 認識ロックは稼働中インスタンスを保護しつつ、Windows 強制終了後 0 秒で安全に再起動できます。</p>
+</div>
 
 <hr>
 
-<h2>方法 2：プラグインパッケージ</h2>
+<h2>方法 3：単体プラグインパッケージ</h2>
 
-<p>DSH が既にインストール済みの場合。</p>
+<p>DSH が既にインストール済みでオフライン導入したい場合：</p>
 
-<pre><code>dsh plugin add ./Super-Agent-Plugin-v0.3.20.tgz</code></pre>
+<pre><code>dsh plugin add ./Super-Agent-Plugin-v0.4.0.tgz</code></pre>
 
 <p>プロファイルを指定する場合：</p>
 
-<pre><code>dsh plugin --profile superagent add ./Super-Agent-Plugin-v0.3.20.tgz</code></pre>
+<pre><code>dsh plugin --profile superagent add ./Super-Agent-Plugin-v0.4.0.tgz</code></pre>
 
-<p>ダウンロード：<a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.3.20/Super-Agent-Plugin-v0.3.20.tgz">Super-Agent-Plugin-v0.3.20.tgz</a> · 0.4 MB</p>
+<p>ダウンロード：<a href="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v0.4.0/Super-Agent-Plugin-v0.4.0.tgz">Super-Agent-Plugin-v0.4.0.tgz</a> · 約 0.4 MB</p>
 
-<p class="muted">Node.js 22.19+ と DSH 0.2.2 が必要です。</p>
+<p class="muted">Node.js 22.19+（または 24+）と DSH 0.2.2+ が必要です。</p>
 
 <hr>
 
 <h2>インストール後</h2>
 
-<h3>1. ソースの設定</h3>
+<h3>1. モデルと分担設定を確認</h3>
+<p>DSH でモデルを接続後、「設定 → 分担とモデル」（既定 5、上限撤廃・スロット別モデル指定／開始ウィンドウ継承）と「コンテキストと予算」（既定 60% リレー）を確認します。</p>
 
-<p>設定 → ソース を開き、使用するチャネルを設定します：</p>
+<h3>2. まず読み取り専用タスクで試用</h3>
+<p>ワークスペースで Super Agent プリセットを選び、まずドキュメント確認などの読み取り専用タスクで複数セッション並列動作を確認してから外部アカウントを接続してください。</p>
 
+<h3>3. 任意：外部ソースと独立レビュー</h3>
 <ul>
-<li><strong>QQ</strong> — OneBot ゲートウェイの URL とトークン。「確認」で実際に接続します</li>
-<li><strong>メール</strong> — アドレスとパスワード。IMAP と SMTP は個別に確認されます</li>
-<li><strong>GitHub</strong> — トークンとリポジトリ</li>
-<li><strong>Feishu</strong> — App ID / Secret</li>
+<li><strong>対応ソース：</strong>GitHub、Feishu、個人 QQ / WeChat / WeCom（OneBot）、公式 QQBot、IMAP/SMTP メール（Gmail 対応）。</li>
+<li><strong>独立レビュー：</strong>複雑なチケット後に作成者以外の読み取り専用レビュー担当を起動（最大 3 ラウンド）。コード項目は常にテスト証跡を強制検証します。</li>
 </ul>
-
-<p>設定に誤りがある場合、「デプロイ確認待ち」ではなく不足している項目が表示されます。</p>
-
-<h3>2. 任意：マルチエージェント協調</h3>
-
-<p>既定は単一エージェント実行です。1 つのチケットを複数メンバーに分割する場合：</p>
-
-<p>設定 → 実行 → マルチセッション → <code>auto</code></p>
-
-<p class="muted">分割するとトークン消費が大幅に増えます。</p>
-
-<h3>3. 任意：独立レビュー</h3>
-
-<p>設定 → 実行 → 独立レビュー → オン</p>
-
-<p>複雑なチケットの後に読み取り専用のレビュー担当が起動します。実行過程は見えません。最大 3 回まで再レビューします。</p>
 
 <hr>
 
-<h2>既知の制限</h2>
+<h2>検証範囲と既知の制限</h2>
 
-<p><strong>マルチセッションと独立レビューは既定でオフです。</strong></p>
+<p><strong>マルチセッションと独立レビューは既定でオフです。</strong> 分割によりトークン消費が増えるため、設定画面から必要に応じて有効化してください。</p>
 
-<p><strong>各チャネルの実送受信は未検証です。</strong> プロトコル動作とエラーマッピングは検証済みですが、実アカウントでのログイン・送受信・再接続は未検証です。</p>
+<p><strong>外部チャネルと商用モデル実測：</strong> プロトコル動作と回帰テストは検証済みですが、実アカウントでの送受信や商用モデル実スループットは利用環境でご確認ください。</p>
 
-<p><strong>macOS / Linux は実機で起動検証していません。</strong> パッケージ構造とネイティブモジュールは正しいですが、実際には起動していません。</p>
+<p><strong>macOS / Linux 実機デスクトップ：</strong> Linux CI で 1,393 件の自動テストおよび ZIP 権限・ネイティブ構成を検証済みですが、物理実機でのダブルクリック起動は未実施です。</p>
 
 <hr>
 
@@ -136,9 +135,9 @@
 <h2>トラブルシューティング</h2>
 
 <ul>
-<li><strong>起動スクリプトがすぐ閉じる</strong> — ターミナルから実行してエラーを確認してください</li>
-<li><strong>ポートが使用中</strong> — 自動的に別のポートを選びます。表示されたアドレスを確認してください</li>
-<li><strong>パネルが開かない</strong> — <code>127.0.0.1</code> の後ろのポートがターミナルの表示と一致しているか確認してください</li>
+<li><strong>起動スクリプトがすぐ閉じる</strong> — ターミナルから実行してエラー詳細を確認してください</li>
+<li><strong>状態ロック競合（<code>ELOCKED</code>）</strong> — 稼働中 PID が表示されます。ロックを手動削除せず既存インスタンスを終了してください</li>
+<li><strong>ポートが使用中</strong> — 自動的に空きポートを選びます。ターミナル表示の <code>127.0.0.1:&lt;port&gt;</code> を開いてください</li>
 </ul>
 
 <p>Issue：<a href="https://github.com/xyt071024/dsh-superagent-cn/issues">github.com/xyt071024/dsh-superagent-cn/issues</a></p>
@@ -146,7 +145,7 @@
 </main>
 
 <footer>
-  <p><a href="index.html" style="color:inherit">首页</a> · MIT License</p>
+  <p><a href="index.html" style="color:inherit">ホーム</a> · Super Agent v0.4.0 · MIT License</p>
 </footer>
 
 </body>

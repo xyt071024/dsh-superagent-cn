@@ -8,6 +8,51 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-27
+
+`0.4.0` 为综合加固与全链路升级正式版，包含 `0.4.0-rc.1` 全部工程修复及项目首页/官网文档的全面焕新：
+
+### 核心更新
+
+1. **Windows 强制终止后立即重启恢复与活实例锁保护**
+   - 新增 `src/infra/state-lock.ts` 并接入 `src/app/runtime.ts`：通过同目录 `.lock-owner.json`（记录 `pid`、`hostname`、`startedAt`、`lockIno`、`lockBirthtimeMs`、`token`）与原子 `.lock.reclaiming` 互斥校验，在保留活实例锁不被删除（抛出带活 PID 与操作指引的 `StateLockError`）的前提下，安全回收已死进程遗留的 `${stateDir}.lock` 空目录。
+   - 隔离 Windows 随包宿主实测覆盖活实例并发保护与 `taskkill /F /T` 强杀后 **0s / 5s / 35s / 60s** 重启全窗口恢复至 `/orchestrator/api/state` HTTP 200。
+
+2. **强制代码验证门禁与 Outbox 权威投机草稿闭环（承接 0.3.19–0.3.20 独立验收成果）**
+   - 代码、默认及配置类工作项在创建、发布与历史记录合并入口均禁止使用 `manual_acceptance`，必须经受控执行入口为当前 `deliverableVersion` 签发可信测试凭据；文档与调研类工作项支持记录人工验收依据。
+   - 投机草稿接入真实入站事件、主会话 `orchestrator_draft` 工具、HTTP API、管理面板与真实 Outbox，严格以同一 `deliveryKey` 的 Outbox 回执为准：暂停/离线保持 `delivering · pending`，恢复后仅外发一次，渠道永久丢弃记为失败，重启保持一致。
+
+3. **构建测试与发布链路全面加固**
+   - 改造 `tests/windows-bundle.test.mjs`，移除旧版 `0.3.5` 硬编码路径，接入 `_build/make-dist.mjs` 生成的 `build-manifest.json` 与 `SA_REQUIRE_WINDOWS_BUNDLE=1` 严格模式（实包 2/2、0 跳过）。
+   - `_build/make-dist.mjs` / `make-dist-zips.mjs` 支持隔离输出目录；`_tools/upload-dist.mjs` 动态读取版本号、支持 `--draft` / `--prerelease` / `--dist` / `--target` / `--replace` / `--publish` 并拦截未声明预发布的 RC 标签与静默异哈希覆盖。
+
+4. **全面更新项目介绍与多语文档站点**
+   - 以《项目介绍-仓库首页中文稿.md》为基础全面更新中/英/日三语 `README`、GitHub Pages 官网首页及安装页，同步精确测试数据、五件套下载链接与验证边界说明。
+
+## [0.4.0-rc.1] - 2026-11-27
+
+本候选版为 `0.4.0` 正式版发布前的外测与放行收口版本，在保留 `v0.3.20` 现行 `latest` 与正式版安装入口的前提下，重点修复 2026-11-27 综合复测发现的 Windows 强杀立即重启阻塞与发布工程链路三项问题，并同步全新中文/英文/日文首页介绍。
+
+### 新增与修复
+
+1. **Windows 强制终止后立即重启恢复与活实例锁保护**
+   - 新增 `src/infra/state-lock.ts` 并接入 `src/app/runtime.ts`：在沿用 `proper-lockfile`（`stale: 30000ms`）的同时，于状态目录写入 `.lock-owner.json`（记录 `pid`、`hostname`、`startedAt`、`lockIno`、`lockBirthtimeMs`、`token`）。
+   - **活实例保护**：同机进程仍存活（含同进程二次启动与独立存活子进程）时绝不删除或抢占锁，抛出 `StateLockError`（`code: 'ELOCKED'`）明确提示占用 PID、启动时间与下一步操作（停止现有实例或更换 `--profile`）。
+   - **强杀遗留锁有界回收**：若前序进程被强制终止（如 Windows `TerminateProcess`）导致 30 秒内留下遗留锁，重启时通过内核进程存活探测（`ESRCH`）与原子 `.reclaiming` 互斥锁双重校验 `lockIno` / `token`，安全回收已死进程遗留锁，实现 **0 秒 / 5 秒 / 35 秒 / 60 秒**全窗口快速就绪（`/orchestrator/api/state` HTTP 200）。
+   - **旧版无元数据锁保守兼容**：无 `.lock-owner.json` 的旧版锁绝不强制删除，明确给出剩余陈旧等待时间。
+   - 新增单元测试与真实子进程强杀测试 `tests/state-lock.spec.ts`。
+
+2. **Windows 打包测试接入当次构建清单（消除 `0.3.5` 硬编码长期跳过）**
+   - 改造 `tests/windows-bundle.test.mjs`，彻底移除硬编码的 `0.3.5` 路径；改为读取 `SA_BUILD_MANIFEST`（由 `_build/make-dist.mjs` 写入 `build-manifest.json`）或环境变量 `SA_WINDOWS_STAGE` / `SA_PLUGIN_ARCHIVE` / `SA_DSH_BIN`，并支持 `SA_REQUIRE_WINDOWS_BUNDLE=1` 严格模式（缺产物直接报错而非静默跳过）。
+   - `_build/make-dist.mjs` 与 `_build/make-dist-zips.mjs` 支持通过 `SA_STAGE_DIR` / `SA_DIST_DIR` 隔离输出目录，构建新候选包时不覆盖已有 `0.3.20` 成品。
+
+3. **加固发布上传工具与 CI 分支策略**
+   - 升级 `_tools/upload-dist.mjs`：默认版本号改为动态读取 `package.json`，新增 `--dist`、`--draft`、`--prerelease`、`--target`、`--replace` 参数；强制拦截未标 `--prerelease` 或 `--draft` 的预发布标签，校验目录内资产版本号与目标标签一致，且默认拒绝静默替换远端已存在但哈希不同的同名资产。
+   - 更新 `.github/workflows/ci.yml`：支持在 `release/**` 分支自动触发全部 4 项 CI 作业，并在 `lint-scripts` 中确保预发布分支不将生产兜底安装脚本改写为 RC 版本号。
+
+4. **更新仓库公开首页与三语文档**
+   - 采用全新中文首页稿并同步英文、日文 `README`，清晰说明工作流、接入条件、安装方式、测试范围与开源来源。
+
 ## [0.3.20] - 2026-11-27
 
 本版修复 2026-11-27 `v0.3.19` 桌面独立复验指出的两项关键边界问题：

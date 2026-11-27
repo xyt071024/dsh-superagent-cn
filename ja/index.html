@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Super Agent v0.3.20 · DeepSeek Harness 向け自律型マルチセッション開発エージェント</title>
+<title>Super Agent v0.4.0 · DeepSeek Harness 向け自律型マルチセッション開発エージェント</title>
 <link rel="stylesheet" href="../assets/style.css">
 </head>
 <body>
@@ -13,7 +13,7 @@
     <div class="brand">
       <span class="logo">◆</span>
       <span class="brand-name">Super Agent</span>
-      <span class="brand-sub">v0.3.20 · for DeepSeek Harness</span>
+      <span class="brand-sub">v0.4.0 · for DeepSeek Harness</span>
     </div>
 
     <nav class="lang-switch" aria-label="Language">
@@ -27,54 +27,68 @@
 <main>
 
 <section class="hero">
-  <h1>常時稼働・自律型マルチセッション開発エージェント</h1>
+  <h1>チャット・外部チャネル・バックグラウンドチケットを統合するマルチセッション開発エージェント</h1>
   <p class="hero-sub">
-    7チャネル受信 · 3層コード権限ゲート · 独立分担セッション＆スロット別モデル選択 · 60% 無損失コンテキストリレー · 独立レビュー
+    メイン会話から複雑な開発タスクを投入し、独立して開ける複数分担セッションとスロット別モデルで並列処理。コード項目の強制テスト検証・独立レビュー・60% 無損失コンテキストリレー・Outbox 厳格同期・PID 認識クラッシュ復旧を一貫統合します。
   </p>
   <div class="hero-actions">
-    <a href="install.html" class="btn btn-primary">v0.3.20 を導入</a>
+    <a href="install.html" class="btn btn-primary">v0.4.0 を導入</a>
     <a href="../docs/ja/01-overview.html" class="btn btn-ghost">ドキュメントを読む</a>
     <a href="https://github.com/xyt071024/dsh-superagent-cn/releases/latest" class="btn btn-ghost">リリース一覧</a>
+    <a href="https://github.com/xyt071024/dsh-superagent-cn" class="btn btn-ghost">GitHub リポジトリ</a>
   </div>
   <p style="margin-top:2rem;text-align:center;">
-    <img src="../assets/hero-cover.jpg" alt="Super Agent Overview" style="max-width:100%;border-radius:12px;border:1px solid rgba(148,163,184,0.2);">
+    <img src="../assets/hero-cover.jpg" alt="Super Agent v0.4.0 Overview" style="max-width:100%;border-radius:12px;border:1px solid rgba(148,163,184,0.2);">
   </p>
 </section>
 
 <section class="cards">
   <div class="card">
     <div class="card-icon">⇄</div>
-    <h3>マルチチャネル受信</h3>
-    <p>GitHub、Feishu、個人 QQ、公式 QQBot、WeChat、WeCom、IMAP/SMTP メール（Gmail 対応）、ローカル対話を統合。</p>
-  </div>
-  <div class="card">
-    <div class="card-icon">⛊</div>
-    <h3>3層の厳格な権限管理</h3>
-    <p>コードゲート → 意味評価 → スコープ付き資格情報。外部メッセージで権限を昇格させることは不可能です。</p>
+    <h3>7チャネル受信＆3層コードゲート</h3>
+    <p>DSH チャット、GitHub、Feishu、個人 QQ、公式 QQBot、WeChat、WeCom、IMAP/SMTP メール（Gmail 対応）を統合。コード許可リスト・意味評価・限定資格情報で外部メッセージの権限昇格を防ぎます。</p>
   </div>
   <div class="card">
     <div class="card-icon">⋔</div>
-    <h3>柔軟な分担セッション＆モデル</h3>
-    <p>既定で最大 5 つの独立分担セッション（固定上限なしで自由に増減可能）、スロットごとのモデル指定または自動継承に対応。</p>
+    <h3>柔軟な分担セッション＆異種モデル</h3>
+    <p>既定で最大 5 つの独立分担セッション（上限撤廃・ページング・スパース保存対応）。スロット別のモデル指定や開始ウィンドウからの厳格継承、メンバー間の直接連携と動的引き受けに対応します。</p>
+  </div>
+  <div class="card">
+    <div class="card-icon">✓</div>
+    <h3>コード強制テスト＆独立レビュー</h3>
+    <p>コード作業項目の手動検収バイパスを禁止し、納品版に対応するテスト証跡を必須化。独立レビュー有効時は作成者の自己承認を防ぎ、最大 3 ラウンドの差し戻しを実行します。</p>
   </div>
   <div class="card">
     <div class="card-icon">↻</div>
-    <h3>60% コンテキストリレー</h3>
-    <p>メイン・ワーカー・サブエージェント・分担セッションのすべてで 60% 到達時に要約を抽出し新世代へ無損失で引き継ぎます。</p>
+    <h3>60% リレー＆強制終了即時復旧</h3>
+    <p>全役割が 60% 到達で新世代セッション（r1→r2→r3）へ引き継ぎ。ドラフト状態を Outbox 受領結果に厳格同期し、v0.4.0 の PID 認識ロックが稼働インスタンスを保護しつつ Windows 強制終了後 0 秒で復旧します。</p>
   </div>
 </section>
 
 <section class="doc-index">
-  <h2>アーキテクチャ</h2>
+  <h2>タスクから始める並列協調</h2>
+  <p class="section-note">
+    DSH ワークスペースで Super Agent プリセットを選ぶと、複雑な依頼は同一サイドバーで個別に開ける分担会話に展開され、単純な依頼は追加セッションなしでそのまま完了します。
+  </p>
   <p style="margin:1rem 0;text-align:center;">
-    <img src="../assets/architecture-flow.svg" alt="Super Agent Architecture" style="max-width:100%;border-radius:12px;">
+    <img src="../assets/multi-session-collab.jpg" alt="マルチセッション分担・動的連携・独立レビュー" style="max-width:100%;border-radius:12px;border:1px solid rgba(148,163,184,0.2);">
+  </p>
+</section>
+
+<section class="doc-index">
+  <h2>アーキテクチャ＆コンテキストリレー</h2>
+  <p style="margin:1rem 0;text-align:center;">
+    <img src="../assets/architecture-flow.svg" alt="Super Agent v0.4.0 Architecture" style="max-width:100%;border-radius:12px;">
+  </p>
+  <p style="margin:1.25rem 0 0;text-align:center;">
+    <img src="../assets/context-relay-engine.jpg" alt="60% 無損失コンテキストリレーエンジン" style="max-width:100%;border-radius:12px;border:1px solid rgba(148,163,184,0.2);">
   </p>
 </section>
 
 <section class="doc-index">
   <h2>はじめに</h2>
   <ol class="toc">
-    <li><a href="install.html"><span class="num">→</span><span class="title">導入と無損失アップグレード（v0.3.20）</span><span class="desc">ワンライナー導入、同梱バンドル ZIP、単体プラグイン</span></a></li>
+    <li><a href="install.html"><span class="num">→</span><span class="title">導入と無損失アップグレード（v0.4.0）</span><span class="desc">ワンライナー導入、4 プラットフォーム同梱 ZIP、単体プラグイン</span></a></li>
   </ol>
 </section>
 
@@ -94,24 +108,27 @@
 </section>
 
 <section class="quickfacts">
-  <h2>v0.3.20 概要</h2>
+  <h2>v0.4.0 概要</h2>
   <table>
     <tr><th>項目</th><th>内容</th></tr>
-    <tr><td>配布形態</td><td>単体プラグイン（<code>.tgz</code>） / Node+DSH 同梱 4 プラットフォーム版（<code>.zip</code>）</td></tr>
-    <tr><td>分担セッション上限</td><td>既定 <strong>5</strong>（同一ワークスペースに独立表示・全ページ到達＆スパース保存・開始ウィンドウのモデルを厳格継承）</td></tr>
-    <tr><td>設定と協調機能</td><td>ルーティング／予算設定ナビゲーション、チャット上部ステータス表示、動的タスク引き受け・オーナーマージ・独立レビュー回避</td></tr>
-    <tr><td>チケット並行数</td><td>既定 3 チケット + 人間の追撃用に 1 枠を予約</td></tr>
-    <tr><td>コンテキストリレー</td><td>60% 到達で世代交代リレー（メイン / ワーカー / サブエージェント / 分担すべて対応）</td></tr>
-    <tr><td>レビュー＆測定ツール</td><td>最大 3 ラウンドの独立レビュー + 内蔵 14 スキル + <code>orchestrator_division_todo</code> + <code>scripts/benchmark-throughput.mjs</code></td></tr>
-    <tr><td>品質検証</td><td>自動テスト 1,370 件合格、独立検収 37/37 件合格、プリフライト検査 0 件検出</td></tr>
-    <tr><td>ライセンス</td><td>MIT License</td></tr>
+    <tr><td>配布形態</td><td>ワンライナー（<code>install.ps1</code> / <code>install.sh</code>） / 単体プラグイン（<code>.tgz</code>） / Node+DSH 同梱 4 プラットフォーム版（<code>.zip</code>）</td></tr>
+    <tr><td>分担セッション</td><td>既定 <strong>5</strong>（同一ワークスペースに独立表示・上限撤廃・全ページ到達＆スパース保存・開始ウィンドウのモデルを厳格継承）</td></tr>
+    <tr><td>検証と協調機能</td><td>コード系作業項目の <code>manual_acceptance</code> を全経路で拒否；メンバー直接通信・動的タスク引き受け・オーナーマージ・独立レビュー回避</td></tr>
+    <tr><td>配信＆クラッシュ復旧</td><td><code>SpeculativeDraft</code> を Outbox 受領結果に厳格同期；<code>v0.4.0</code> の PID 認識ロックが稼働インスタンスを保護し Windows 強制終了後 0s/5s/35s/60s で安全復旧</td></tr>
+    <tr><td>並行数＆リレー</td><td>既定 3 チケット + 人間の追撃用に 1 枠を予約；全役割で 60% 到達時に世代交代リレー（<code>r1 → r2 → r3</code>）</td></tr>
+    <tr><td>レビュー＆測定</td><td>最大 3 ラウンドの独立レビュー + 内蔵 14 スキル + <code>orchestrator_division_todo</code> + <code>scripts/benchmark-throughput.mjs</code></td></tr>
+    <tr><td>品質検証</td><td>Windows Vitest <strong>1,380</strong> 件合格（0 失敗、15 件 POSIX スキップ）；Linux CI Vitest <strong>1,393</strong> 件合格（0 失敗、2 件スキップ）；独立検収 <strong>37/37</strong> 件；厳格バンドル検証 <strong>0 スキップ</strong>；プリフライト <strong>0 件</strong></td></tr>
+    <tr><td>出自とライセンス</td><td><a href="https://github.com/deepseek-ai/dsh-superagent-prototype">deepseek-ai/dsh-superagent-prototype</a> を基盤にコミュニティ保守 · MIT License</td></tr>
   </table>
+  <div class="callout">
+    <p><strong>検証範囲の明示：</strong>クロスプラットフォーム自動テスト、セキュリティ検査、Windows 隔離パッケージ全周期（新規導入・無損失アップグレード・稼働ロック保護・強制終了 0/5/35/60 秒復旧）を検証済みです。実商用モデルでのスループット、外部 7 チャネルの実アカウント送受信、Linux / macOS 実機デスクトップ起動は各実環境でご確認ください。</p>
+  </div>
 </section>
 
 </main>
 
 <footer>
-  <p>Super Agent v0.3.20 for DeepSeek Harness · MIT License</p>
+  <p>Super Agent v0.4.0 for DeepSeek Harness · MIT License</p>
   <p class="footer-note">DeepSeek Harness 上に構築されたコミュニティ版オープンソース配布物です。</p>
 </footer>
 

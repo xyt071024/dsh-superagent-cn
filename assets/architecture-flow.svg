@@ -50,7 +50,7 @@
 
   <!-- Title Bar -->
   <text x="36" y="42" fill="#f8fafc" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="18" font-weight="700">
-    Super Agent (dsh-superagent v0.3.20) · 全链路自治执行与多会话协作架构
+    Super Agent (dsh-superagent v0.4.0) · 全链路自治执行与多会话协作架构
   </text>
   <text x="36" y="64" fill="#94a3b8" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12">
     Multi-Channel Intake → Three-Layer Policy Gate → Autonomous Division Coordinator → 60% Context Relay → Independent Review
@@ -99,9 +99,9 @@
     <text x="28" y="202" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="11">• 已订阅讨论串后续消息直通工单</text>
 
     <rect x="16" y="222" width="186" height="78" rx="8" fill="#0b1120" stroke="#334155"/>
-    <text x="28" y="244" fill="#f8fafc" font-family="system-ui, sans-serif" font-size="12" font-weight="600">SQLite 持久引擎与 Outbox</text>
-    <text x="28" y="262" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="11">• 原子事务保存 Ticket / TaskPlan</text>
-    <text x="28" y="279" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="11">• 每日 Token 预算与重投回执幂等</text>
+    <text x="28" y="244" fill="#f8fafc" font-family="system-ui, sans-serif" font-size="12" font-weight="600">SQLite / Outbox / PID 状态锁</text>
+    <text x="28" y="262" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="11">• 原子事务 + 活实例锁保护</text>
+    <text x="28" y="279" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="11">• 强杀瞬时回收 + Outbox 权威回执</text>
   </g>
 
   <!-- Arrow 2 -> 3 -->
@@ -157,10 +157,10 @@
     <text x="26" y="156" fill="#fbbf24" font-family="system-ui, sans-serif" font-size="10.5">↺ 未通过 → 精准退回责任分工修复</text>
 
     <rect x="16" y="182" width="200" height="118" rx="8" fill="#0b1120" stroke="#334155"/>
-    <text x="26" y="204" fill="#f8fafc" font-family="system-ui, sans-serif" font-size="12" font-weight="600">诚实交付与跨渠道回报</text>
-    <text x="26" y="223" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="11">• 双门禁：类型检查 + 实测输出</text>
-    <text x="26" y="240" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="11">• 区分已完成成果与受阻草稿</text>
-    <text x="26" y="257" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="11">• Outbox 原会话幂等回传用户</text>
+    <text x="26" y="204" fill="#f8fafc" font-family="system-ui, sans-serif" font-size="12" font-weight="600">代码强制验收与诚实交付</text>
+    <text x="26" y="223" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="11">• 代码项禁人工绕过，验实测凭据</text>
+    <text x="26" y="240" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="11">• 预写草稿与 Outbox 回执严格对齐</text>
+    <text x="26" y="257" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="11">• 暂停/离线保持待发，恢复幂等直达</text>
     <text x="26" y="276" fill="#34d399" font-family="system-ui, sans-serif" font-size="11" font-weight="600">✓ PR / 结论已核验就绪</text>
   </g>
 
