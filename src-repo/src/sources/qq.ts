@@ -6,6 +6,9 @@
 import { z } from 'zod'
 import WebSocket from 'ws'
 import { key } from '../core/index.ts'
+import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { ImageAttachmentRef, ImageMediaType } from '@deepseek-ai/dsh-attachment'
+import type {} from '@deepseek-ai/dsh-llm'
 import type { Context } from '@deepseek-ai/cordis'
 import type { OutboundMessage, ScopeResult, Trigger } from '../core/index.ts'
 import type { ContextMessage, FieldSpec, SourceChannel, SourceKind, ThreadContext, TriggerContext } from './kind.ts'
@@ -73,16 +76,108 @@ export async function call(config: Pick<QqConfig, 'endpoint' | 'token'>, action:
   return body.data
 }
 
-/** Flattens OneBot's message segments to plain text, keeping @ targets so an address stays detectable. */
+/** Metadata describing one readable image attachment referenced in a OneBot message. */
+export interface QqImageRef {
+  key: string
+  url?: string
+  file?: string
+  name?: string
+}
+
+/** Extracts the replied-to message ID from a OneBot `reply` segment or `[CQ:reply,id=...]` raw code. */
+export function replyIdOf(message: OneBotMessage): string | undefined {
+  const segments = Array.isArray(message.message) ? message.message : []
+  for (const segment of segments) {
+    if (!segment || typeof segment !== 'object') continue
+    const { type, data } = segment as { type?: string; data?: Record<string, unknown> }
+    if (type === 'reply') {
+      const value = id(data?.id).trim()
+      if (value) return value
+    }
+  }
+  const raw = typeof message.raw_message === 'string' ? message.raw_message : ''
+  const cq = /\[CQ:reply,[^\]]*\bid=([^,\]]+)/i.exec(raw)
+  return cq?.[1]?.trim() || undefined
+}
+
+const HTTP_URL = /^https?:\/\/\S+$/i
+
+function parseCqParams(paramText: string): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const entry of paramText.split(',')) {
+    const eq = entry.indexOf('=')
+    if (eq <= 0) continue
+    const k = entry.slice(0, eq).trim()
+    const v = entry.slice(eq + 1).trim()
+      .replaceAll('&amp;', '&').replaceAll('&#91;', '[').replaceAll('&#93;', ']').replaceAll('&#44;', ',')
+    if (k && v) out[k] = v
+  }
+  return out
+}
+
+/** Extracts readable image attachment references from OneBot `image` segments or `[CQ:image,...]` codes. */
+export function imageRefsOf(message: OneBotMessage): QqImageRef[] {
+  const refs: QqImageRef[] = []
+  const seen = new Set<string>()
+  const pushRef = (urlRaw: unknown, fileRaw: unknown, nameRaw: unknown, index: number) => {
+    const url = typeof urlRaw === 'string' && HTTP_URL.test(urlRaw.trim()) ? urlRaw.trim() : undefined
+    const file = typeof fileRaw === 'string' && fileRaw.trim() ? fileRaw.trim() : undefined
+    const name = typeof nameRaw === 'string' && nameRaw.trim() ? nameRaw.trim() : undefined
+    if (!url && !file) return
+    const seed = url || file || String(index)
+    const imgKey = `qqimg_${key('qq-image', seed, String(index)).slice(0, 12)}`
+    if (seen.has(imgKey)) return
+    seen.add(imgKey)
+    refs.push({ key: imgKey, ...(url ? { url } : {}), ...(file ? { file } : {}), ...(name ? { name } : {}) })
+  }
+  const segments = Array.isArray(message.message) ? message.message : []
+  if (segments.length > 0) {
+    segments.forEach((segment, index) => {
+      if (!segment || typeof segment !== 'object') return
+      const { type, data } = segment as { type?: string; data?: Record<string, unknown> }
+      if (type !== 'image') return
+      const urlCandidate = data?.url ?? (typeof data?.file === 'string' && HTTP_URL.test(data.file.trim()) ? data.file : undefined)
+      pushRef(urlCandidate, data?.file, data?.summary ?? data?.name ?? data?.file_name, index)
+    })
+    return refs
+  }
+  const raw = typeof message.raw_message === 'string' ? message.raw_message : ''
+  let match: RegExpExecArray | null
+  const pattern = /\[CQ:image,([^\]]+)\]/gi
+  let index = 0
+  while ((match = pattern.exec(raw)) !== null) {
+    const params = parseCqParams(match[1]!)
+    const urlCandidate = params.url ?? (params.file && HTTP_URL.test(params.file) ? params.file : undefined)
+    pushRef(urlCandidate, params.file, params.summary ?? params.name, index++)
+  }
+  return refs
+}
+
+/** Extracts QQ image reference keys from message text so keys remain scoped to the originating message. */
+export function qqImageKeys(text: string): string[] {
+  return [...new Set(text.match(/\bqqimg_[a-zA-Z0-9_-]+\b/g) ?? [])]
+}
+
+/** Flattens OneBot's message segments to plain text, keeping @ targets and readable image attachment references. */
 export function plainText(message: OneBotMessage): string {
   const segments = Array.isArray(message.message) ? message.message : []
+  const imageRefs = imageRefsOf(message)
+  let imageCursor = 0
   const parts = segments.map(segment => {
     if (!segment || typeof segment !== 'object') return ''
     const { type, data } = segment as { type?: string; data?: Record<string, unknown> }
     if (type === 'text') return String(data?.text ?? '')
     if (type === 'at') return `@${id(data?.qq)} `
     if (type === 'face') return '[表情]'
-    if (type === 'image') return '[图片]'
+    if (type === 'image') {
+      const hasLocator = (typeof data?.url === 'string' && HTTP_URL.test(data.url.trim()))
+        || (typeof data?.file === 'string' && data.file.trim().length > 0)
+      if (hasLocator) {
+        const ref = imageRefs[imageCursor++]
+        if (ref) return `[图片: ${ref.key}]`
+      }
+      return '[图片]'
+    }
     // Every other segment used to return nothing, so a voice note, a video, a file or a shared card reached the agent
     // as an empty message — indistinguishable from a person who said nothing. Each one now says what it is; a card
     // adds its title, because that is the only part of it a policy can reason about.
@@ -93,10 +188,20 @@ export function plainText(message: OneBotMessage): string {
     if (type === 'location') return '[位置]'
     if (type === 'contact') return '[名片]'
     if (type === 'shake') return '[窗口抖动]'
-    // `reply` and `forward` name another message; they carry no words of their own.
+    // `reply` and `forward` name another message; `reply` ID is preserved in `trigger.meta.replyToId`.
     return ''
   })
-  return (parts.join('').trim() || (message.raw_message ?? '').trim())
+  const joined = parts.join('').trim()
+  if (joined) return joined
+  const raw = (message.raw_message ?? '').trim()
+  if (raw && imageRefs.length > 0 && /\[CQ:image,/i.test(raw)) {
+    let idx = 0
+    return raw.replace(/\[CQ:image,[^\]]+\]/gi, () => {
+      const ref = imageRefs[idx++]
+      return ref ? `[图片: ${ref.key}]` : '[图片]'
+    }).replace(/\[CQ:reply,[^\]]+\]/gi, '').trim()
+  }
+  return raw
 }
 
 /** Whether a group message @s the agent's own account. `all` is @everyone: it reaches the agent but does not name it. */
@@ -146,6 +251,8 @@ export function triggerOf(message: OneBotMessage, config: QqConfig, self: string
   const text = plainText(message)
   const at = atIso(message)
   const messageId = id(message.message_id)
+  const replyToId = replyIdOf(message)
+  const images = imageRefsOf(message)
   return {
     id: `qq:${messageId || `${threadOf(message)}:${at}`}`,
     source,
@@ -157,7 +264,14 @@ export function triggerOf(message: OneBotMessage, config: QqConfig, self: string
     at,
     text,
     channel: { source, thread: threadOf(message), address: addressOf(message) },
-    meta: { messageId, group, user, scope: group ? 'group' : 'private' },
+    meta: {
+      messageId,
+      group,
+      user,
+      scope: group ? 'group' : 'private',
+      ...(replyToId ? { replyToId } : {}),
+      ...(images.length > 0 ? { images } : {}),
+    },
   }
 }
 
@@ -389,18 +503,158 @@ const channel: SourceChannel<QqConfig> = {
   },
 }
 
+/** Bounded cache of image refs discovered when reading thread history or quoted parent messages. */
+const discoveredImages = new Map<string, QqImageRef>()
+function rememberImages(triggerId: string, refs: QqImageRef[]): void {
+  if (!refs.length) return
+  if (discoveredImages.size > 500) {
+    for (const k of [...discoveredImages.keys()].slice(0, 200)) discoveredImages.delete(k)
+  }
+  for (const ref of refs) discoveredImages.set(`${triggerId}:${ref.key}`, ref)
+}
+
+function detectImageMediaType(bytes: Uint8Array, contentType?: string | null): ImageMediaType | undefined {
+  if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'image/png'
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg'
+  if (bytes.length >= 6 && bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38) return 'image/gif'
+  if (bytes.length >= 12 && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46
+    && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) return 'image/webp'
+  const mime = (contentType ?? '').split(';')[0]?.trim().toLowerCase()
+  if (mime === 'image/png' || mime === 'image/jpeg' || mime === 'image/gif' || mime === 'image/webp') return mime
+  return undefined
+}
+
+function extForMediaType(mediaType: ImageMediaType): string {
+  return mediaType === 'image/jpeg' ? '.jpg' : mediaType === 'image/gif' ? '.gif' : mediaType === 'image/webp' ? '.webp' : '.png'
+}
+
+function quotedMessageAllowed(trigger: Trigger, config: QqConfig, quoted: OneBotMessage): boolean {
+  const triggerGroup = String(trigger.meta.group ?? '')
+  const triggerUser = String(trigger.meta.user ?? trigger.actor.id ?? '')
+  const quotedGroup = groupOf(quoted)
+  if (triggerGroup) {
+    const listed = list(config.groups)
+    if (listed.length && !listed.includes(triggerGroup)) return false
+    return quotedGroup === triggerGroup
+  }
+  if (!config.privateMessages) return false
+  if (quotedGroup) return false
+  const quotedUser = userOf(quoted)
+  const quotedRecord = quoted as Record<string, unknown>
+  const quotedTarget = id(quotedRecord.target_id)
+  const quotedSelf = id(quotedRecord.self_id)
+  if (!quotedUser && !quotedTarget) return true
+  return quotedUser === triggerUser || quotedTarget === triggerUser || (!!quotedSelf && quotedUser === quotedSelf)
+}
+
+/** Downloads a QQ message image referenced by `imageKey` and commits it as an agent-visible attachment. */
+export async function readQqImage(
+  agent: Agent,
+  trigger: Trigger,
+  message: { id: string; text: string },
+  imageKey: string,
+  signal: AbortSignal,
+  config?: QqConfig,
+): Promise<{ source_message_id: string; image_key: string; image: ImageAttachmentRef }> {
+  if (!qqImageKeys(message.text).includes(imageKey)) throw new Error('Choose an image key from this source message')
+  const triggerImages = Array.isArray(trigger.meta.images) ? trigger.meta.images as QqImageRef[] : []
+  const ref = triggerImages.find(item => item.key === imageKey) ?? discoveredImages.get(`${trigger.id}:${imageKey}`)
+  if (!ref) throw new Error(`QQ image ${imageKey} is unavailable: no attachment metadata found on this message`)
+  const attachments = agent.ctx.get('attachments')
+  if (!attachments) throw new Error('Image reading is unavailable: no attachment service is mounted')
+  const route = agent.session.requestHeader()?.config
+  const provider = route?.provider ?? agent.options.provider
+  const model = route?.model ?? agent.options.model
+  const llm = agent.ctx.get('llm')
+  if (!llm || !provider || !model) throw new Error('Image reading is unavailable: the current model route is unresolved')
+  const info = await llm.resolveModelInfo(provider, model, signal)
+  if (!info.inputModalities?.includes('image')) throw new Error(`Model ${model} does not support image input; the image has not been inspected`)
+  signal.throwIfAborted()
+
+  let url = ref.url && HTTP_URL.test(ref.url) ? ref.url : undefined
+  if (!url && ref.file && config?.endpoint) {
+    const resolved = await call(config, 'get_image', { file: ref.file }, signal).catch(() => undefined) as { url?: unknown } | undefined
+    if (typeof resolved?.url === 'string' && HTTP_URL.test(resolved.url.trim())) url = resolved.url.trim()
+  }
+  if (!url) throw new Error(`QQ image ${imageKey} is unavailable: image URL could not be resolved`)
+
+  let response: Response
+  try {
+    response = await fetch(url, { signal: AbortSignal.any([signal, AbortSignal.timeout(20_000)]) })
+  } catch (error) {
+    throw new Error(`QQ image ${imageKey} is unavailable: download failed (${error instanceof Error ? error.message : String(error)})`)
+  }
+  if (!response.ok) throw new Error(`QQ image ${imageKey} is unavailable: HTTP ${response.status}`)
+  const maxBytes = Math.min(attachments.imageLimits.maxImageBytes, attachments.imageLimits.maxMessageImageBytes)
+  const declaredLen = Number(response.headers.get('content-length') ?? '')
+  if (Number.isFinite(declaredLen) && declaredLen > maxBytes) {
+    throw new Error(`QQ image ${imageKey} is unavailable: image exceeds the deployment byte limit`)
+  }
+  const data = Buffer.from(await response.arrayBuffer())
+  if (data.length === 0) throw new Error(`QQ image ${imageKey} is unavailable: empty image payload`)
+  if (data.length > maxBytes) throw new Error(`QQ image ${imageKey} is unavailable: image exceeds the deployment byte limit`)
+  const mediaType = detectImageMediaType(data, response.headers.get('content-type'))
+  if (!mediaType) throw new Error(`QQ image ${imageKey} is unavailable: response is not a supported PNG/JPEG/WebP/GIF image`)
+  signal.throwIfAborted()
+  const image = await attachments.saveImage({ data, mediaType, name: `${imageKey}${extForMediaType(mediaType)}` })
+  signal.throwIfAborted()
+  return { source_message_id: message.id, image_key: imageKey, image }
+}
+
 const threadContext: ThreadContext<QqConfig> = {
   messageId: trigger => String(trigger.meta.messageId ?? trigger.id),
   async read(commands, trigger, part, cursor, config) {
     void commands
     void cursor
     const group = String(trigger.meta.group ?? '')
-    // Only the Thread itself is readable: OneBot exposes per-group history and no private history at all.
+    const replyToId = typeof trigger.meta.replyToId === 'string' ? trigger.meta.replyToId : ''
+    if (part === 'parent') {
+      if (!replyToId) return { messages: [], body: { status: 'no_parent' }, status: 'no_parent' }
+      const raw = await call(config, 'get_msg', { message_id: /^\d+$/.test(replyToId) ? Number(replyToId) : replyToId }).catch(() => undefined)
+      const parsed = MessageSchema.safeParse(raw)
+      if (!parsed.success) {
+        return { messages: [], body: { status: 'unavailable', reply_to_id: replyToId }, status: 'unavailable' }
+      }
+      if (!quotedMessageAllowed(trigger, config, parsed.data)) {
+        return {
+          messages: [],
+          body: { status: 'forbidden', reply_to_id: replyToId, reason: 'Quoted message is outside the authorized chat scope' },
+          status: 'forbidden',
+        }
+      }
+      const origImages = imageRefsOf(parsed.data)
+      rememberImages(trigger.id, origImages)
+      const origReply = replyIdOf(parsed.data)
+      const msg: ContextMessage = {
+        id: id(parsed.data.message_id) || replyToId,
+        from: nameOf(parsed.data),
+        at: atIso(parsed.data),
+        text: plainText(parsed.data),
+        ...(origReply ? { reply_to: origReply } : {}),
+      }
+      return {
+        messages: [msg],
+        body: { status: 'available', reply_to_id: replyToId, message: msg },
+        status: 'available',
+      }
+    }
     if (part !== 'thread') return { messages: [], body: {} }
     if (!group) {
-      // A private Thread holds one message, which the Trigger already carries.
-      return { messages: [{ id: String(trigger.meta.messageId ?? trigger.id), from: trigger.actor.name ?? trigger.actor.id, at: trigger.at,
-        text: trigger.text }], body: {} }
+      // A private Thread holds the trigger itself; if it quotes an earlier message, also attempt authorized parent lookup.
+      const selfMsg: ContextMessage = {
+        id: String(trigger.meta.messageId ?? trigger.id),
+        from: trigger.actor.name ?? trigger.actor.id,
+        at: trigger.at,
+        text: trigger.text,
+        ...(replyToId ? { reply_to: replyToId } : {}),
+      }
+      const messages: ContextMessage[] = []
+      if (replyToId) {
+        const parent = await threadContext.read(commands, trigger, 'parent', undefined, config)
+        if (parent.messages.length > 0) messages.push(...parent.messages)
+      }
+      messages.push(selfMsg)
+      return { messages, body: { ...(replyToId ? { reply_to_id: replyToId } : {}) } }
     }
     const history = await call(config, 'get_group_msg_history', { group_id: Number(group), count: 20 }).catch(() => undefined)
     const messages = (history as { messages?: unknown } | undefined)?.messages
@@ -409,10 +663,21 @@ const threadContext: ThreadContext<QqConfig> = {
     for (const entry of messages) {
       const parsed = MessageSchema.safeParse(entry)
       if (!parsed.success) continue
-      out.push({ id: id(parsed.data.message_id), from: nameOf(parsed.data), at: atIso(parsed.data), text: plainText(parsed.data) })
+      rememberImages(trigger.id, imageRefsOf(parsed.data))
+      const entryReply = replyIdOf(parsed.data)
+      out.push({
+        id: id(parsed.data.message_id),
+        from: nameOf(parsed.data),
+        at: atIso(parsed.data),
+        text: plainText(parsed.data),
+        ...(entryReply ? { reply_to: entryReply } : {}),
+      })
     }
-    return { messages: out, body: {} }
+    return { messages: out, body: { ...(replyToId ? { reply_to_id: replyToId } : {}) } }
   },
+  images: qqImageKeys,
+  image: (agent, _commands, trigger, message, imageKey, _stateDir, signal, config) =>
+    readQqImage(agent, trigger, message, imageKey, signal, config),
 }
 
 /**
@@ -456,6 +721,7 @@ export function oneBotKind(kind: string, title: { zh: string; en: string }, desc
   },
   channel,
   threadContext,
+  repliesTo: trigger => typeof trigger.meta.replyToId === 'string' && trigger.meta.replyToId ? `qq:${trigger.meta.replyToId}` : undefined,
   find: query => {
     const group = /^(?:group:)?(\d{5,})$/.exec(query.trim())?.[1]
     return { threads: group ? [`${kind}:group:${group}`] : [], terms: [] }

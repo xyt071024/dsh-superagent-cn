@@ -3,7 +3,7 @@ import { z } from 'zod'
 import type { Trigger } from '../core/index.ts'
 import { validItems, type Commands } from '../infra/commands.ts'
 import { admissionImageKeys, readAdmissionImage } from './feishu-image.ts'
-import { feishuRef, feishuTime, HistoricalMessageSchema, HistoryPageSchema, historyText, withMentionNames, type HistoricalMessage }
+import { feishuRef, feishuTime, HistoricalMessageSchema, HistoryPageSchema, historyText, parseFeishuContent, withMentionNames, type HistoricalMessage }
   from './feishu-trigger.ts'
 import type { ContextMessage, ThreadContext } from './kind.ts'
 
@@ -100,7 +100,7 @@ function isoTime(value: string): string {
 }
 export function feishuView(message: FeishuMessage): ContextMessage {
   return { id: message.message_id, from: message.sender.name || message.sender.id, at: isoTime(message.create_time),
-    text: message.deleted ? '' : withMentionNames(message.content ?? '', message.mentions ?? []),
+    text: message.deleted ? '' : withMentionNames(parseFeishuContent(message.content ?? ''), message.mentions ?? []),
     ...message.sender.sender_type !== 'user' ? { bot: true } : {}, ...message.deleted ? { deleted: true } : {},
     ...message.parent_id ? { reply_to: message.parent_id } : {}, ...message.message_app_link ? { url: message.message_app_link } : {} }
 }

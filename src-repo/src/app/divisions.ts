@@ -4,18 +4,23 @@
  * 将复杂任务拆分为带有稳定分工 ID、依赖关系和模型槽位的独立持久 DSH 会话（可在宿主会话列表直接打开），
  * 并支持依赖自动唤醒、事件 ID 去重回报、持久待投递队列、并发原子合并、退回多轮复查、请求边界模型记录及 60% 接班路由。
  */
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import { z } from 'zod'
 import { key } from '../core/index.ts'
-import { KV, type ComplexityVerdict, type DeferredDivisionRecord, type DivisionModelCall, type DivisionPeerMessage, type DivisionRecord, type DivisionTodoItem, type DivisionWorkItem, type PendingDivisionDelivery, type ReviewHistoryEntry, type TaskPlan } from '../kv.ts'
+import { KV, type ComplexityVerdict, type DeferredDivisionRecord, type DivisionHandoffAudit, type DivisionModelCall, type DivisionPeerMessage, type DivisionRecord, type DivisionTodoItem, type DivisionWorkItem, type PendingDivisionDelivery, type ReviewHistoryEntry, type SpeculativeDraft, type TaskPlan } from '../kv.ts'
 import type { RoleModel } from '../policy.ts'
 import { assessComplexity, configuredSlotModel, multiSession, reserveSessionSlot } from './routing.ts'
 import type { SessionRelay } from './relay.ts'
 import type { Sessions } from './sessions.ts'
 import type { Store } from './store.ts'
 import { tool, type Tool } from './tools/tool.ts'
+
+const execFileAsync = promisify(execFile)
+const DEFAULT_OFFER_TIMEOUT_MS = 120_000
 
 export interface WorkItemSpec {
   itemId: string
@@ -402,6 +407,8 @@ export class DivisionCoordinator {
       await this.startReview(afterDivs, 1).catch(() => {})
     }
 
+    await this.reclaimExpiredOffers(taskId)
+    await this.offerClaimableWorkItems(taskId, { triggerBy: 'reconcile' })
     await this.flushDeliveries(taskId)
     return store.get(KV.sessions.divisions(taskId)) ?? afterDivs
   }
@@ -733,10 +740,21 @@ export class DivisionCoordinator {
       }
     }
 
+    const handoffAudit: DivisionHandoffAudit[] = [
+      ...(existing?.handoffAudit ?? []),
+      {
+        kind: 'dispatch',
+        actor: request.originSessionId,
+        at: timestamp,
+        detail: `${existing ? 'revise' : 'initial'} planKey=${planKey} divisions=${divisions.map(d => d.divisionId).join(',')}`,
+      },
+    ]
+
     const plan: TaskPlan = {
       taskId,
       title: request.title,
       originSessionId: request.originSessionId,
+      triggeredBy: existing?.triggeredBy ?? request.originSessionId,
       originModel,
       originModelSource: originResolved.source,
       planKey,
@@ -748,6 +766,7 @@ export class DivisionCoordinator {
       divisions,
       ...(workItems.length > 0 ? { workItems } : {}),
       ...(peerMessages.length > 0 ? { peerMessages } : {}),
+      handoffAudit,
       ...(deferredDivisions.length > 0 ? { deferredDivisions } : {}),
       ...(removedDivisions.length > 0 ? { removedDivisions } : {}),
       pendingDeliveries,
@@ -980,6 +999,10 @@ export class DivisionCoordinator {
 
     await this.flushDeliveries(input.taskId)
 
+    if (recordedStatus === 'completed') {
+      await this.offerClaimableWorkItems(input.taskId, { triggerBy: input.divisionId })
+    }
+
     for (const wakeId of toWakeIds) {
       const currentPlan = store.get(KV.sessions.divisions(input.taskId))
       const nextDiv = currentPlan?.divisions.find(d => d.divisionId === wakeId)
@@ -1122,6 +1145,7 @@ export class DivisionCoordinator {
     reworkDivisionIds?: string[] | undefined
     acceptanceCriteria?: string | undefined
     sessionId?: string | undefined
+    reviewerDivisionId?: string | undefined
     round?: number | undefined
   }): Promise<TaskPlan> {
     const { store } = this.host
@@ -1135,6 +1159,23 @@ export class DivisionCoordinator {
 
       const activeReviewer = this.host.relay.route(plan.review.sessionId)
       const callerSession = input.sessionId ? this.host.relay.route(input.sessionId) : undefined
+      const ownerRecord = input.sessionId ? store.get(KV.sessions.divisionOwner(input.sessionId)) : undefined
+      const resolvedDivisionId = input.reviewerDivisionId ?? ownerRecord?.divisionId
+        ?? plan.divisions.find(d =>
+          (input.sessionId && (d.sessionId === input.sessionId || d.previousSessions.includes(input.sessionId)))
+          || (callerSession && this.host.relay.route(d.sessionId) === callerSession))?.divisionId
+
+      // R04 独立复核真实入口门禁：参与编写任意工作项或作为执行分工的作者成员，不得在最终审查入口批准自己的交付物。
+      if (input.approved && resolvedDivisionId && !resolvedDivisionId.startsWith('__review_')) {
+        for (const wi of plan.workItems ?? []) {
+          const check = this.canReviewWorkItem(plan, resolvedDivisionId, wi.itemId)
+          if (!check.allowed) throw new Error(check.reason ?? `Self-review rejected for ${resolvedDivisionId} on ${wi.itemId}`)
+        }
+        if (plan.divisions.some(d => d.divisionId === resolvedDivisionId)) {
+          throw new Error(`Self-review rejected: authoring division "${resolvedDivisionId}" cannot approve its own deliverables`)
+        }
+      }
+
       const wrongRound = input.round !== undefined && input.round !== round
       const wrongSession = callerSession !== undefined && callerSession !== activeReviewer && input.sessionId !== plan.review.sessionId
 
@@ -1432,6 +1473,169 @@ export class DivisionCoordinator {
   }
 
   /**
+   * 主动向同一任务中当前空闲（completed）或等待依赖（waiting_deps）且未占用其他认领项的成员推送可领取工作项通知（R04）。
+   * 记录谁触发了本次补位通知与截止时间，以便无人应答时由 reclaimExpiredOffers 自动回退原负责人，避免无限等待。
+   */
+  async offerClaimableWorkItems(
+    taskId: string,
+    options: { triggerBy?: string; offerTimeoutMs?: number } = {},
+  ): Promise<{ offered: Array<{ itemId: string; peerDivisionId: string }> }> {
+    const { store } = this.host
+    const offered: Array<{ itemId: string; peerDivisionId: string }> = []
+    const timeoutMs = options.offerTimeoutMs ?? DEFAULT_OFFER_TIMEOUT_MS
+    const triggerBy = options.triggerBy ?? 'coordinator'
+
+    store.atomic(() => {
+      const plan = store.get(KV.sessions.divisions(taskId))
+      if (!plan || !(plan.workItems?.length)) return
+      const claimable = this.listClaimableItems(plan)
+      if (claimable.length === 0) return
+
+      const busyClaimants = new Set(
+        (plan.workItems ?? [])
+          .filter(wi => wi.status === 'claimed' && wi.assigneeDivisionId)
+          .map(wi => wi.assigneeDivisionId!),
+      )
+      const eligiblePeers = plan.divisions.filter(d =>
+        (d.status === 'waiting_deps' || d.status === 'completed') && !busyClaimants.has(d.divisionId),
+      )
+      if (eligiblePeers.length === 0) return
+
+      const timestamp = now()
+      const expiresAt = new Date(Date.now() + timeoutMs).toISOString()
+      const deliveredIds = plan.deliveredNotificationIds ?? []
+      const pendingList = [...(plan.pendingDeliveries ?? [])]
+      const audit = [...(plan.handoffAudit ?? [])]
+      const peerMessages = [...(plan.peerMessages ?? [])]
+      let changed = false
+
+      for (const item of claimable) {
+        for (const peer of eligiblePeers) {
+          if (peer.divisionId === item.ownerDivisionId) continue
+          const alreadyOffered = (item.offeredTo ?? []).includes(peer.divisionId)
+          const offerId = `workitem-offer:${plan.taskId}:${item.itemId}:${peer.divisionId}:r${item.claimRevision}`
+          if (alreadyOffered || deliveredIds.includes(offerId) || pendingList.some(p => p.id === offerId)) continue
+
+          item.offeredTo = [...(item.offeredTo ?? []), peer.divisionId]
+          item.offeredAt = item.offeredAt ?? timestamp
+          item.offerExpiresAt = item.offerExpiresAt ?? expiresAt
+          delete item.offerTimedOutAt
+          item.updatedAt = timestamp
+          changed = true
+
+          const content = `Work item "${item.title}" (${item.itemId}, owner=${item.ownerDivisionId}) is open and unblocked. Because you are currently ${peer.status}, you may claim it with orchestrator_division_claim_item(item_id="${item.itemId}", event_id="...") or ignore if busy.`
+          peerMessages.push({
+            id: offerId,
+            fromDivisionId: item.ownerDivisionId,
+            toDivisionId: peer.divisionId,
+            kind: 'work_offer',
+            itemId: item.itemId,
+            content,
+            eventId: offerId,
+            at: timestamp,
+          })
+          pendingList.push({
+            id: offerId,
+            kind: 'division',
+            divisionId: peer.divisionId,
+            targetSessionId: peer.sessionId,
+            requestId: `div-offer:${plan.taskId}:${item.itemId}:${peer.divisionId}:r${item.claimRevision}`,
+            text: `[work_item_available] task=${plan.taskId} item=${item.itemId} ("${item.title}") owner=${item.ownerDivisionId} triggered_by=${triggerBy} expires_at=${item.offerExpiresAt}\n${content}`,
+          })
+          audit.push({
+            kind: 'offer',
+            actor: triggerBy,
+            itemId: item.itemId,
+            at: timestamp,
+            detail: `offered to ${peer.divisionId} (status=${peer.status})`,
+          })
+          offered.push({ itemId: item.itemId, peerDivisionId: peer.divisionId })
+        }
+      }
+
+      if (changed) {
+        plan.pendingDeliveries = pendingList
+        plan.peerMessages = peerMessages.slice(-200)
+        plan.handoffAudit = audit.slice(-200)
+        plan.updatedAt = timestamp
+        store.set(KV.sessions.divisions(taskId), plan)
+      }
+    })
+
+    if (offered.length > 0) await this.flushDeliveries(taskId)
+    return { offered }
+  }
+
+  /**
+   * 检测已超过应答时限仍无人认领的补位工作项，通知原负责人与主协调者接回处理，避免空闲补位无限等待。
+   */
+  async reclaimExpiredOffers(taskId: string, nowMs = Date.now()): Promise<{ timedOutItems: string[] }> {
+    const { store } = this.host
+    const timedOutItems: string[] = []
+    store.atomic(() => {
+      const plan = store.get(KV.sessions.divisions(taskId))
+      if (!plan || !(plan.workItems?.length)) return
+      const timestamp = new Date(nowMs).toISOString()
+      const deliveredIds = plan.deliveredNotificationIds ?? []
+      const pendingList = [...(plan.pendingDeliveries ?? [])]
+      const audit = [...(plan.handoffAudit ?? [])]
+      let changed = false
+
+      for (const item of plan.workItems) {
+        if (item.status !== 'open' || !item.offerExpiresAt || item.offerTimedOutAt) continue
+        const exp = Date.parse(item.offerExpiresAt)
+        if (!Number.isFinite(exp) || exp > nowMs) continue
+        item.offerTimedOutAt = timestamp
+        item.updatedAt = timestamp
+        timedOutItems.push(item.itemId)
+        changed = true
+
+        const owner = plan.divisions.find(d => d.divisionId === item.ownerDivisionId)
+        const timeoutNoticeId = `workitem-offer-timeout:${plan.taskId}:${item.itemId}:r${item.claimRevision}`
+        if (!deliveredIds.includes(timeoutNoticeId) && !pendingList.some(p => p.id === timeoutNoticeId)) {
+          const text = `[work_item_offer_timeout] task=${plan.taskId} item=${item.itemId} ("${item.title}") offered_to=[${(item.offeredTo ?? []).join(',')}] expired_at=${item.offerExpiresAt}\nNo idle peer claimed this work item within the wait window; returning responsibility to owner "${item.ownerDivisionId}" so the task does not stall.`
+          if (owner) {
+            pendingList.push({
+              id: timeoutNoticeId,
+              kind: 'division',
+              divisionId: owner.divisionId,
+              targetSessionId: owner.sessionId,
+              requestId: `div-offer-timeout:${plan.taskId}:${item.itemId}:r${item.claimRevision}`,
+              text,
+            })
+          }
+          const originNoticeId = `${timeoutNoticeId}:origin`
+          if (!deliveredIds.includes(originNoticeId) && !pendingList.some(p => p.id === originNoticeId)) {
+            pendingList.push({
+              id: originNoticeId,
+              kind: 'origin',
+              targetSessionId: plan.originSessionId,
+              requestId: `div-offer-timeout-origin:${plan.taskId}:${item.itemId}:r${item.claimRevision}`,
+              text,
+            })
+          }
+        }
+        audit.push({
+          kind: 'offer_timeout',
+          actor: 'coordinator',
+          itemId: item.itemId,
+          at: timestamp,
+          detail: `no response from [${(item.offeredTo ?? []).join(',')}]; returned to owner ${item.ownerDivisionId}`,
+        })
+      }
+
+      if (changed) {
+        plan.pendingDeliveries = pendingList
+        plan.handoffAudit = audit.slice(-200)
+        plan.updatedAt = timestamp
+        store.set(KV.sessions.divisions(taskId), plan)
+      }
+    })
+    if (timedOutItems.length > 0) await this.flushDeliveries(taskId)
+    return { timedOutItems }
+  }
+
+  /**
    * 空闲或暂时等待依赖的成员原子领取同任务的一项可做工作（R04）：
    * - 在 store.atomic 内防并发重复领取；
    * - 同一 eventId 重复投递只生效一次（幂等返回 deduplicated: true）；
@@ -1484,7 +1688,12 @@ export class DivisionCoordinator {
       if (!item.contributors.includes(input.claimantDivisionId)) item.contributors.push(input.claimantDivisionId)
       item.claimRevision += 1
       item.claimEventIds = [...item.claimEventIds.slice(-99), input.eventId]
+      delete item.offerTimedOutAt
       item.updatedAt = timestamp
+      plan.handoffAudit = [
+        ...(plan.handoffAudit ?? []).slice(-199),
+        { kind: 'claim', actor: input.claimantDivisionId, itemId: item.itemId, at: timestamp, detail: `owner=${item.ownerDivisionId}` },
+      ]
       plan.updatedAt = timestamp
 
       if (item.ownerDivisionId !== input.claimantDivisionId) {
@@ -1570,6 +1779,9 @@ export class DivisionCoordinator {
       item.status = 'submitted'
       item.summary = input.summary
       item.deliverable = input.deliverable
+      delete item.verificationStatus
+      delete item.verificationOutput
+      delete item.conflictFiles
       if (!item.contributors.includes(input.submitterDivisionId)) item.contributors.push(input.submitterDivisionId)
       item.submitEventIds = [...item.submitEventIds.slice(-99), input.eventId]
       item.updatedAt = timestamp
@@ -1621,7 +1833,8 @@ export class DivisionCoordinator {
    * 原负责人检查并确认合并工作项成果（R04）：
    * - 仅原负责人（或主协调者）可确认合并；
    * - 同一 eventId 重复确认幂等；
-   * - 合并后通知协作者并返回因此解锁的后续可领取工作项。
+   * - 支持真实测试命令执行（runCheck）与合并冲突/验证失败门禁：冲突或测试失败时将状态标为 conflict / merge_failed 清晰可见并阻断下游依赖解锁；
+   * - 合并验证通过后通知协作者、解锁后续依赖项，并主动通知空闲成员可领取新解锁项。
    */
   async mergeWorkItem(input: {
     taskId: string
@@ -1629,9 +1842,40 @@ export class DivisionCoordinator {
     mergerDivisionId: string
     mergeNote?: string | undefined
     eventId: string
-  }): Promise<{ merged: boolean; deduplicated: boolean; item: DivisionWorkItem; unblockedItems: string[] }> {
+    verificationStatus?: 'passed' | 'failed' | 'conflict' | undefined
+    verificationCommand?: string | undefined
+    verificationArgs?: string[] | undefined
+    verificationOutput?: string | undefined
+    conflictFiles?: string[] | undefined
+    runCheck?: boolean | undefined
+  }): Promise<{ merged: boolean; deduplicated: boolean; item: DivisionWorkItem; unblockedItems: string[]; blockedDependents?: string[] }> {
     const { store } = this.host
-    let outcome!: { merged: boolean; deduplicated: boolean; item: DivisionWorkItem; unblockedItems: string[] }
+    let checkStatus = input.verificationStatus
+    let checkOutput = input.verificationOutput
+    let checkCmdDisplay = input.verificationCommand
+      ? [input.verificationCommand, ...(input.verificationArgs ?? [])].join(' ')
+      : undefined
+
+    // 若要求在真实工作目录执行验证命令（如 node --test / pnpm test），在提交合并状态前实际运行并收集输出。
+    if (input.runCheck && input.verificationCommand) {
+      const prePlan = store.get(KV.sessions.divisions(input.taskId))
+      if (!prePlan) throw new Error(`Task plan ${input.taskId} not found`)
+      try {
+        const res = await execFileAsync(input.verificationCommand, input.verificationArgs ?? [], {
+          cwd: prePlan.directory,
+          timeout: 30_000,
+          maxBuffer: 1024 * 1024,
+        })
+        checkStatus = (input.conflictFiles?.length ? 'conflict' : 'passed')
+        checkOutput = [res.stdout, res.stderr].filter(Boolean).join('\n').trim().slice(0, 4000) || '(exit 0)'
+      } catch (error) {
+        const err = error as { stdout?: string; stderr?: string; message?: string; code?: number | string }
+        checkStatus = 'failed'
+        checkOutput = [err.stdout, err.stderr, err.message].filter(Boolean).join('\n').trim().slice(0, 4000)
+      }
+    }
+
+    let outcome!: { merged: boolean; deduplicated: boolean; item: DivisionWorkItem; unblockedItems: string[]; blockedDependents?: string[] }
     store.atomic(() => {
       const plan = store.get(KV.sessions.divisions(input.taskId))
       if (!plan) throw new Error(`Task plan ${input.taskId} not found`)
@@ -1639,24 +1883,107 @@ export class DivisionCoordinator {
       if (!item) throw new Error(`Work item ${input.itemId} not found in ${input.taskId}`)
 
       if (item.mergeEventIds.includes(input.eventId)) {
-        outcome = { merged: true, deduplicated: true, item: { ...item }, unblockedItems: [] }
+        outcome = { merged: item.status === 'merged', deduplicated: true, item: { ...item }, unblockedItems: [] }
         return
       }
       if (input.mergerDivisionId !== item.ownerDivisionId && input.mergerDivisionId !== '__coordinator') {
         throw new Error(`Only owner "${item.ownerDivisionId}" (or coordinator) may merge work item "${input.itemId}"`)
       }
-      if (item.status !== 'submitted' && item.status !== 'merged') {
+      if (item.status !== 'submitted' && item.status !== 'merged' && item.status !== 'merge_failed' && item.status !== 'conflict') {
         throw new Error(`Work item "${input.itemId}" must be submitted before merging (current status: ${item.status})`)
       }
 
       const timestamp = now()
       const items = plan.workItems ?? []
+      const hasConflict = checkStatus === 'conflict' || (input.conflictFiles !== undefined && input.conflictFiles.length > 0)
+      const failedVerification = checkStatus === 'failed' || hasConflict
+
+      if (failedVerification) {
+        const blockedDependents = items.filter(x => x.dependsOn.includes(item.itemId)).map(x => x.itemId)
+        item.status = hasConflict ? 'conflict' : 'merge_failed'
+        item.verificationStatus = hasConflict ? 'conflict' : 'failed'
+        if (checkCmdDisplay) item.verificationCommand = checkCmdDisplay
+        if (checkOutput) item.verificationOutput = checkOutput
+        if (input.conflictFiles?.length) item.conflictFiles = [...input.conflictFiles]
+        if (input.mergeNote) item.mergeNote = input.mergeNote
+        item.mergeEventIds = [...item.mergeEventIds.slice(-99), input.eventId]
+        item.updatedAt = timestamp
+        plan.handoffAudit = [
+          ...(plan.handoffAudit ?? []).slice(-199),
+          {
+            kind: 'merge_failed',
+            actor: input.mergerDivisionId,
+            itemId: item.itemId,
+            at: timestamp,
+            detail: `${item.status}: ${input.conflictFiles?.length ? `conflicts=[${input.conflictFiles.join(',')}] ` : ''}${(checkOutput ?? input.mergeNote ?? '').slice(0, 200)}`,
+          },
+        ]
+        const noticeId = `workitem-merge-fail:${plan.taskId}:${item.itemId}:${input.eventId}`
+        const detail = [
+          `Merge blocked for work item "${item.title}" (${item.itemId}) with status=${item.status}.`,
+          input.conflictFiles?.length ? `Conflict files: ${input.conflictFiles.join(', ')}` : '',
+          checkCmdDisplay ? `Command: ${checkCmdDisplay}` : '',
+          checkOutput ? `Output: ${checkOutput.slice(0, 500)}` : '',
+          blockedDependents.length ? `Dependent items kept blocked: ${blockedDependents.join(', ')}` : '',
+        ].filter(Boolean).join('\n')
+        const targets: Array<{ kind: 'origin' | 'division'; divisionId?: string; targetSessionId: string; suffix: string }> = [
+          { kind: 'origin', targetSessionId: plan.originSessionId, suffix: 'origin' },
+        ]
+        if (item.assigneeDivisionId && item.assigneeDivisionId !== input.mergerDivisionId) {
+          const assignee = plan.divisions.find(d => d.divisionId === item.assigneeDivisionId)
+          if (assignee) {
+            targets.push({ kind: 'division', divisionId: assignee.divisionId, targetSessionId: assignee.sessionId, suffix: assignee.divisionId })
+            plan.peerMessages = [
+              ...(plan.peerMessages ?? []).slice(-199),
+              {
+                id: noticeId,
+                fromDivisionId: input.mergerDivisionId,
+                toDivisionId: assignee.divisionId,
+                kind: 'merge_failed',
+                itemId: item.itemId,
+                content: detail,
+                eventId: input.eventId,
+                at: timestamp,
+              },
+            ]
+          }
+        }
+        for (const t of targets) {
+          const id = `${noticeId}:${t.suffix}`
+          if (!(plan.deliveredNotificationIds ?? []).includes(id) && !(plan.pendingDeliveries ?? []).some(p => p.id === id)) {
+            plan.pendingDeliveries = [
+              ...(plan.pendingDeliveries ?? []),
+              {
+                id,
+                kind: t.kind,
+                ...(t.divisionId ? { divisionId: t.divisionId } : {}),
+                targetSessionId: t.targetSessionId,
+                requestId: `div-item-merge-fail:${plan.taskId}:${item.itemId}:${input.eventId}:${t.suffix}`,
+                text: `[work_item_${item.status}] task=${plan.taskId} item=${item.itemId}\n${detail}`,
+              },
+            ]
+          }
+        }
+        plan.updatedAt = timestamp
+        store.set(KV.sessions.divisions(input.taskId), plan)
+        outcome = { merged: false, deduplicated: false, item: { ...item }, unblockedItems: [], blockedDependents }
+        return
+      }
+
       const beforeOpenReady = new Set(this.listClaimableItems(plan).map(x => x.itemId))
       item.status = 'merged'
       item.mergedBy = input.mergerDivisionId
+      item.verificationStatus = 'passed'
+      if (checkCmdDisplay) item.verificationCommand = checkCmdDisplay
+      if (checkOutput) item.verificationOutput = checkOutput
+      delete item.conflictFiles
       if (input.mergeNote) item.mergeNote = input.mergeNote
       item.mergeEventIds = [...item.mergeEventIds.slice(-99), input.eventId]
       item.updatedAt = timestamp
+      plan.handoffAudit = [
+        ...(plan.handoffAudit ?? []).slice(-199),
+        { kind: 'merged', actor: input.mergerDivisionId, itemId: item.itemId, at: timestamp, detail: checkCmdDisplay ?? input.mergeNote },
+      ]
       plan.updatedAt = timestamp
 
       const afterOpenReady = this.listClaimableItems(plan).map(x => x.itemId)
@@ -1696,7 +2023,170 @@ export class DivisionCoordinator {
     })
 
     await this.flushDeliveries(input.taskId)
+    if (outcome.merged && outcome.unblockedItems.length > 0) {
+      await this.offerClaimableWorkItems(input.taskId, { triggerBy: input.mergerDivisionId })
+    }
     return outcome
+  }
+
+  /**
+   * 针对单个工作项的真实独立复核入口（直接强制执行 canReviewWorkItem）：
+   * - 参与编写该工作项的成员（含 assignee / contributors）提交审批将被直接拒绝；
+   * - 未参与编写该项的其他成员或专属独立复查会话可通过并持久化复核结论。
+   */
+  async reviewWorkItem(input: {
+    taskId: string
+    itemId: string
+    reviewerDivisionId: string
+    approved: boolean
+    summary: string
+    findings?: string[] | undefined
+    eventId: string
+  }): Promise<{ reviewed: boolean; item: DivisionWorkItem }> {
+    const { store } = this.host
+    let reviewedItem!: DivisionWorkItem
+    store.atomic(() => {
+      const plan = store.get(KV.sessions.divisions(input.taskId))
+      if (!plan) throw new Error(`Task plan ${input.taskId} not found`)
+      const item = (plan.workItems ?? []).find(x => x.itemId === input.itemId)
+      if (!item) throw new Error(`Work item ${input.itemId} not found in ${input.taskId}`)
+
+      const check = this.canReviewWorkItem(plan, input.reviewerDivisionId, input.itemId)
+      if (!check.allowed) {
+        throw new Error(check.reason ?? `Division "${input.reviewerDivisionId}" cannot review work item "${input.itemId}"`)
+      }
+      if (item.status !== 'merged' && item.status !== 'submitted') {
+        throw new Error(`Work item "${input.itemId}" must be submitted or merged before independent review (status: ${item.status})`)
+      }
+
+      const timestamp = now()
+      item.reviewedBy = input.reviewerDivisionId
+      item.reviewState = input.approved ? 'passed' : 'failed'
+      item.reviewNote = input.summary
+      item.updatedAt = timestamp
+      plan.handoffAudit = [
+        ...(plan.handoffAudit ?? []).slice(-199),
+        {
+          kind: 'review',
+          actor: input.reviewerDivisionId,
+          itemId: item.itemId,
+          at: timestamp,
+          detail: `${item.reviewState}: ${input.summary.slice(0, 200)}`,
+        },
+      ]
+      const noticeId = `workitem-review:${plan.taskId}:${item.itemId}:${input.eventId}`
+      if (!(plan.deliveredNotificationIds ?? []).includes(noticeId) && !(plan.pendingDeliveries ?? []).some(p => p.id === noticeId)) {
+        plan.pendingDeliveries = [
+          ...(plan.pendingDeliveries ?? []),
+          {
+            id: noticeId,
+            kind: 'origin',
+            targetSessionId: plan.originSessionId,
+            requestId: `div-item-review:${plan.taskId}:${item.itemId}:${input.eventId}`,
+            text: `[work_item_review] task=${plan.taskId} item=${item.itemId} reviewer=${input.reviewerDivisionId} state=${item.reviewState}\n${input.summary}${input.findings?.length ? `\nFindings:\n${input.findings.map(f => `- ${f}`).join('\n')}` : ''}`,
+          },
+        ]
+      }
+      plan.updatedAt = timestamp
+      store.set(KV.sessions.divisions(input.taskId), plan)
+      reviewedItem = { ...item }
+    })
+    await this.flushDeliveries(input.taskId)
+    return { reviewed: true, item: reviewedItem }
+  }
+
+  /** §4.2 投机执行：先形成未发布草稿，绝不外发。 */
+  createSpeculativeDraft(input: { draftId?: string; triggerId: string; title: string; content: string }): SpeculativeDraft {
+    const { store } = this.host
+    const draftId = input.draftId?.trim() || `draft-${key(input.triggerId, input.title, input.content).slice(0, 12)}`
+    let draft!: SpeculativeDraft
+    store.atomic(() => {
+      const existing = store.get(KV.sessions.speculativeDraft(draftId))
+      if (existing) { draft = existing; return }
+      const timestamp = now()
+      draft = {
+        draftId,
+        triggerId: input.triggerId,
+        title: input.title,
+        content: input.content,
+        status: 'draft',
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }
+      store.set(KV.sessions.speculativeDraft(draftId), draft)
+    })
+    return draft
+  }
+
+  /** §4.2 投机执行：用户/策略确认草稿后幂等交付一次。 */
+  async confirmSpeculativeDraft(
+    draftId: string,
+    deliver: (draft: SpeculativeDraft) => Promise<string | void>,
+  ): Promise<{ delivered: boolean; deduplicated: boolean; draft: SpeculativeDraft }> {
+    const { store } = this.host
+    let current = store.get(KV.sessions.speculativeDraft(draftId))
+    if (!current) throw new Error(`Speculative draft ${draftId} not found`)
+    if (current.status === 'delivered') return { delivered: true, deduplicated: true, draft: current }
+    if (current.status === 'revoked' || current.status === 'discarded') {
+      throw new Error(`Speculative draft ${draftId} is already ${current.status} and cannot be delivered`)
+    }
+    store.atomic(() => {
+      const latest = store.get(KV.sessions.speculativeDraft(draftId))
+      if (!latest || latest.status !== 'draft') return
+      latest.status = 'approved'
+      latest.updatedAt = now()
+      store.set(KV.sessions.speculativeDraft(draftId), latest)
+      current = latest
+    })
+    const deliveryId = (await deliver(current)) ?? `deliver:${draftId}`
+    store.atomic(() => {
+      const latest = store.get(KV.sessions.speculativeDraft(draftId))
+      if (!latest) return
+      latest.status = 'delivered'
+      latest.deliveryId = deliveryId
+      latest.updatedAt = now()
+      store.set(KV.sessions.speculativeDraft(draftId), latest)
+      current = latest
+    })
+    return { delivered: true, deduplicated: false, draft: current }
+  }
+
+  /** §4.2 投机执行：在确认交付前撤销草稿，确保零外发。 */
+  revokeSpeculativeDraft(draftId: string, reason = 'revoked before confirmation'): SpeculativeDraft {
+    const { store } = this.host
+    let updated!: SpeculativeDraft
+    store.atomic(() => {
+      const draft = store.get(KV.sessions.speculativeDraft(draftId))
+      if (!draft) throw new Error(`Speculative draft ${draftId} not found`)
+      if (draft.status === 'delivered') throw new Error(`Speculative draft ${draftId} was already delivered`)
+      draft.status = 'revoked'
+      draft.reason = reason
+      draft.updatedAt = now()
+      store.set(KV.sessions.speculativeDraft(draftId), draft)
+      updated = draft
+    })
+    return updated
+  }
+
+  /** §4.2 投机执行：无价值候选静默丢弃，零打扰零外发。 */
+  discardSpeculativeDraft(draftId: string, reason = 'low-value silent discard'): SpeculativeDraft {
+    const { store } = this.host
+    let updated!: SpeculativeDraft
+    store.atomic(() => {
+      const draft = store.get(KV.sessions.speculativeDraft(draftId))
+      if (!draft) throw new Error(`Speculative draft ${draftId} not found`)
+      if (draft.status === 'delivered') throw new Error(`Speculative draft ${draftId} was already delivered`)
+      draft.status = 'discarded'
+      draft.reason = reason
+      draft.updatedAt = now()
+      store.set(KV.sessions.speculativeDraft(draftId), draft)
+      updated = draft
+    })
+    return updated
+  }
+
+  getSpeculativeDraft(draftId: string): SpeculativeDraft | undefined {
+    return this.host.store.get(KV.sessions.speculativeDraft(draftId))
   }
 
   /**
@@ -1811,11 +2301,32 @@ export class DivisionCoordinator {
             workItems: plan.workItems ?? [],
             claimableItems: coordinator.listClaimableItems(plan, divisionId),
             peerMessages: (plan.peerMessages ?? []).filter(m => m.fromDivisionId === divisionId || m.toDivisionId === divisionId),
+            handoffAudit: plan.handoffAudit ?? [],
             dependencies: deps,
             deferredDivisions: plan.deferredDivisions ?? [],
             review: plan.review,
           }
         },
+      }),
+      tool({
+        name: 'orchestrator_division_review_item',
+        description: 'Submit an independent review verdict for a specific work item (enforces non-author independence via canReviewWorkItem).',
+        schema: z.object({
+          item_id: z.string().min(1).max(80),
+          approved: z.boolean(),
+          summary: z.string().min(1).max(4000),
+          findings: z.array(z.string().min(1)).optional(),
+          event_id: z.string().min(1).max(120),
+        }).strict(),
+        execute: async args => coordinator.reviewWorkItem({
+          taskId,
+          itemId: args.item_id,
+          reviewerDivisionId: divisionId,
+          approved: args.approved,
+          summary: args.summary,
+          findings: args.findings,
+          eventId: args.event_id,
+        }),
       }),
     ]
     if (isReviewer) {
@@ -1840,6 +2351,7 @@ export class DivisionCoordinator {
             reworkDivisionIds: args.rework_division_ids,
             acceptanceCriteria: args.acceptance_criteria,
             sessionId: _agent.id,
+            reviewerDivisionId: divisionId,
             round: boundRound,
           })
           return { recorded: true, review: updated.review }
@@ -1870,7 +2382,7 @@ export class DivisionCoordinator {
         }),
         tool({
           name: 'orchestrator_division_publish_items',
-          description: 'Publish independently mergeable work items owned by your division so idle or waiting peers can claim and help.',
+          description: 'Publish independently mergeable work items owned by your division so idle or waiting peers are notified and can claim and help.',
           schema: z.object({
             items: z.array(z.object({
               item_id: z.string().min(1).max(80),
@@ -1879,13 +2391,15 @@ export class DivisionCoordinator {
               depends_on: z.array(z.string().min(1)).optional(),
             }).strict()).min(1).max(50),
           }).strict(),
-          execute: async args => ({
-            workItems: coordinator.publishWorkItems({
+          execute: async args => {
+            const workItems = coordinator.publishWorkItems({
               taskId,
               ownerDivisionId: divisionId,
               items: args.items.map(i => ({ itemId: i.item_id, title: i.title, brief: i.brief, dependsOn: i.depends_on })),
-            }),
-          }),
+            })
+            const { offered } = await coordinator.offerClaimableWorkItems(taskId, { triggerBy: divisionId })
+            return { workItems, offered }
+          },
         }),
         tool({
           name: 'orchestrator_division_claim_item',
@@ -1921,10 +2435,16 @@ export class DivisionCoordinator {
         }),
         tool({
           name: 'orchestrator_division_merge_item',
-          description: 'Confirm and merge a submitted work item deliverable owned by your division (idempotent by event_id).',
+          description: 'Confirm and merge a submitted work item deliverable owned by your division with optional test/conflict verification gate (idempotent by event_id).',
           schema: z.object({
             item_id: z.string().min(1).max(80),
             merge_note: z.string().max(4000).optional(),
+            verification_status: z.enum(['passed', 'failed', 'conflict']).optional(),
+            verification_command: z.string().max(500).optional(),
+            verification_args: z.array(z.string().max(500)).max(30).optional(),
+            verification_output: z.string().max(4000).optional(),
+            conflict_files: z.array(z.string().min(1).max(300)).max(50).optional(),
+            run_check: z.boolean().optional(),
             event_id: z.string().min(1).max(120),
           }).strict(),
           execute: async args => coordinator.mergeWorkItem({
@@ -1932,6 +2452,12 @@ export class DivisionCoordinator {
             itemId: args.item_id,
             mergerDivisionId: divisionId,
             mergeNote: args.merge_note,
+            verificationStatus: args.verification_status,
+            verificationCommand: args.verification_command,
+            verificationArgs: args.verification_args,
+            verificationOutput: args.verification_output,
+            conflictFiles: args.conflict_files,
+            runCheck: args.run_check,
             eventId: args.event_id,
           }),
         }),

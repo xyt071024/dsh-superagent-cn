@@ -97,7 +97,7 @@ export interface ThreadContext<C> {
   images?(text: string): string[]
   /** Reads one image of a message in the Trigger's Thread as an attachment for `agent`. */
   image?(agent: Agent, commands: Commands, trigger: Trigger, message: { id: string; text: string }, key: string, stateDir: string,
-    signal: AbortSignal): Promise<unknown>
+    signal: AbortSignal, config?: C): Promise<unknown>
 }
 export interface TriggerContext {
   readonly messageId: string

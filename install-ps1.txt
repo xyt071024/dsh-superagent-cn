@@ -111,7 +111,7 @@ function Install-SuperAgent {
 
     # The pinned address is the fallback for a run that cannot reach the API at all (offline, proxy, rate limit). It
     # names one exact asset, so it moves together with the version and never guesses.
-    $SaPinnedVersion = '0.3.17'
+    $SaPinnedVersion = '0.3.18'
     $SaPinnedUrl = "https://github.com/xyt071024/dsh-superagent-cn/releases/download/v$SaPinnedVersion/Super-Agent-Plugin-v$SaPinnedVersion.tgz"
 
     function Resolve-SaBundle([string]$given, [bool]$purge) {
@@ -135,10 +135,10 @@ function Install-SuperAgent {
                 'Accept'     = 'application/vnd.github+json'
             } -TimeoutSec 20
         } catch {
-            Warn "could not read the release list: $($_.Exception.Message)"
+            Warn "Could not verify the latest version from GitHub API ($($_.Exception.Message)); falling back to pinned version v$SaPinnedVersion. Check GitHub Releases if a newer release is available."
             $fallback = Format-SaAssetName (Split-Path $SaPinnedUrl -Leaf) $purge
             if (-not $fallback) { Fail "Cannot derive a purge package name for v$SaPinnedVersion." }
-            return @{ Url = $SaPinnedUrl.Replace((Split-Path $SaPinnedUrl -Leaf), $fallback); Name = $fallback; Origin = "pinned v$SaPinnedVersion" }
+            return @{ Url = $SaPinnedUrl.Replace((Split-Path $SaPinnedUrl -Leaf), $fallback); Name = $fallback; Origin = "pinned v$SaPinnedVersion (latest unverified)" }
         }
 
         # The stable name is exactly `Super-Agent-Plugin-v<version>.tgz`; the purge build carries `-Purge-` before the

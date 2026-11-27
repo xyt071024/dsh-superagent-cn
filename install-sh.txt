@@ -146,7 +146,7 @@ sa_purge_name() {
 
 # The pinned address is the fallback for a run that cannot reach the API at all (offline, proxy, rate limit). It names
 # one exact asset, so it moves together with the version and never guesses.
-SA_PINNED_VERSION='0.3.17'
+SA_PINNED_VERSION='0.3.18'
 SA_PINNED_URL="https://github.com/xyt071024/dsh-superagent-cn/releases/download/v$SA_PINNED_VERSION/Super-Agent-Plugin-v$SA_PINNED_VERSION.tgz"
 SA_API="https://api.github.com/repos/xyt071024/dsh-superagent-cn/releases/latest"
 
@@ -223,10 +223,11 @@ sa_resolve_bundle() {
 
   # Nothing resolvable came out of the payload: use the pinned asset. A purge run still stops when the pinned name has
   # no purge form, instead of installing the stable build under a purge label.
+  warn "could not verify the latest version from GitHub API; falling back to pinned v$SA_PINNED_VERSION (check GitHub Releases if a newer release exists)"
   _sa_leaf="${SA_PINNED_URL##*/}"
   SA_ASSET="$_sa_leaf"
   SA_ASSET_URL="$SA_PINNED_URL"
-  SA_ASSET_ORIGIN="pinned v$SA_PINNED_VERSION"
+  SA_ASSET_ORIGIN="pinned v$SA_PINNED_VERSION (latest unverified)"
   if [ "$SA_PURGE" -eq 1 ]; then
     _sa_new="$(sa_purge_name "$_sa_leaf")"
     [ -n "$_sa_new" ] || die "cannot derive a purge package name for v$SA_PINNED_VERSION"

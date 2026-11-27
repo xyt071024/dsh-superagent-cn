@@ -56,6 +56,7 @@ export function agentVariables(stateDir: string): Record<string, string | undefi
     GH_TOKEN: undefined, GITHUB_TOKEN: undefined,
     // A worker's git finds the repository from its directory, never from the host's environment.
     ...Object.fromEntries(GIT_LOCATION.map(name => [name, undefined])),
+    GIT_CONFIG: undefined, GIT_CONFIG_SYSTEM: undefined,
     GIT_CONFIG_GLOBAL: workerGitConfig(stateDir), GIT_CONFIG_NOSYSTEM: '1',
     // Clear environment git config overrides; configuration passed through the environment would otherwise reach every git command the agent runs.
     GIT_CONFIG_COUNT: undefined, GIT_CONFIG_PARAMETERS: undefined,

@@ -9,7 +9,7 @@ import { GIT_LOCATION, agentVariables, credentialHelper, runAsWorker, verifyDire
   from '../src/infra/environment.ts'
 import { CliError } from '../src/infra/commands.ts'
 import { testDeployment } from './fixtures/deployment.ts'
-import { gitEnv } from './fixtures/git.ts'
+import { gitEnv, probeGitConfigIsolation } from './fixtures/git.ts'
 
 // Git and shell subprocesses can exceed the 5s default timeout when the test suite runs in parallel.
 vi.setConfig({ testTimeout: 30_000 })
@@ -115,6 +115,8 @@ describe('agent git configuration', () => {
     await writeEnvironment(deployment, [])
     // Operator identity variables and git's fallback from the OS username must not apply to worker commits.
     const env = workerEnv({ PATH: process.env.PATH, HOME: home, GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'core.abbrev', GIT_CONFIG_VALUE_0: '12', GIT_AUTHOR_NAME: 'Operator', GIT_COMMITTER_EMAIL: 'operator@example.com', ...agentVariables(dir) })
+    const precheck = probeGitConfigIsolation(workerGitConfig(dir), env)
+    expect(precheck.ok, `Git pre-check failed (host git wrapper may override GIT_CONFIG_GLOBAL): ${precheck.detail}`).toBe(true)
     const git = async (...args: string[]): Promise<string> => (await exec('git', args, { cwd: dir, env })).stdout.trim()
     await git('init', '-q', 'repo')
     await exec('git', ['-C', 'repo', 'remote', 'add', 'origin', 'git@github.com:acme/widgets.git'], { cwd: dir, env })

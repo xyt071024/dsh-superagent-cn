@@ -152,7 +152,7 @@ export interface DeferredDivisionRecord {
 }
 
 /** 同一任务内可由空闲或等待依赖成员主动领取、独立完成并交回原负责人合并的工作项（R04 动态补位）。 */
-export type WorkItemStatus = 'open' | 'claimed' | 'submitted' | 'merged' | 'failed'
+export type WorkItemStatus = 'open' | 'claimed' | 'submitted' | 'merged' | 'merge_failed' | 'conflict' | 'failed'
 
 export interface DivisionWorkItem {
   itemId: string
@@ -170,6 +170,20 @@ export interface DivisionWorkItem {
   contributors: string[]
   mergedBy?: string | undefined
   mergeNote?: string | undefined
+  /** 合并验证门禁状态、执行命令、真实输出及冲突文件列表（避免测试失败或冲突时提前解锁依赖）。 */
+  verificationStatus?: 'passed' | 'failed' | 'conflict' | undefined
+  verificationCommand?: string | undefined
+  verificationOutput?: string | undefined
+  conflictFiles?: string[] | undefined
+  /** 空闲成员补位通知与超时回退记录（防止无人应答时无限等待）。 */
+  offeredTo?: string[] | undefined
+  offeredAt?: string | undefined
+  offerExpiresAt?: string | undefined
+  offerTimedOutAt?: string | undefined
+  /** 独立复核记录（经 canReviewWorkItem 真实入口校验）。 */
+  reviewedBy?: string | undefined
+  reviewState?: 'pending' | 'passed' | 'failed' | undefined
+  reviewNote?: string | undefined
   claimRevision: number
   claimEventIds: string[]
   submitEventIds: string[]
@@ -183,17 +197,41 @@ export interface DivisionPeerMessage {
   id: string
   fromDivisionId: string
   toDivisionId: string
-  kind: 'help_request' | 'clarification' | 'claim_notice' | 'handoff_result' | 'merge_confirm'
+  kind: 'help_request' | 'clarification' | 'claim_notice' | 'handoff_result' | 'merge_confirm' | 'work_offer' | 'merge_failed' | 'review_result'
   content: string
   itemId?: string | undefined
   eventId: string
   at: string
 }
 
+/** 派工、补位、超时回退、合并与复核的审计轨迹。 */
+export interface DivisionHandoffAudit {
+  kind: 'dispatch' | 'offer' | 'claim' | 'offer_timeout' | 'merge_failed' | 'merged' | 'review'
+  actor: string
+  itemId?: string | undefined
+  at: string
+  detail?: string | undefined
+}
+
+/** §4.2 投机执行草稿：先形成未发布草稿，确认后交付一次，撤销或无价值时零外发静默丢弃。 */
+export interface SpeculativeDraft {
+  draftId: string
+  triggerId: string
+  title: string
+  content: string
+  status: 'draft' | 'approved' | 'delivered' | 'revoked' | 'discarded'
+  reason?: string | undefined
+  deliveryId?: string | undefined
+  createdAt: string
+  updatedAt: string
+}
+
 export interface TaskPlan {
   taskId: string
   title: string
   originSessionId: string
+  /** 记录首次触发该分工计划的会话/来源标识。 */
+  triggeredBy?: string | undefined
   originModel: { provider: string; model: string; reasoningEffort?: string } | null
   /** 记录发起任务时模型解析来源，严禁静默回退到协调器默认模型。 */
   originModelSource?: 'session-selection' | 'session-request' | 'host-default' | 'unresolved' | undefined
@@ -209,6 +247,8 @@ export interface TaskPlan {
   workItems?: DivisionWorkItem[] | undefined
   /** 分工成员之间的定向求助、澄清、接手与合并消息（R04）。 */
   peerMessages?: DivisionPeerMessage[] | undefined
+  /** 首次派工、空闲补位通知、认领、超时回退及合并/复核审计轨迹。 */
+  handoffAudit?: DivisionHandoffAudit[] | undefined
   /** 超出 maxSessions 限额而未开启独立会话的其余分工项，保持可见以便留给主会话或后续批次（M07-m）。 */
   deferredDivisions?: DeferredDivisionRecord[] | undefined
   /** 计划修订时被移除并已停止的分工历史记录（M07-l）。 */
@@ -297,7 +337,9 @@ export const KV = {
     /** 多会话分工规划记录（M07），按 taskId / ticketId 索引。 */
     divisions: family<TaskPlan, [taskId: string]>('task-divisions:'),
     /** 反向索引：把独立分工会话 ID 映射到所属任务和分工 ID。 */
-    divisionOwner: family<{ taskId: string; divisionId: string }, [session: string]>('division-owner:') },
+    divisionOwner: family<{ taskId: string; divisionId: string }, [session: string]>('division-owner:'),
+    /** §4.2 投机执行草稿记录：未发布草稿 → 确认交付 / 撤销 / 无价值静默丢弃。 */
+    speculativeDraft: family<SpeculativeDraft, [draftId: string]>('speculative-draft:') },
   /** Schema 11 migration: legacy main-Session queues imported into the effect table. */
   queues: { relays: record<{ id: string; text: string }[]>('relay-queue'), unsubscribed: record<string[]>('subscription-results'),
     prompts: record<number | null>('prompt-notification'), settings: record<number | null>('settings-notification') },

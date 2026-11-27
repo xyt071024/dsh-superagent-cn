@@ -149,7 +149,7 @@ export class SourceRegistry implements SourceScope {
       images: text => context.images?.(text) ?? [],
       image: async (agent, commands, message, key, stateDir, signal) => {
         if (!context.image) throw new Error(`The ${kind.kind} Source has no images`)
-        return context.image(agent, commands, trigger, message, key, stateDir, signal)
+        return context.image(agent, commands, trigger, message, key, stateDir, signal, config)
       },
     }
   }

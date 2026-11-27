@@ -220,8 +220,12 @@ const ROUTES: readonly Route[] = [
       : disposition
     // Omit card preview and self-reference because this resource returns the full text.
     const { preview: _preview, chars: _chars, read: _read, ...card } = triggerCard(found, visible)
-    const parent = found.source === 'feishu' && typeof found.meta.parentId === 'string' ? found.meta.parentId : undefined
-    const repliedTo = shown(parent ? host.store.triggers.get(feishuTriggerId(parent)) : undefined)
+    const parent = found.source === 'feishu' && typeof found.meta.parentId === 'string'
+      ? feishuTriggerId(found.meta.parentId)
+      : typeof found.meta.replyToId === 'string' && found.meta.replyToId
+        ? `qq:${found.meta.replyToId}`
+        : undefined
+    const repliedTo = shown(parent ? host.store.triggers.get(parent) : undefined)
     const neighbours = host.store.read.neighbours(threadKey(found.threads[0]!), found.at, found.id)
     const around = { before: shown(neighbours.before), after: shown(neighbours.after) }
     return { ...card, ...await host.sourceLink(found, signal), acknowledgement: host.store.replyStatus(key('ack', found.id)) ?? 'not_requested',

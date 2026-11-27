@@ -18,11 +18,11 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/xyt071024/dsh-superagent-cn/releases"><img src="https://img.shields.io/badge/Release-v0.3.17-10b981?style=flat-square" alt="Release v0.3.17"></a>
+  <a href="https://github.com/xyt071024/dsh-superagent-cn/releases"><img src="https://img.shields.io/badge/Release-v0.3.18-10b981?style=flat-square" alt="Release v0.3.18"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-38bdf8?style=flat-square" alt="MIT License"></a>
   <img src="https://img.shields.io/badge/Node.js-22.19%2B%20%7C%2024%2B-339933?style=flat-square" alt="Node.js">
   <img src="https://img.shields.io/badge/DSH-0.2.1%2B-6366f1?style=flat-square" alt="DeepSeek Harness">
-  <img src="https://img.shields.io/badge/Tests-1361%20Passed%20%7C%200%20Failed-2ea44f?style=flat-square" alt="Tests">
+  <img src="https://img.shields.io/badge/Tests-1370%20Passed%20%7C%200%20Failed-2ea44f?style=flat-square" alt="Tests">
 </p>
 
 ---
@@ -110,11 +110,11 @@ Download from [GitHub Releases](https://github.com/xyt071024/dsh-superagent-cn/r
 
 | Target Environment | Release Asset | How to Start |
 |---|---|---|
-| **Windows x64** (Zero pre-requisites) | `Super-Agent-Bundled-Windows-x64-v0.3.17.zip` | Extract and run `start.cmd` |
-| **macOS Apple Silicon (arm64)** | `Super-Agent-Bundled-macOS-arm64-v0.3.17.zip` | Extract and run `./start.sh` |
-| **macOS Intel (x64)** | `Super-Agent-Bundled-macOS-x64-v0.3.17.zip` | Extract and run `./start.sh` |
-| **Linux x64** | `Super-Agent-Bundled-Linux-x64-v0.3.17.zip` | Extract and run `./start.sh` |
-| **Existing DSH Profile (Plugin Only)** | `Super-Agent-Plugin-v0.3.17.tgz` | `dsh plugin add ./Super-Agent-Plugin-v0.3.17.tgz` |
+| **Windows x64** (Zero pre-requisites) | `Super-Agent-Bundled-Windows-x64-v0.3.18.zip` | Extract and run `start.cmd` |
+| **macOS Apple Silicon (arm64)** | `Super-Agent-Bundled-macOS-arm64-v0.3.18.zip` | Extract and run `./start.sh` |
+| **macOS Intel (x64)** | `Super-Agent-Bundled-macOS-x64-v0.3.18.zip` | Extract and run `./start.sh` |
+| **Linux x64** | `Super-Agent-Bundled-Linux-x64-v0.3.18.zip` | Extract and run `./start.sh` |
+| **Existing DSH Profile (Plugin Only)** | `Super-Agent-Plugin-v0.3.18.tgz` | `dsh plugin add ./Super-Agent-Plugin-v0.3.18.tgz` |
 
 ---
 
@@ -123,10 +123,10 @@ Download from [GitHub Releases](https://github.com/xyt071024/dsh-superagent-cn/r
 | Scope | Status | Evidence |
 |---|---|---|
 | **Typecheck & Bundle Build** | ✅ **Passed** | `tsc --noEmit` 0 errors; 21 built `lib/` modules match standalone `.tgz` and all 4 platform ZIPs |
-| **Full Vitest Suite (Windows)** | ✅ **1,361 Passed / 0 Failed** | 76 test files green (including sparse large-N slots, workspace auto-division, peer work-item claiming/merge & SSE benchmark; 15 POSIX-only service-script tests skipped on Windows) |
-| **GitHub Actions CI (Linux)** | ✅ **All Green** | Full build, Linux service-script tests, and PowerShell/Bash installer parser checks |
+| **Full Vitest Suite (Windows)** | ✅ **1,370 Passed / 0 Failed / 15 Skipped** | 77 test files green (including channel parsers, proactive peer offers, real merge test gates, review independence & speculative drafts; 15 POSIX-only service-script tests skipped on Windows) |
+| **GitHub Actions CI (Linux & Windows)** | ✅ **4 Jobs Green** | Full Linux suite, Unix & Windows bootstrap/packaging self-tests, Python release-preflight unit tests, and installer script & pinned-version checks |
 | **Independent Acceptance Suites (`41–50`)** | ✅ **37 / 37 Passed** | Covers handover races, multi-generation routing, multi-deliverable splitting, review isolation, plan revisions, and configurable `maxSessions` |
-| **Isolated Windows Bundle Install & Upgrade** | ✅ **HTTP 200 Verified** | Fresh install, missing-plugin repair, and legacy profile upgrade all preserve user config and serve `/orchestrator/api/state` (`0.3.17`) |
+| **Isolated Windows Bundle Install & Upgrade** | ✅ **HTTP 200 Verified** | Fresh install, missing-plugin repair, and legacy profile upgrade all preserve user config and serve `/orchestrator/api/state` (`0.3.18`) |
 | **Security & Secret Preflight (`release_preflight`)** | ✅ **0 Issues** | Full byte scan across all 5 release artifacts for keys, tokens, credentials, links, Unix `0755` modes, and local paths |
 | **Physical macOS / Linux GUI & Live Accounts** | ⚠️ **Pending Live Hardware/Accounts** | Verified via Linux CI, archive permissions, and local protocol servers; live external credentials intentionally excluded from automated runs |
 

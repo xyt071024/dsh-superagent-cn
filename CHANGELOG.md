@@ -8,6 +8,36 @@
 
 ## [Unreleased]
 
+## [0.3.18] - 2026-11-27
+
+本版根据 2026-11-27 Linux 复测报告补充（问题 I / G1 / G2 / H / M / N / K）及设计对照三大优先项与 §4.2 投机执行闭环要求完成全面升级与跨平台 CI 加固。
+
+### 新增与修复
+
+**1. 三渠道消息解析补齐（问题 I / G1 / G2 / H）**
+
+- **GitHub 标题提及（问题 I）**：`src/sources/github-trigger.ts` `issueTrigger`（及 `pullTrigger`）改为同时检测 `issue.title` 与 `issue.body` 中的 `@` 提及，修复“只在标题提及”漏判问题。
+- **个人 QQ 引用权限回查与图片附件（问题 G1 / G2）**：`src/sources/qq.ts` 新增 `replyIdOf`、`imageRefsOf`、`qqImageKeys` 与 `readQqImage`：保留引用消息 ID（`meta.replyToId` 与 `repliesTo`），在 `threadContext.read('parent')` 中通过 `get_msg` 按同群/同私聊作用域严格鉴权回查原文（越权跨群/跨人明确返回 `forbidden` 零泄露）；为图片生成可读附件引用 `[图片: qqimg_*]` 并实现受控下载、魔数校验与附件入库（404/非图片明确报错）。
+- **飞书 `post` 混合富文本解析（问题 H）**：`src/sources/feishu-trigger.ts` 与 `src/sources/feishu-read.ts` 新增 `parseFeishuContent`，统一在实时事件、历史 API、话题轮询与上下文视图中解析 `post` 标题、多段落、纯文本、`<a href>` 链接、`<at>` 提及与内嵌 `<img>` 图片键（`img_*` 同步可供 `admissionImageKeys` 识别）。
+
+**2. 主动补位、真实双文件合并门禁、真实审查入口与 §4.2 投机草稿闭环（设计优先项 1–3）**
+
+- **主动补位与无人应答防卡死（优先项 1）**：`src/app/divisions.ts` 与 `src/kv.ts` 新增 `offerClaimableWorkItems`、`reclaimExpiredOffers` 与 `handoffAudit` 审计轨迹；发布工作项或成员完成/等待依赖时自动向空闲成员推送 `[work_item_available]` 补位通知，无人应答超期后自动回退原负责人并通知主协调者，防止无限等待。
+- **真实合并验证门禁（优先项 2）**：升级 `mergeWorkItem` 与 `orchestrator_division_merge_item`，支持在工作目录实际执行测试命令（`run_check` + `verification_command`）及显式冲突标记（`conflict_files`）；测试失败或合并冲突时标记为 `merge_failed` / `conflict` 清晰可见并阻断下游依赖解锁，修复并通过实测后才解锁依赖。
+- **真实审查提交入口强制独立性（优先项 3）**：将 `canReviewWorkItem` 正式接入 `submitReview`（`orchestrator_division_review_submit`）与新增工作项复核入口 `reviewWorkItem`（`orchestrator_division_review_item`），在真实工具入口直接拒绝作者自审、放行非作者或独立复查会话通过。
+- **§4.2 投机执行闭环**：新增持久化 `SpeculativeDraft`（`createSpeculativeDraft` / `confirmSpeculativeDraft` / `revokeSpeculativeDraft` / `discardSpeculativeDraft`），覆盖“未发布草稿 → 确认交付一次 / 撤销零外发 / 无价值静默丢弃”三类终态。
+
+**3. 安装脚本兜底提示、Git 包装器前置校验与跨平台 CI 矩阵（问题 M / N / K）**
+
+- `_remote/install.ps1` 与 `_remote/install.sh`（含 `.txt` 副本）同步更新兜底版本至 `0.3.18`，在 GitHub API 不可达回退固定版本时明确输出无法确认最新版的警告。
+- `src/infra/environment.ts` 与 `tests/fixtures/git.ts` 新增 `GIT_CONFIG` / `GIT_CONFIG_SYSTEM` 清理与 `probeGitConfigIsolation()` 前置配置可读性校验，避免宿主异常 Git 包装器静默干扰测试。
+- `.github/workflows/ci.yml` 补齐跨平台验证矩阵：新增 Linux 侧 Unix 打包/引导自测与 Python 发布预检单测、独立 `Packaging & Bootstrap (Windows)` 作业，以及 `lint-scripts` 中 `SA_PINNED_VERSION` / `$SaPinnedVersion` 与 `package.json` 版本及兜底提示自动一致性校验。
+
+### 分平台测试结果
+
+- **Windows（本机）**：Vitest 78 个文件 `77 passed | 0 failed | 1 skipped`（**1,370 passed | 0 failed | 15 skipped**，跳过项为 POSIX 专属守护脚本）；历轮 41–50 号 8 套验收 **37 passed | 0 failed**；`unix-bundle.test.mjs` `2 passed`；`profile-bootstrap-selftest.mjs` `8 passed`；`test_release_preflight.py` `1 passed`。
+- **Linux（GitHub Actions CI）**：全量 Vitest（含 15 项 POSIX 守护脚本用例）、Unix 打包与引导自测、Python 预检单测、构建与安装脚本解析全部通过（详见本次 Release 校验摘要）。
+
 ## [0.3.17] - 2026-11-25
 
 本版围绕独立复验第 51 号目录留存的 `M07-m1` / `M07-m2` 及工作区独立会话、设置导航、模型目录与严格继承、成员双向协作与吞吐测速工具等 7 项需求完成全面升级。

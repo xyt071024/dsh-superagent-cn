@@ -18,6 +18,97 @@ export const feishuThreadId = (chatId: string, rootId: string | undefined, messa
 export const feishuTriggerId = (messageId: string): string => key('feishu', messageId)
 export const withMentionNames = (text: string, mentions: { key?: string | undefined; name?: string | undefined }[]): string =>
   mentions.reduce((result, mention) => mention.key && mention.name ? result.replaceAll(mention.key, `@${mention.name}`) : result, text)
+
+/** Parses a single Feishu `post` rich-text node into readable inline text (preserving `img_` keys for image loading). */
+function renderPostNode(node: unknown): string {
+  if (!node || typeof node !== 'object') return ''
+  const item = node as Record<string, unknown>
+  const tag = typeof item.tag === 'string' ? item.tag : ''
+  if (tag === 'text') return typeof item.text === 'string' ? item.text : ''
+  if (tag === 'a') {
+    const label = typeof item.text === 'string' ? item.text.trim() : ''
+    const href = typeof item.href === 'string' ? item.href.trim() : ''
+    if (label && href && label !== href) return `${label} (${href})`
+    return label || href
+  }
+  if (tag === 'at') {
+    const name = typeof item.user_name === 'string' && item.user_name.trim() ? item.user_name.trim()
+      : typeof item.user_id === 'string' && item.user_id.trim() ? item.user_id.trim() : ''
+    if (!name) return ''
+    return name.startsWith('@') ? name : `@${name}`
+  }
+  if (tag === 'img') {
+    const imageKey = typeof item.image_key === 'string' ? item.image_key.trim() : ''
+    return imageKey ? `[图片: ${imageKey}]` : '[图片]'
+  }
+  if (tag === 'media') {
+    const fileKey = typeof item.file_key === 'string' ? item.file_key.trim()
+      : typeof item.image_key === 'string' ? item.image_key.trim() : ''
+    return fileKey ? `[媒体: ${fileKey}]` : '[媒体]'
+  }
+  if (tag === 'md' || tag === 'code_block') {
+    return typeof item.text === 'string' ? item.text : ''
+  }
+  if (tag === 'emotion') {
+    const emoji = typeof item.emoji_type === 'string' ? item.emoji_type.trim() : ''
+    return emoji ? `[表情: ${emoji}]` : '[表情]'
+  }
+  if (tag === 'hr') return '---'
+  return typeof item.text === 'string' ? item.text : ''
+}
+
+function renderPostLocale(doc: unknown): string | undefined {
+  if (!doc || typeof doc !== 'object') return undefined
+  const record = doc as Record<string, unknown>
+  if (!Array.isArray(record.content)) return undefined
+  const title = typeof record.title === 'string' ? record.title.trim() : ''
+  const lines: string[] = []
+  for (const row of record.content) {
+    if (!Array.isArray(row)) continue
+    const parts = row.map(renderPostNode).filter(part => part.length > 0)
+    if (!parts.length) continue
+    // Join inline elements cleanly: insert a space only when an @mention precedes non-whitespace text without spacing.
+    let line = ''
+    for (const part of parts) {
+      if (line && line.endsWith('@') === false && /@[^\s]+$/.test(line) && !/^[\s,，。.:：;；!?！？)]/.test(part)) {
+        line += ` ${part}`
+      } else {
+        line += part
+      }
+    }
+    const trimmed = line.trim()
+    if (trimmed) lines.push(trimmed)
+  }
+  const body = lines.join('\n')
+  if (title && body) return `${title}\n${body}`
+  return title || body || ''
+}
+
+/**
+ * Extracts readable text from Feishu message content: supports plain strings, JSON `{ text }`,
+ * and Feishu `post` rich-text JSON (direct `{ title, content }` or locale-wrapped `{ zh_cn, en_us, ... }`).
+ */
+export function parseFeishuContent(raw: string): string {
+  const trimmed = raw.trim()
+  if (!trimmed || (!trimmed.startsWith('{') && !trimmed.startsWith('"'))) return raw
+  let parsed: unknown
+  try { parsed = JSON.parse(raw) } catch { return raw }
+  if (typeof parsed === 'string') return parsed
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return raw
+  const obj = parsed as Record<string, unknown>
+  if (typeof obj.text === 'string') return obj.text
+  const directPost = renderPostLocale(obj)
+  if (directPost !== undefined) return directPost
+  const container = obj.post && typeof obj.post === 'object' && !Array.isArray(obj.post)
+    ? obj.post as Record<string, unknown>
+    : obj
+  for (const locale of ['zh_cn', 'en_us', 'ja_jp', ...Object.keys(container)]) {
+    if (!(locale in container)) continue
+    const rendered = renderPostLocale(container[locale])
+    if (rendered !== undefined) return rendered
+  }
+  return JSON.stringify(parsed)
+}
 /**
  * Parses a Feishu message timestamp into an ISO-8601 string: live events and the history API return epoch milliseconds as a
  * string, whereas topic/thread pages return a local timestamp string such as `2026-09-11 12:00`.
@@ -37,7 +128,7 @@ export function feishuTrigger(input: unknown, botId: string, botAppId: string): 
   return { id: feishuTriggerId(event.message_id), source: SOURCE, threads: [{ source: SOURCE, id: thread }],
     actor: { source: SOURCE, id: event.sender_id }, human: event.sender_type === 'user',
     ...(direct ? { addressed: 'direct' as const } : mentioned ? { addressed: 'mention' as const } : {}),
-    at: feishuTime(event.create_time), text: withMentionNames(event.content, event.mentions),
+    at: feishuTime(event.create_time), text: withMentionNames(parseFeishuContent(event.content), event.mentions),
     channel: feishuChannel(event.chat_id, event.message_id, direct), ...(event.message_app_link ? { url: event.message_app_link } : {}),
     meta: { chatId: event.chat_id, messageId: event.message_id, direct, mentioned, ...(event.root_id ? { rootId: event.root_id } : {}),
       ...(event.parent_id ? { parentId: event.parent_id } : {}), ...(event.thread_id ? { threadId: event.thread_id } : {}) } }
@@ -65,11 +156,7 @@ export const HistoryPageSchema = z.looseObject({
   items: z.array(z.unknown()).default([]), has_more: z.boolean().default(false), page_token: z.string().optional(),
 })
 export function historyText(message: HistoricalMessage): string {
-  let content: unknown
-  try { content = JSON.parse(message.body?.content ?? '') }
-  catch { content = message.body?.content ?? '' /* Feishu also returns plain-text system messages. */ }
-  const plain = content && typeof content === 'object' && 'text' in content && typeof content.text === 'string' ? content.text : undefined
-  return typeof content === 'string' ? content : plain ?? JSON.stringify(content)
+  return parseFeishuContent(message.body?.content ?? '')
 }
 export function historyEvent(message: HistoricalMessage, chatId: string, direct: boolean): unknown {
   return { message_id: message.message_id, chat_id: chatId, chat_type: direct ? 'p2p' : 'group', create_time: message.create_time,

@@ -191,16 +191,19 @@ export function TicketPage({ id }: { id: string }) {
       {data.plan.workItems && data.plan.workItems.length > 0 && <Section title={t('divisionsWorkItems')} count={data.plan.workItems.length}>
         <ul className="dt-list">
           {data.plan.workItems.map(item => <li key={item.itemId} className="dt-row">
-            <Dot state={item.status === 'merged' ? 'done' : item.status === 'claimed' || item.status === 'submitted' ? 'ongoing' : item.status === 'failed' ? 'error' : 'idle'}
+            <Dot state={item.status === 'merged' ? 'done' : item.status === 'claimed' || item.status === 'submitted' ? 'ongoing' : item.status === 'failed' || item.status === 'merge_failed' || item.status === 'conflict' ? 'error' : 'idle'}
               label={item.status} />
             <div className="dt-row-main">
-              <div className="dt-row-title">{item.title} <Tag tone="neutral">{item.status}</Tag></div>
+              <div className="dt-row-title">{item.title} <Tag tone={item.status === 'merge_failed' || item.status === 'conflict' || item.status === 'failed' ? 'danger' : 'neutral'}>{item.status}</Tag></div>
               <div className="dt-row-meta">
                 <span>{t('divisionsWorkItemOwner', { owner: item.ownerDivisionId })}</span>
                 {item.assigneeDivisionId && <span>{t('divisionsWorkItemAssignee', { assignee: item.assigneeDivisionId })}</span>}
                 {item.mergedBy && <span>{t('divisionsWorkItemMergedBy', { merger: item.mergedBy })}</span>}
+                {item.reviewedBy && <span>review: {item.reviewedBy} ({item.reviewState ?? 'pending'})</span>}
               </div>
               {item.summary && <Hint>{item.summary}</Hint>}
+              {item.conflictFiles && item.conflictFiles.length > 0 && <Hint>conflicts: {item.conflictFiles.join(', ')}</Hint>}
+              {item.verificationOutput && (item.status === 'merge_failed' || item.status === 'conflict') && <Hint>{item.verificationOutput.slice(0, 240)}</Hint>}
             </div>
           </li>)}
         </ul>

@@ -88,6 +88,36 @@ jobs:
       - name: Run the suite
         run: npx vitest run
 
+      - name: Run Unix packaging & bootstrap self-tests
+        run: |
+          node --test tests/unix-bundle.test.mjs
+          node scripts/profile-bootstrap-selftest.mjs
+
+      - name: Run Python release preflight unit tests
+        run: python3 -m unittest discover -s tests -p "test_*.py" -v
+
+  packaging-windows:
+    name: Packaging & Bootstrap (Windows)
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: src-repo
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run Windows bootstrap & packaging tests
+        run: |
+          node scripts/profile-bootstrap-selftest.mjs
+          node --test tests/unix-bundle.test.mjs
+          node --test tests/windows-bundle.test.mjs
+
+      - name: Run Python release preflight unit tests (Windows)
+        run: python -m unittest discover -s tests -p "test_*.py" -v
+
   lint-scripts:
     name: Check the install scripts parse
     runs-on: ubuntu-latest
@@ -120,3 +150,23 @@ jobs:
             exit 1
           }
           Write-Host "PowerShell parse of ${file}: OK"
+
+      - name: Verify pinned installer versions match package.json
+        run: |
+          node -e "
+            const fs = require('node:fs');
+            const ver = JSON.parse(fs.readFileSync('src-repo/package.json', 'utf8')).version;
+            const sh = fs.readFileSync('install.sh', 'utf8');
+            const ps = fs.readFileSync('install.ps1', 'utf8');
+            const shMatch = /SA_PINNED_VERSION='([^']+)'/.exec(sh)?.[1];
+            const psMatch = /\\\$SaPinnedVersion\s*=\s*'([^']+)'/.exec(ps)?.[1];
+            if (shMatch !== ver || psMatch !== ver) {
+              console.error({ packageJson: ver, installSh: shMatch, installPs1: psMatch });
+              process.exit(1);
+            }
+            if (!sh.includes('could not verify the latest version') || !ps.includes('Could not verify the latest version')) {
+              console.error('Pinned fallback warning missing in installer scripts');
+              process.exit(1);
+            }
+            console.log('Installer pinned versions & fallback warnings verified:', ver);
+          "
