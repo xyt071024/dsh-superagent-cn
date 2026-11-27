@@ -58,8 +58,8 @@ if (!isMainThread) {
   })
 } else {
   const THIS_FILE = fileURLToPath(import.meta.url)
-  const STAGE = 'C:/Users/ASUS/Desktop/Super-Agent-项目完整备份-20261115/_work/_stage'
-  const OUT = 'C:/Users/ASUS/Desktop/Super-Agent-项目完整备份-20261115/_work/dist'
+  const STAGE = process.env.SA_STAGE_DIR || 'C:/Users/ASUS/Desktop/Super-Agent-项目完整备份-20261115/_work/_stage'
+  const OUT = process.env.SA_DIST_DIR || 'C:/Users/ASUS/Desktop/Super-Agent-项目完整备份-20261115/_work/dist'
   const MANIFEST = path.join(STAGE, 'manifest.json')
 
   const filter = process.argv.slice(2)

@@ -7,7 +7,7 @@ name: CI
 # 键名加引号：YAML 1.1 的分词器会把裸 `on` 读成布尔 true，本地用 yaml 库预检或跑 linter 时会莫名其妙地报错。
 "on":
   push:
-    branches: [main]
+    branches: [main, 'release/**']
   pull_request:
   workflow_dispatch:
 
@@ -160,7 +160,14 @@ jobs:
             const ps = fs.readFileSync('install.ps1', 'utf8');
             const shMatch = /SA_PINNED_VERSION='([^']+)'/.exec(sh)?.[1];
             const psMatch = /\\\$SaPinnedVersion\s*=\s*'([^']+)'/.exec(ps)?.[1];
-            if (shMatch !== ver || psMatch !== ver) {
+            const isPrerelease = ver.includes('-');
+            if (isPrerelease) {
+              // Prerelease / RC branches must keep production fallback installers pinned to a stable non-prerelease version.
+              if (!shMatch || shMatch !== psMatch || shMatch.includes('-')) {
+                console.error({ packageJson: ver, installSh: shMatch, installPs1: psMatch, reason: 'prerelease branch must keep stable matching fallback version' });
+                process.exit(1);
+              }
+            } else if (shMatch !== ver || psMatch !== ver) {
               console.error({ packageJson: ver, installSh: shMatch, installPs1: psMatch });
               process.exit(1);
             }
@@ -168,5 +175,5 @@ jobs:
               console.error('Pinned fallback warning missing in installer scripts');
               process.exit(1);
             }
-            console.log('Installer pinned versions & fallback warnings verified:', ver);
+            console.log('Installer pinned versions & fallback warnings verified:', { packageJson: ver, pinnedFallback: shMatch, isPrerelease });
           "

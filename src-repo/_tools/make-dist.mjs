@@ -29,7 +29,8 @@ const PKG = 'C:/Users/ASUS/Desktop/Super-Agent-项目完整备份-20261115/_pack
  * 它会让从这里复制出去的 node.exe 在**运行时**写任何文件都 EPERM —— 实测同一个 exe 移到别处就正常。
  * 所以暂存与打包都放在 `D:\sa-build`，最后只把成品 zip 移回来。
  */
-const OUT = 'C:/Users/ASUS/Desktop/Super-Agent-项目完整备份-20261115/_work'
+const OUT = process.env.SA_BUILD_OUT || 'C:/Users/ASUS/Desktop/Super-Agent-项目完整备份-20261115/_work'
+const STAGE_ROOT = process.env.SA_STAGE_DIR || STAGE_ROOT
 const NODEBIN = join(ROOT, '_nodebin')
 const PROTO = 'C:/Users/ASUS/Desktop/Super-Agent-项目完整备份-20261115/02-修改后源码'
 const DSH_MIN = join(ROOT, '_probe', 'dsh-min', 'node_modules')
@@ -558,7 +559,7 @@ mkdirSync(OUT, { recursive: true })
  * `writeReadme` after every payload, launcher and tool is in place. A directory with it is done; one without is a
  * leftover from an interrupted run and is removed and rebuilt.
  */
-const finished = label => existsSync(join(OUT, '_stage', label, 'README.txt'))
+const finished = label => existsSync(join(STAGE_ROOT, label, 'README.txt'))
 
 const made = []
 
@@ -566,7 +567,7 @@ const made = []
 for (const target of TARGETS) {
   for (const build of BUILDS) {
     const label = `Super-Agent-Bundled-${target.os}-${target.arch}-v${VERSION}`
-    const staging = join(OUT, '_stage', label)
+    const staging = join(STAGE_ROOT, label)
     if (finished(label)) { console.log(`  ${label}  已完成，跳过`); continue }
     // Do not delete an unfinished directory: on this machine the copies inherit a Deny ACE from the workspace, which
     // makes them undeletable (EPERM) even for the building user. Everything below is `cpSync`/`writeFileSync`, which
@@ -598,7 +599,7 @@ for (const target of TARGETS) {
 // own small zip below.
 const pluginLabel = `Super-Agent-Plugin-v${VERSION}`
 {
-  const staging = join(OUT, '_stage', pluginLabel)
+  const staging = join(STAGE_ROOT, pluginLabel)
   if (finished(pluginLabel)) console.log(`  ${pluginLabel}  已完成，跳过`)
   else {
     rmSync(staging, { recursive: true, force: true })
@@ -612,6 +613,18 @@ const pluginLabel = `Super-Agent-Plugin-v${VERSION}`
   }
 }
 
-writeFileSync(join(OUT, '_stage', 'manifest.json'), JSON.stringify(made.map(({ staging, ...rest }) => ({ ...rest, dir: staging })), null, 2))
-console.log(`\n暂存在 ${join(OUT, '_stage')}，下一步用 7z / tar 压成 zip。`)
+writeFileSync(join(STAGE_ROOT, 'manifest.json'), JSON.stringify(made.map(({ staging, ...rest }) => ({ ...rest, dir: staging })), null, 2))
+const winStage = join(STAGE_ROOT, `Super-Agent-Bundled-Windows-x64-v${VERSION}`)
+const pluginTgz = join(STAGE_ROOT, `Super-Agent-Plugin-v${VERSION}`, `Super-Agent-Plugin-v${VERSION}.tgz`)
+const buildManifest = {
+  version: VERSION,
+  dshVersion: DSH_VERSION,
+  stageRoot: STAGE_ROOT,
+  windowsStage: winStage,
+  pluginArchive: pluginTgz,
+  dshBin: join(winStage, 'runtime', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js'),
+  packages: made.map(({ staging, ...rest }) => ({ ...rest, dir: staging })),
+}
+writeFileSync(join(STAGE_ROOT, 'build-manifest.json'), JSON.stringify(buildManifest, null, 2) + '\n')
+console.log(`\n暂存在 ${STAGE_ROOT}，下一步用 7z / tar 压成 zip。`)
 console.log(`共 ${made.length} 个包。`)
