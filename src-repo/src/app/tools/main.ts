@@ -302,7 +302,7 @@ export function mainTools(host: MainToolsHost, agent: Agent): Tool[] {
     ...(host.divisions ? [
       tool({
         name: 'orchestrator_dispatch',
-        description: 'Dispatch task divisions.',
+        description: 'Dispatch.',
         schema: z.object({
           task_id: z.string().optional(),
           title: z.string(),
@@ -312,21 +312,25 @@ export function mainTools(host: MainToolsHost, agent: Agent): Tool[] {
           difficulty: z.number().optional(),
           reason: z.string().optional(),
           plan_key: z.string().optional(),
-          divisions: z.array(z.object({
-            division_id: z.string(),
-            title: z.string(),
-            brief: z.string(),
-            depends_on: z.array(z.string()).optional(),
-            work_items: z.array(z.unknown()).optional(),
-          })).optional(),
+          divisions: z.array(z.unknown()).optional(),
         }),
         execute: async args => {
           const WorkItemArg = z.object({
             item_id: z.string().min(1),
             title: z.string().min(1),
             brief: z.string().min(1),
+            kind: z.enum(['code', 'docs', 'research', 'config', 'other']).optional(),
+            verification_mode: z.enum(['test_required', 'manual_acceptance']).optional(),
             depends_on: z.array(z.string()).optional(),
           })
+          const DivisionArg = z.object({
+            division_id: z.string(),
+            title: z.string(),
+            brief: z.string(),
+            depends_on: z.array(z.string()).optional(),
+            work_items: z.array(WorkItemArg).optional(),
+          })
+          const parsedDivisions = args.divisions?.map(raw => DivisionArg.parse(raw))
           const { plan, reused, extraSessions } = await host.divisions!.dispatch({
             taskId: args.task_id,
             title: args.title,
@@ -338,15 +342,19 @@ export function mainTools(host: MainToolsHost, agent: Agent): Tool[] {
             reason: args.reason,
             planKey: args.plan_key,
             chatAutoDivision: host.sessions.isChatCoordinator?.(agent.id) ?? false,
-            divisions: args.divisions?.map(d => ({
+            divisions: parsedDivisions?.map(d => ({
               divisionId: d.division_id,
               title: d.title,
               brief: d.brief,
               dependsOn: d.depends_on,
-              workItems: d.work_items?.map(raw => {
-                const i = WorkItemArg.parse(raw)
-                return { itemId: i.item_id, title: i.title, brief: i.brief, dependsOn: i.depends_on }
-              }),
+              workItems: d.work_items?.map(i => ({
+                itemId: i.item_id,
+                title: i.title,
+                brief: i.brief,
+                kind: i.kind,
+                verificationMode: i.verification_mode,
+                dependsOn: i.depends_on,
+              })),
             })),
           })
           return {
@@ -383,7 +391,7 @@ export function mainTools(host: MainToolsHost, agent: Agent): Tool[] {
       }),
       tool({
         name: 'orchestrator_division_send',
-        description: 'Send follow-up to a division session.',
+        description: 'Send to division.',
         schema: z.object({
           task_id: z.string(),
           division_id: z.string(),
@@ -396,9 +404,72 @@ export function mainTools(host: MainToolsHost, agent: Agent): Tool[] {
       }),
       tool({
         name: 'orchestrator_division_status',
-        description: 'Read division plans and statuses.',
+        description: 'Division status.',
         schema: z.object({ task_id: z.string().optional() }),
         execute: async args => args.task_id ? { plan: host.divisions!.get(args.task_id) ?? null } : { plans: host.divisions!.list() },
+      }),
+      tool({
+        name: 'orchestrator_draft',
+        description: 'Drafts.',
+        schema: z.object({
+          op: z.string(),
+          draft_id: z.string().optional(),
+          trigger_id: z.string().optional(),
+          title: z.string().optional(),
+          content: z.string().optional(),
+          low_value: z.boolean().optional(),
+          reason: z.string().optional(),
+          status: z.string().optional(),
+        }),
+        execute: async args => {
+          const op = z.enum(['create', 'confirm', 'revoke', 'discard', 'list']).parse(args.op)
+          switch (op) {
+            case 'create': {
+              if (!args.trigger_id || !args.title || !args.content) {
+                throw new Error('create requires trigger_id, title, and content')
+              }
+              const trigger = host.store.triggers.get(args.trigger_id)
+              const target = trigger?.channel
+                ? {
+                    kind: 'outbox' as const,
+                    channel: {
+                      source: trigger.channel.source,
+                      thread: trigger.channel.thread,
+                      address: { ...trigger.channel.address },
+                    },
+                  }
+                : { kind: 'session' as const, sessionId: agent.id }
+              return {
+                draft: host.divisions!.createSpeculativeDraft({
+                  draftId: args.draft_id,
+                  triggerId: args.trigger_id,
+                  title: args.title,
+                  content: args.content,
+                  target,
+                  lowValue: args.low_value,
+                  discardReason: args.reason,
+                }),
+              }
+            }
+            case 'confirm': {
+              if (!args.draft_id) throw new Error('confirm requires draft_id')
+              return host.divisions!.confirmSpeculativeDraft(args.draft_id, { confirmedBy: agent.id })
+            }
+            case 'revoke': {
+              if (!args.draft_id) throw new Error('revoke requires draft_id')
+              return { draft: host.divisions!.revokeSpeculativeDraft(args.draft_id, args.reason) }
+            }
+            case 'discard': {
+              if (!args.draft_id) throw new Error('discard requires draft_id')
+              return { draft: host.divisions!.discardSpeculativeDraft(args.draft_id, args.reason) }
+            }
+            case 'list': {
+              const allowed = ['draft', 'delivering', 'delivered', 'delivery_failed', 'revoked', 'discarded'] as const
+              const st = args.status ? z.enum(allowed).parse(args.status) : undefined
+              return { drafts: host.divisions!.listSpeculativeDrafts(st) }
+            }
+          }
+        },
       }),
     ] : []),
   ]

@@ -921,6 +921,12 @@ const TEXT = {
   divisionsReview: ['独立复查对话', 'Independent review session'],
   divisionsDependsOn: ['依赖', 'Depends on'],
   divisionsSlot: ['槽位 {slot}', 'Slot {slot}'],
+  draftsTitle: ['待确认投机草稿', 'Pending speculative drafts'],
+  draftsHint: ['系统提前准备的未发布草稿，确认后才按稳定投递键外发一次；可随时撤销或静默丢弃。',
+    'Unpublished speculative drafts prepared ahead of time; delivered once only after confirmation, or safely revoked/discarded.'],
+  draftConfirm: ['确认发送', 'Confirm & send'],
+  draftRevoke: ['撤销', 'Revoke'],
+  draftDiscard: ['静默丢弃', 'Discard silently'],
 } as const satisfies Record<string, readonly [string, string]>
 export type DshSuperagentKey = keyof typeof TEXT
 const language = (index: 0 | 1) => Object.fromEntries(Object.entries(TEXT).map(([key, pair]) => [key, pair[index]])) as Record<DshSuperagentKey, string>

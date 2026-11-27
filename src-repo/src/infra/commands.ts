@@ -98,6 +98,29 @@ export class Commands {
       return stdout
     } catch (error) { throw commandError(error, program) }
   }
+  /**
+   * 受控验证命令执行入口：沿用本插件统一的 Windows `.cmd` 解析、隔离环境变量、生命周期 AbortSignal、超时与输出上限，
+   * 返回结构化退出码与截断后的合并输出，供合并验证门禁安全执行并生成可信验证凭据。
+   */
+  async runChecked(program: string, args: string[], cwd?: string, timeoutMs = 30_000): Promise<{ exitCode: number; output: string }> {
+    const [actual, ...actualArgs] = command([program, ...args])
+    try {
+      const { stdout, stderr } = await exec(actual!, actualArgs, {
+        cwd,
+        signal: this.signal,
+        timeout: timeoutMs,
+        maxBuffer: 2 * 1024 * 1024,
+        env: { ...process.env, ...this.environment, GH_PROMPT_DISABLED: '1', LARKSUITE_CLI_NO_UPDATE_NOTIFIER: '1', LARKSUITE_CLI_NO_SKILLS_NOTIFIER: '1' },
+      })
+      const output = [stdout, stderr].filter(Boolean).join('\n').trim().slice(0, 4000) || '(exit 0)'
+      return { exitCode: 0, output }
+    } catch (error) {
+      const err = error as { stdout?: string; stderr?: string; message?: string; code?: number | string }
+      const exitCode = typeof err.code === 'number' && err.code !== 0 ? err.code : 1
+      const output = [err.stdout, err.stderr, err.message].filter(Boolean).join('\n').trim().slice(0, 4000) || ended(error)
+      return { exitCode, output }
+    }
+  }
   /** Runs the agent's GitHub CLI and parses its JSON output; callers should prefer `api`, which is restricted to the configured repository and validates output. */
   async gh<T>(args: string[]): Promise<T> { return JSON.parse(await this.run(this.deployment.github.cli, args)) as T }
   /**

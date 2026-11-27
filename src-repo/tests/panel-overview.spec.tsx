@@ -14,6 +14,24 @@ it('shows held operations and lets the user retry without discarding them', asyn
   expect(server.requests.some(request => request.path === 'effects/reply/retry-held' && request.method === 'POST')).toBe(true)
   expect(server.held).toEqual([])
 })
+it('renders pending speculative drafts and lets the user confirm or revoke them from overview', async () => {
+  server.drafts = [{
+    draftId: 'd-panel-1',
+    triggerId: 'om_m1',
+    title: '周三评审会日程回复草稿',
+    content: '已核对日历无冲突，建议周三 14:00 开始。',
+    deliveryKey: 'spec-draft:d-panel-1',
+    status: 'draft',
+    createdAt: '2026-11-27T04:00:00Z',
+    updatedAt: '2026-11-27T04:00:00Z',
+  }]
+  await mount()
+  expect(text()).toContain(zh.draftsTitle)
+  expect(text()).toContain('周三评审会日程回复草稿')
+  await click(zh.draftConfirm)
+  expect(server.requests.some(request => request.path === 'drafts/d-panel-1/confirm' && request.method === 'POST')).toBe(true)
+  expect(server.drafts[0]?.status).toBe('delivered')
+})
 it('checks the release only when requested and displays the result', async () => {
   await mount()
   expect(server.requests.some(request => request.path === 'update-check')).toBe(false)

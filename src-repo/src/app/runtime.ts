@@ -167,7 +167,8 @@ export class Runtime extends Service implements SourceHost {
           store.set(KV.runtime.masterPrevious, this.masterPrevious)
           store.set(KV.runtime.masterId, to)
         } })
-      this.divisions = new DivisionCoordinator({ context: ctx, store, sessions, relay: this.relay,
+      this.divisions = new DivisionCoordinator({ context: ctx, store, sessions, relay: this.relay, commands,
+        get outbox() { return runtime.outbox },
         get masterId() { return runtime.masterId }, coordinatorCwd: machine.stateDir,
         report: (detail, state = 'ready') => archiveHealth.set({ state, detail, at: now() }) })
       // Archiving covers every decorated Session, subagents and division sessions included.

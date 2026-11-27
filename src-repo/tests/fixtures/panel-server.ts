@@ -21,6 +21,7 @@ import { feishuKind } from '../../src/sources/feishu.ts'
 import { githubKind } from '../../src/sources/github.ts'
 import type { Health } from '../../src/sources/host.ts'
 import type { SourceKind } from '../../src/sources/kind.ts'
+import type { SpeculativeDraft } from '../../src/kv.ts'
 import { testDeployment } from './deployment.ts'
 
 export const MEMBER = 'ou_alice'
@@ -86,6 +87,7 @@ export const MACHINE = { stateDir: '/srv/dsh-superagent', promptMaxChars: 100000
 type Settings = ReturnType<typeof SettingsSchema.parse>
 export interface PanelServer {
   held?: { kind: string; count: number }[]
+  drafts?: SpeculativeDraft[]
   joined?: Record<string, string>; joining?: Record<string, string>
   joinError?: string
   settings: Settings; revisions: Record<string, number>
@@ -305,6 +307,35 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
   'GET self-inspect': { answer: () => ({ inspection: { gaps: [{ code: 'noLiveSource', detail: 'No source is ready', fix: 'Check sources' }],
     activity: { days: 7, tickets: 0, open: 0, ended: 0, waiting: 0 }, sources: [] }, hygiene: { open: 0, missing: [] } }) },
   'GET divisions': { answer: () => ({ plans: [] }) },
+  'GET drafts': { query: ['status'], answer: ({ query }) => {
+    const list = server.drafts ?? []
+    return { drafts: query.status ? list.filter(d => d.status === query.status) : list }
+  } },
+  'POST drafts/:id/confirm': { answer: ({ params }) => {
+    const draft = (server.drafts ?? []).find(d => d.draftId === params.id)
+    if (!draft) return refuse(404, 'Speculative draft not found')
+    if (draft.status === 'revoked' || draft.status === 'discarded') return refuse(409, 'Draft already closed')
+    const deduplicated = draft.status === 'delivered'
+    draft.status = 'delivered'
+    draft.deliveryId = draft.deliveryKey
+    return { delivered: true, deduplicated, draft: { ...draft } }
+  } },
+  'POST drafts/:id/revoke': { body: true, answer: ({ params, body }) => {
+    const draft = (server.drafts ?? []).find(d => d.draftId === params.id)
+    if (!draft) return refuse(404, 'Speculative draft not found')
+    if (draft.status === 'delivered' || draft.status === 'delivering') return refuse(409, 'Draft already delivering or delivered')
+    draft.status = 'revoked'
+    draft.reason = body.reason ?? 'revoked'
+    return { draft: { ...draft } }
+  } },
+  'POST drafts/:id/discard': { body: true, answer: ({ params, body }) => {
+    const draft = (server.drafts ?? []).find(d => d.draftId === params.id)
+    if (!draft) return refuse(404, 'Speculative draft not found')
+    if (draft.status === 'delivered' || draft.status === 'delivering') return refuse(409, 'Draft already delivering or delivered')
+    draft.status = 'discarded'
+    draft.reason = body.reason ?? 'discarded'
+    return { draft: { ...draft } }
+  } },
   'GET update-check': { answer: () => ({ current: '0.3.5', latest: '0.3.5', status: 'up-to-date', releases: 'https://github.com/xyt071024/dsh-superagent-cn/releases' }) },
   'GET search': { query: ['q'], answer: async ({ query }) => {
     const q = query.q ?? ''

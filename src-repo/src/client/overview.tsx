@@ -80,6 +80,7 @@ export function OverviewPage() {
         : <Hint>{t('needsYouNone')}</Hint>}
     </Section>
     <Inspection />
+    <SpeculativeDrafts />
     <HeldEffects />
     {data.problems.length > 0 && <Section title={t('problems')} count={data.problems.length}>
       <ul className="dt-list dt-cards">{data.problems.map((problem, index) => <ProblemLine key={index} problem={problem}
@@ -104,6 +105,31 @@ export function OverviewPage() {
       </div>}
     </Section>
   </>
+}
+
+function SpeculativeDrafts() {
+  const { call, t } = usePanel()
+  const { data, reload } = usePoll(() => call('GET drafts'), [])
+  const action = useAction(async (run: () => Promise<unknown>) => { await run(); await reload() })
+  const active = (data?.drafts ?? []).filter(d => d.status === 'draft' || d.status === 'delivery_failed' || d.status === 'delivering')
+  if (!active.length) return null
+  return <Section title={t('draftsTitle')} count={active.length}>
+    <Hint>{t('draftsHint')}</Hint>
+    <ul className="dt-list">{active.map(draft => <li key={draft.draftId} className="dt-row">
+      <div className="dt-row-main">
+        <div className="dt-row-title">{draft.title} <span className="dt-mono">({draft.status})</span></div>
+        <Hint>{draft.content.slice(0, 240)}</Hint>
+      </div>
+      <div className="dt-row-actions">
+        <Button variant="outline" size="sm" disabled={action.busy || draft.status === 'delivering'}
+          onClick={() => { void action.run(() => call('POST drafts/:id/confirm', { id: draft.draftId })) }}>{t('draftConfirm')}</Button>
+        <Button variant="outline" size="sm" disabled={action.busy || draft.status === 'delivering'}
+          onClick={() => { void action.run(() => call('POST drafts/:id/revoke', { id: draft.draftId, body: { reason: 'revoked in panel' } })) }}>{t('draftRevoke')}</Button>
+        <Button variant="outline" size="sm" disabled={action.busy || draft.status === 'delivering'}
+          onClick={() => { void action.run(() => call('POST drafts/:id/discard', { id: draft.draftId, body: { reason: 'discarded in panel' } })) }}>{t('draftDiscard')}</Button>
+      </div>
+    </li>)}</ul>
+  </Section>
 }
 
 function HeldEffects() {

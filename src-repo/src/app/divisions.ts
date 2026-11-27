@@ -11,8 +11,30 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import { z } from 'zod'
 import { key } from '../core/index.ts'
-import { KV, type ComplexityVerdict, type DeferredDivisionRecord, type DivisionHandoffAudit, type DivisionModelCall, type DivisionPeerMessage, type DivisionRecord, type DivisionTodoItem, type DivisionWorkItem, type PendingDivisionDelivery, type ReviewHistoryEntry, type SpeculativeDraft, type TaskPlan } from '../kv.ts'
+import { command as resolveCommand, type Commands } from '../infra/commands.ts'
+import {
+  KV,
+  type ComplexityVerdict,
+  type DeferredDivisionRecord,
+  type DivisionHandoffAudit,
+  type DivisionModelCall,
+  type DivisionPeerMessage,
+  type DivisionRecord,
+  type DivisionTodoItem,
+  type DivisionWorkItem,
+  type PendingDivisionDelivery,
+  type ReviewHistoryEntry,
+  type SpeculativeDraft,
+  type SpeculativeDraftDeliveryRecord,
+  type SpeculativeDraftTarget,
+  type TaskPlan,
+  type WorkItemKind,
+  type WorkItemVerificationCredential,
+  type WorkItemVerificationFailureReason,
+  type WorkItemVerificationMode,
+} from '../kv.ts'
 import type { RoleModel } from '../policy.ts'
+import type { Outbox } from './outbox.ts'
 import { assessComplexity, configuredSlotModel, multiSession, reserveSessionSlot } from './routing.ts'
 import type { SessionRelay } from './relay.ts'
 import type { Sessions } from './sessions.ts'
@@ -22,10 +44,76 @@ import { tool, type Tool } from './tools/tool.ts'
 const execFileAsync = promisify(execFile)
 const DEFAULT_OFFER_TIMEOUT_MS = 120_000
 
+/** 受控合并验证运行器的输入与结构化结果，支持注入计数型测试替身或默认走 Commands.runChecked。 */
+export interface VerificationExecutionInput {
+  command: string
+  args: string[]
+  cwd: string
+  taskId: string
+  itemId: string
+  deliverableVersion: string
+  runId: string
+}
+
+export interface VerificationExecutionResult {
+  exitCode: number
+  output: string
+}
+
+export type VerificationRunner = (input: VerificationExecutionInput) => Promise<VerificationExecutionResult>
+
+/** 发送与撤销/丢弃边界冲突错误（HTTP 409）。 */
+export class DraftBoundaryError extends Error {
+  constructor(message: string) { super(message); this.name = 'DraftBoundaryError' }
+}
+
+/** 投机草稿不存在错误（HTTP 404）。 */
+export class DraftNotFoundError extends Error {
+  constructor(message: string) { super(message); this.name = 'DraftNotFoundError' }
+}
+
+export interface MergeWorkItemResult {
+  merged: boolean
+  deduplicated: boolean
+  item: DivisionWorkItem
+  unblockedItems: string[]
+  blockedDependents?: string[] | undefined
+  failureReason?: WorkItemVerificationFailureReason | undefined
+}
+
+export interface ConfirmSpeculativeDraftResult {
+  delivered: boolean
+  deduplicated: boolean
+  draft: SpeculativeDraft
+}
+
+export interface ConfirmSpeculativeDraftOptions {
+  confirmedBy?: string | undefined
+  /** 重启或恢复期间检查外部投递通道是否已按 deliveryKey 实际发出的探针，避免重复投递。 */
+  probeDelivered?: (deliveryKey: string) => Promise<string | boolean | undefined> | string | boolean | undefined
+  /** 仅用于崩溃注入测试：在外部发送完成后、写回 KV 状态前触发回调，模拟发完即崩。 */
+  beforeCommit?: (draft: SpeculativeDraft, deliveryId: string) => Promise<void> | void
+}
+
+export function resolveWorkItemVerificationMode(
+  kind?: WorkItemKind,
+  explicit?: WorkItemVerificationMode,
+): WorkItemVerificationMode {
+  if (explicit) return explicit
+  if (kind === 'docs' || kind === 'research') return 'manual_acceptance'
+  return 'test_required'
+}
+
+export function workItemDeliverableVersion(submitCount: number, deliverable?: string, summary?: string): string {
+  return `v${submitCount}:${key(deliverable ?? '', summary ?? '').slice(0, 12)}`
+}
+
 export interface WorkItemSpec {
   itemId: string
   title: string
   brief: string
+  kind?: WorkItemKind | undefined
+  verificationMode?: WorkItemVerificationMode | undefined
   dependsOn?: string[] | undefined
 }
 
@@ -57,6 +145,9 @@ export interface DivisionsHost {
   readonly store: Store
   readonly sessions: Pick<Sessions, 'ensureDivision' | 'prompt' | 'holds' | 'sessionModel'> & Partial<Pick<Sessions, 'resolveSessionWorkspace' | 'resolveOriginModel' | 'validateModelInCatalog' | 'isChatCoordinator'>>
   readonly relay: Pick<SessionRelay, 'route'>
+  readonly commands?: Pick<Commands, 'runChecked'> | undefined
+  readonly outbox?: Pick<Outbox, 'send' | 'status' | 'sent'> | undefined
+  readonly verificationRunner?: VerificationRunner | undefined
   readonly masterId: string
   readonly coordinatorCwd: string
   report?(detail: string, state?: 'ready' | 'error'): void
@@ -247,7 +338,43 @@ function matchReworkDivisions(divisions: readonly DivisionRecord[], text: string
 
 /** Coordinates multi-session planning, independent division sessions, dependencies, and reviews. */
 export class DivisionCoordinator {
-  constructor(private readonly host: DivisionsHost) {}
+  private verificationRunner?: VerificationRunner | undefined
+  /** 内存级在途验证表（按 runId 索引），用于同一 eventId 并发重试复用结果、防止重复拉起进程。 */
+  private readonly inFlightVerifications = new Map<string, Promise<MergeWorkItemResult>>()
+  /** 内存级在途草稿投递表（按 draftId 索引），防止并发双确认重复调用外发回调。 */
+  private readonly inFlightDraftDeliveries = new Map<string, Promise<ConfirmSpeculativeDraftResult>>()
+
+  constructor(private readonly host: DivisionsHost) {
+    this.verificationRunner = host.verificationRunner
+  }
+
+  /** 注入或重置受控验证执行器（供测试替身统计执行次数与模拟阻塞/崩溃，不传则走默认 Commands.runChecked）。 */
+  setVerificationRunner(runner?: VerificationRunner): void {
+    this.verificationRunner = runner ?? this.host.verificationRunner
+  }
+
+  /** 统一受控验证执行入口：优先使用注入执行器或宿主 Commands.runChecked，复用环境隔离、超时与 Windows .cmd 安全解析。 */
+  private async runVerification(input: VerificationExecutionInput): Promise<VerificationExecutionResult> {
+    if (this.verificationRunner) return this.verificationRunner(input)
+    if (this.host.commands) {
+      return this.host.commands.runChecked(input.command, input.args, input.cwd, 30_000)
+    }
+    const [actual, ...actualArgs] = resolveCommand([input.command, ...input.args])
+    try {
+      const { stdout, stderr } = await execFileAsync(actual!, actualArgs, {
+        cwd: input.cwd,
+        timeout: 30_000,
+        maxBuffer: 2 * 1024 * 1024,
+      })
+      const output = [stdout, stderr].filter(Boolean).join('\n').trim().slice(0, 4000) || '(exit 0)'
+      return { exitCode: 0, output }
+    } catch (error) {
+      const err = error as { stdout?: string; stderr?: string; message?: string; code?: number | string }
+      const exitCode = typeof err.code === 'number' && err.code !== 0 ? err.code : 1
+      const output = [err.stdout, err.stderr, err.message].filter(Boolean).join('\n').trim().slice(0, 4000) || 'verification failed'
+      return { exitCode, output }
+    }
+  }
 
   get(taskId: string): TaskPlan | undefined {
     return this.host.store.get(KV.sessions.divisions(taskId))
@@ -259,7 +386,7 @@ export class DivisionCoordinator {
       .filter((plan): plan is TaskPlan => plan !== undefined)
   }
 
-  /** 启动或恢复时扫描所有持久计划：补齐未创建/首次派工失败的分工、补发待投递通知、恢复待审复查会话。 */
+  /** 启动或恢复时扫描所有持久计划与在途投机草稿：补齐失败分工、重发待投递通知、核对崩溃遗留草稿与验证锁。 */
   async resume(): Promise<void> {
     for (const plan of this.list()) {
       await this.reconcilePlan(plan.taskId).catch(error => {
@@ -267,6 +394,10 @@ export class DivisionCoordinator {
         this.host.report?.(`division plan ${plan.taskId} could not be resumed: ${reason}`, 'error')
       })
     }
+    await this.recoverSpeculativeDrafts().catch(error => {
+      const reason = error instanceof Error ? error.message : String(error)
+      this.host.report?.(`speculative drafts could not be recovered: ${reason}`, 'error')
+    })
   }
 
   /** 停止指定会话及其历史代次；若宿主中该会话仍在 running 且无法停止则返回 false（M07-l）。 */
@@ -680,10 +811,14 @@ export class DivisionCoordinator {
     for (const spec of specs) {
       for (const wi of spec.workItems ?? []) {
         if (workItems.some(item => item.itemId === wi.itemId)) continue
+        const kind = wi.kind ?? 'code'
         workItems.push({
           itemId: wi.itemId,
           title: wi.title,
           brief: wi.brief,
+          kind,
+          verificationMode: resolveWorkItemVerificationMode(kind, wi.verificationMode),
+          deliverableVersion: workItemDeliverableVersion(0, wi.title, wi.brief),
           ownerDivisionId: spec.divisionId,
           dependsOn: [...(wi.dependsOn ?? [])],
           status: 'open',
@@ -1448,10 +1583,14 @@ export class DivisionCoordinator {
       const list = [...(plan.workItems ?? [])]
       for (const spec of input.items) {
         if (list.some(existing => existing.itemId === spec.itemId)) continue
+        const kind = spec.kind ?? 'code'
         list.push({
           itemId: spec.itemId,
           title: spec.title,
           brief: spec.brief,
+          kind,
+          verificationMode: resolveWorkItemVerificationMode(kind, spec.verificationMode),
+          deliverableVersion: workItemDeliverableVersion(0, spec.title, spec.brief),
           ownerDivisionId: input.ownerDivisionId,
           dependsOn: [...(spec.dependsOn ?? [])],
           status: 'open',
@@ -1775,11 +1914,15 @@ export class DivisionCoordinator {
       }
 
       const timestamp = now()
+      const nextSubmitCount = item.submitEventIds.length + 1
       item.assigneeDivisionId = input.submitterDivisionId
       item.status = 'submitted'
       item.summary = input.summary
       item.deliverable = input.deliverable
+      // 每次提交新交付物均推进 deliverableVersion；有意保留旧 verificationCredential 以便识别“结果过期（stale_verification）”
+      item.deliverableVersion = workItemDeliverableVersion(nextSubmitCount, input.deliverable, input.summary)
       delete item.verificationStatus
+      delete item.verificationFailureReason
       delete item.verificationOutput
       delete item.conflictFiles
       if (!item.contributors.includes(input.submitterDivisionId)) item.contributors.push(input.submitterDivisionId)
@@ -1830,17 +1973,341 @@ export class DivisionCoordinator {
   }
 
   /**
-   * 原负责人检查并确认合并工作项成果（R04）：
-   * - 仅原负责人（或主协调者）可确认合并；
-   * - 同一 eventId 重复确认幂等；
-   * - 支持真实测试命令执行（runCheck）与合并冲突/验证失败门禁：冲突或测试失败时将状态标为 conflict / merge_failed 清晰可见并阻断下游依赖解锁；
-   * - 合并验证通过后通知协作者、解锁后续依赖项，并主动通知空闲成员可领取新解锁项。
+   * 原子记录工作项合并验证失败/冲突/拒绝并阻断下游解锁的公共事务辅助函数（不启动任何外部进程）。
+   */
+  private recordMergeRejectionInTx(
+    plan: TaskPlan,
+    item: DivisionWorkItem,
+    input: {
+      eventId: string
+      mergerDivisionId: string
+      mergeNote?: string | undefined
+      status: 'merge_failed' | 'conflict'
+      failureReason: WorkItemVerificationFailureReason
+      historyStatus: 'failed' | 'stale' | 'conflict' | 'rejected'
+      runId: string
+      deliverableVersion: string
+      commandDisplay?: string | undefined
+      output?: string | undefined
+      exitCode?: number | undefined
+      conflictFiles?: string[] | undefined
+      detailMessage: string
+      notifyPeers?: boolean | undefined
+    },
+  ): MergeWorkItemResult {
+    const timestamp = now()
+    const items = plan.workItems ?? []
+    const blockedDependents = items.filter(x => x.dependsOn.includes(item.itemId)).map(x => x.itemId)
+
+    item.status = input.status
+    item.verificationStatus = input.status === 'conflict' ? 'conflict' : 'failed'
+    item.verificationFailureReason = input.failureReason
+    if (input.commandDisplay) item.verificationCommand = input.commandDisplay
+    if (input.output) item.verificationOutput = input.output
+    if (input.conflictFiles?.length) item.conflictFiles = [...input.conflictFiles]
+    if (input.mergeNote) item.mergeNote = input.mergeNote
+    if (!item.mergeEventIds.includes(input.eventId)) {
+      item.mergeEventIds = [...item.mergeEventIds.slice(-99), input.eventId]
+    }
+    item.verificationHistory = [
+      ...(item.verificationHistory ?? []).slice(-49),
+      {
+        runId: input.runId,
+        eventId: input.eventId,
+        deliverableVersion: input.deliverableVersion,
+        ...(input.commandDisplay ? { command: input.commandDisplay } : {}),
+        status: input.historyStatus,
+        ...(input.exitCode !== undefined ? { exitCode: input.exitCode } : {}),
+        reason: input.failureReason,
+        at: timestamp,
+      },
+    ]
+    item.updatedAt = timestamp
+    plan.handoffAudit = [
+      ...(plan.handoffAudit ?? []).slice(-199),
+      {
+        kind: 'merge_failed',
+        actor: input.mergerDivisionId,
+        itemId: item.itemId,
+        at: timestamp,
+        detail: `${input.failureReason}: ${input.detailMessage.slice(0, 240)}`,
+      },
+    ]
+
+    if (input.notifyPeers !== false) {
+      const noticeId = `workitem-merge-fail:${plan.taskId}:${item.itemId}:${input.eventId}`
+      const detail = [
+        `Merge blocked for work item "${item.title}" (${item.itemId}) with status=${item.status} reason=${input.failureReason}.`,
+        input.conflictFiles?.length ? `Conflict files: ${input.conflictFiles.join(', ')}` : '',
+        input.commandDisplay ? `Command: ${input.commandDisplay}` : '',
+        input.output ? `Output: ${input.output.slice(0, 500)}` : input.detailMessage,
+        blockedDependents.length ? `Dependent items kept blocked: ${blockedDependents.join(', ')}` : '',
+      ].filter(Boolean).join('\n')
+      const targets: Array<{ kind: 'origin' | 'division'; divisionId?: string; targetSessionId: string; suffix: string }> = [
+        { kind: 'origin', targetSessionId: plan.originSessionId, suffix: 'origin' },
+      ]
+      if (item.assigneeDivisionId && item.assigneeDivisionId !== input.mergerDivisionId) {
+        const assignee = plan.divisions.find(d => d.divisionId === item.assigneeDivisionId)
+        if (assignee) {
+          targets.push({ kind: 'division', divisionId: assignee.divisionId, targetSessionId: assignee.sessionId, suffix: assignee.divisionId })
+          plan.peerMessages = [
+            ...(plan.peerMessages ?? []).slice(-199),
+            {
+              id: noticeId,
+              fromDivisionId: input.mergerDivisionId,
+              toDivisionId: assignee.divisionId,
+              kind: 'merge_failed',
+              itemId: item.itemId,
+              content: detail,
+              eventId: input.eventId,
+              at: timestamp,
+            },
+          ]
+        }
+      }
+      for (const t of targets) {
+        const id = `${noticeId}:${t.suffix}`
+        if (!(plan.deliveredNotificationIds ?? []).includes(id) && !(plan.pendingDeliveries ?? []).some(p => p.id === id)) {
+          plan.pendingDeliveries = [
+            ...(plan.pendingDeliveries ?? []),
+            {
+              id,
+              kind: t.kind,
+              ...(t.divisionId ? { divisionId: t.divisionId } : {}),
+              targetSessionId: t.targetSessionId,
+              requestId: `div-item-merge-fail:${plan.taskId}:${item.itemId}:${input.eventId}:${t.suffix}`,
+              text: `[work_item_${item.status}] task=${plan.taskId} item=${item.itemId}\n${detail}`,
+            },
+          ]
+        }
+      }
+    }
+
+    plan.updatedAt = timestamp
+    this.host.store.set(KV.sessions.divisions(plan.taskId), plan)
+    return {
+      merged: false,
+      deduplicated: false,
+      failureReason: input.failureReason,
+      item: { ...item },
+      unblockedItems: [],
+      blockedDependents,
+    }
+  }
+
+  /** 原子提交合并通过并解锁下游依赖的公共事务辅助函数。 */
+  private commitMergeSuccessInTx(
+    plan: TaskPlan,
+    item: DivisionWorkItem,
+    input: {
+      eventId: string
+      mergerDivisionId: string
+      mergeNote?: string | undefined
+      acceptanceMethod: 'automated_test' | 'manual_acceptance'
+      acceptanceNote?: string | undefined
+      commandDisplay?: string | undefined
+      output?: string | undefined
+    },
+  ): MergeWorkItemResult {
+    const timestamp = now()
+    const beforeOpenReady = new Set(this.listClaimableItems(plan).map(x => x.itemId))
+    item.status = 'merged'
+    item.mergedBy = input.mergerDivisionId
+    item.verificationStatus = 'passed'
+    delete item.verificationFailureReason
+    item.acceptanceMethod = input.acceptanceMethod
+    if (input.acceptanceNote ?? input.mergeNote) item.acceptanceNote = input.acceptanceNote ?? input.mergeNote
+    if (input.commandDisplay) item.verificationCommand = input.commandDisplay
+    if (input.output) item.verificationOutput = input.output
+    delete item.conflictFiles
+    if (input.mergeNote) item.mergeNote = input.mergeNote
+    if (!item.mergeEventIds.includes(input.eventId)) {
+      item.mergeEventIds = [...item.mergeEventIds.slice(-99), input.eventId]
+    }
+    item.updatedAt = timestamp
+    plan.handoffAudit = [
+      ...(plan.handoffAudit ?? []).slice(-199),
+      {
+        kind: 'merged',
+        actor: input.mergerDivisionId,
+        itemId: item.itemId,
+        at: timestamp,
+        detail: `${input.acceptanceMethod}${input.commandDisplay ? `: ${input.commandDisplay}` : ''}${input.acceptanceNote ?? input.mergeNote ? ` (${(input.acceptanceNote ?? input.mergeNote)!.slice(0, 120)})` : ''}`,
+      },
+    ]
+    plan.updatedAt = timestamp
+
+    const afterOpenReady = this.listClaimableItems(plan).map(x => x.itemId)
+    const unblockedItems = afterOpenReady.filter(id => !beforeOpenReady.has(id))
+
+    if (item.assigneeDivisionId && item.assigneeDivisionId !== input.mergerDivisionId) {
+      const assignee = plan.divisions.find(d => d.divisionId === item.assigneeDivisionId)
+      const noticeId = `workitem-merge:${plan.taskId}:${item.itemId}:${input.eventId}`
+      const peerMsg: DivisionPeerMessage = {
+        id: noticeId,
+        fromDivisionId: input.mergerDivisionId,
+        toDivisionId: item.assigneeDivisionId,
+        kind: 'merge_confirm',
+        itemId: item.itemId,
+        content: `Merged work item "${item.title}" (${item.itemId}) by ${input.mergerDivisionId} via ${input.acceptanceMethod}.${input.mergeNote ? ` Note: ${input.mergeNote}` : ''}`,
+        eventId: input.eventId,
+        at: timestamp,
+      }
+      plan.peerMessages = [...(plan.peerMessages ?? []).slice(-199), peerMsg]
+      if (assignee && !(plan.deliveredNotificationIds ?? []).includes(noticeId) && !(plan.pendingDeliveries ?? []).some(p => p.id === noticeId)) {
+        plan.pendingDeliveries = [
+          ...(plan.pendingDeliveries ?? []),
+          {
+            id: noticeId,
+            kind: 'division',
+            divisionId: assignee.divisionId,
+            targetSessionId: assignee.sessionId,
+            requestId: `div-item-merge:${plan.taskId}:${item.itemId}:${input.eventId}`,
+            text: `[work_item_merged] task=${plan.taskId} item=${item.itemId} ("${item.title}") merged_by=${input.mergerDivisionId} method=${input.acceptanceMethod} event_id=${input.eventId}\n${peerMsg.content}`,
+          },
+        ]
+      }
+    }
+
+    this.host.store.set(KV.sessions.divisions(plan.taskId), plan)
+    return { merged: true, deduplicated: false, item: { ...item }, unblockedItems }
+  }
+
+  /**
+   * 对当前交付版本执行受控验证并签发不可伪造的 verificationCredential（不直接合并）。
+   * 若执行期间或之后交付物被重新提交导致 deliverableVersion 变更，旧凭据将自动视为过期（stale_verification）。
+   */
+  async verifyWorkItem(input: {
+    taskId: string
+    itemId: string
+    verifierDivisionId: string
+    verificationCommand: string
+    verificationArgs?: string[] | undefined
+    eventId: string
+  }): Promise<{ verified: boolean; stale?: boolean; credential?: WorkItemVerificationCredential; item: DivisionWorkItem }> {
+    const { store } = this.host
+    let runSpec: VerificationExecutionInput | undefined
+    store.atomic(() => {
+      const plan = store.get(KV.sessions.divisions(input.taskId))
+      if (!plan) throw new Error(`Task plan ${input.taskId} not found`)
+      const item = (plan.workItems ?? []).find(x => x.itemId === input.itemId)
+      if (!item) throw new Error(`Work item ${input.itemId} not found in ${input.taskId}`)
+      if (input.verifierDivisionId !== item.ownerDivisionId && input.verifierDivisionId !== '__coordinator') {
+        throw new Error(`Only owner "${item.ownerDivisionId}" (or coordinator) may verify work item "${input.itemId}"`)
+      }
+      if (item.status !== 'submitted' && item.status !== 'merge_failed' && item.status !== 'conflict') {
+        throw new Error(`Work item "${input.itemId}" must be submitted before verification (current status: ${item.status})`)
+      }
+      if (item.activeVerification && this.inFlightVerifications.has(item.activeVerification.runId)) {
+        throw new Error(`Verification already in progress for work item "${input.itemId}" (runId=${item.activeVerification.runId})`)
+      }
+      const currentVersion = item.deliverableVersion ?? workItemDeliverableVersion(item.submitEventIds.length, item.deliverable, item.summary)
+      const timestamp = now()
+      const runId = `verify:${plan.taskId}:${item.itemId}:${currentVersion}:${key(input.eventId, timestamp).slice(0, 8)}`
+      item.activeVerification = {
+        runId,
+        eventId: input.eventId,
+        deliverableVersion: currentVersion,
+        command: input.verificationCommand,
+        args: [...(input.verificationArgs ?? [])],
+        startedAt: timestamp,
+      }
+      plan.updatedAt = timestamp
+      store.set(KV.sessions.divisions(input.taskId), plan)
+      runSpec = {
+        command: input.verificationCommand,
+        args: [...(input.verificationArgs ?? [])],
+        cwd: plan.directory,
+        taskId: plan.taskId,
+        itemId: item.itemId,
+        deliverableVersion: currentVersion,
+        runId,
+      }
+    })
+
+    const res = await this.runVerification(runSpec!)
+    let result!: { verified: boolean; stale?: boolean; credential?: WorkItemVerificationCredential; item: DivisionWorkItem }
+    store.atomic(() => {
+      const plan = store.get(KV.sessions.divisions(input.taskId))
+      if (!plan) throw new Error(`Task plan ${input.taskId} not found`)
+      const item = (plan.workItems ?? []).find(x => x.itemId === input.itemId)
+      if (!item) throw new Error(`Work item ${input.itemId} not found in ${input.taskId}`)
+      if (item.activeVerification?.runId === runSpec!.runId) delete item.activeVerification
+      const timestamp = now()
+      const cmdDisplay = [runSpec!.command, ...runSpec!.args].join(' ')
+      const latestVersion = item.deliverableVersion ?? workItemDeliverableVersion(item.submitEventIds.length, item.deliverable, item.summary)
+      if (latestVersion !== runSpec!.deliverableVersion) {
+        item.verificationFailureReason = 'stale_verification'
+        item.verificationHistory = [
+          ...(item.verificationHistory ?? []).slice(-49),
+          {
+            runId: runSpec!.runId,
+            eventId: input.eventId,
+            deliverableVersion: runSpec!.deliverableVersion,
+            command: cmdDisplay,
+            status: 'stale',
+            exitCode: res.exitCode,
+            reason: 'deliverable_changed_during_verification',
+            at: timestamp,
+          },
+        ]
+        item.updatedAt = timestamp
+        plan.updatedAt = timestamp
+        store.set(KV.sessions.divisions(input.taskId), plan)
+        result = { verified: false, stale: true, item: { ...item } }
+        return
+      }
+      const credential: WorkItemVerificationCredential = {
+        runId: runSpec!.runId,
+        deliverableVersion: runSpec!.deliverableVersion,
+        command: runSpec!.command,
+        args: [...runSpec!.args],
+        exitCode: res.exitCode,
+        passed: res.exitCode === 0,
+        verifiedAt: timestamp,
+        outputExcerpt: res.output.slice(0, 4000),
+        source: 'controlled_runner',
+      }
+      item.verificationCredential = credential
+      item.verificationCommand = cmdDisplay
+      item.verificationOutput = credential.outputExcerpt
+      item.verificationStatus = credential.passed ? 'passed' : 'failed'
+      if (credential.passed) delete item.verificationFailureReason
+      else item.verificationFailureReason = 'test_failed'
+      item.verificationHistory = [
+        ...(item.verificationHistory ?? []).slice(-49),
+        {
+          runId: credential.runId,
+          eventId: input.eventId,
+          deliverableVersion: credential.deliverableVersion,
+          command: cmdDisplay,
+          status: credential.passed ? 'passed' : 'failed',
+          exitCode: credential.exitCode,
+          at: timestamp,
+        },
+      ]
+      item.updatedAt = timestamp
+      plan.updatedAt = timestamp
+      store.set(KV.sessions.divisions(input.taskId), plan)
+      result = { verified: credential.passed, credential, item: { ...item } }
+    })
+    return result
+  }
+
+  /**
+   * 原负责人检查并确认合并工作项成果（R04 强门禁版）：
+   * 1. 先在 store.atomic 内严格校验任务/工作项存在、调用者权限、状态合法性与重复 eventId；任一不满足直接拒绝且绝不拉起验证进程；
+   * 2. 代码类工作项默认 verificationMode='test_required'，禁止缺少真实验证命令/凭据或伪报通过（verificationStatus='passed'）直接解锁下游；
+   *    文档/调研类工作项显式声明 verificationMode='manual_acceptance' 后，需记录人工验收方式与说明方可合并；
+   * 3. 原子登记 activeVerification 与 runId，防止同一 eventId 并发重试或并发竞争合并重复拉起进程；
+   * 4. 经受控执行入口运行验证，完成后重新核对 deliverableVersion；若验证期间交付物发生更新则按 stale_verification 拒绝并保持下游锁定。
    */
   async mergeWorkItem(input: {
     taskId: string
     itemId: string
     mergerDivisionId: string
     mergeNote?: string | undefined
+    acceptanceNote?: string | undefined
     eventId: string
     verificationStatus?: 'passed' | 'failed' | 'conflict' | undefined
     verificationCommand?: string | undefined
@@ -1848,185 +2315,356 @@ export class DivisionCoordinator {
     verificationOutput?: string | undefined
     conflictFiles?: string[] | undefined
     runCheck?: boolean | undefined
-  }): Promise<{ merged: boolean; deduplicated: boolean; item: DivisionWorkItem; unblockedItems: string[]; blockedDependents?: string[] }> {
+  }): Promise<MergeWorkItemResult> {
     const { store } = this.host
-    let checkStatus = input.verificationStatus
-    let checkOutput = input.verificationOutput
-    let checkCmdDisplay = input.verificationCommand
-      ? [input.verificationCommand, ...(input.verificationArgs ?? [])].join(' ')
-      : undefined
+    let immediateOutcome: MergeWorkItemResult | undefined
+    let joinRunId: string | undefined
+    let runSpec: VerificationExecutionInput | undefined
+    let shouldFlushAfterImmediate = false
 
-    // 若要求在真实工作目录执行验证命令（如 node --test / pnpm test），在提交合并状态前实际运行并收集输出。
-    if (input.runCheck && input.verificationCommand) {
-      const prePlan = store.get(KV.sessions.divisions(input.taskId))
-      if (!prePlan) throw new Error(`Task plan ${input.taskId} not found`)
-      try {
-        const res = await execFileAsync(input.verificationCommand, input.verificationArgs ?? [], {
-          cwd: prePlan.directory,
-          timeout: 30_000,
-          maxBuffer: 1024 * 1024,
-        })
-        checkStatus = (input.conflictFiles?.length ? 'conflict' : 'passed')
-        checkOutput = [res.stdout, res.stderr].filter(Boolean).join('\n').trim().slice(0, 4000) || '(exit 0)'
-      } catch (error) {
-        const err = error as { stdout?: string; stderr?: string; message?: string; code?: number | string }
-        checkStatus = 'failed'
-        checkOutput = [err.stdout, err.stderr, err.message].filter(Boolean).join('\n').trim().slice(0, 4000)
-      }
-    }
-
-    let outcome!: { merged: boolean; deduplicated: boolean; item: DivisionWorkItem; unblockedItems: string[]; blockedDependents?: string[] }
+    // 第 1 阶段：在拉起任何外部进程之前，在单一原子事务内完成权限、状态、幂等、冲突、策略与并发锁校验
     store.atomic(() => {
       const plan = store.get(KV.sessions.divisions(input.taskId))
       if (!plan) throw new Error(`Task plan ${input.taskId} not found`)
       const item = (plan.workItems ?? []).find(x => x.itemId === input.itemId)
       if (!item) throw new Error(`Work item ${input.itemId} not found in ${input.taskId}`)
 
-      if (item.mergeEventIds.includes(input.eventId)) {
-        outcome = { merged: item.status === 'merged', deduplicated: true, item: { ...item }, unblockedItems: [] }
-        return
-      }
+      // 1a) 归属权校验前置：无权成员绝不触发任何外部进程
       if (input.mergerDivisionId !== item.ownerDivisionId && input.mergerDivisionId !== '__coordinator') {
         throw new Error(`Only owner "${item.ownerDivisionId}" (or coordinator) may merge work item "${input.itemId}"`)
       }
-      if (item.status !== 'submitted' && item.status !== 'merged' && item.status !== 'merge_failed' && item.status !== 'conflict') {
-        throw new Error(`Work item "${input.itemId}" must be submitted before merging (current status: ${item.status})`)
-      }
 
-      const timestamp = now()
-      const items = plan.workItems ?? []
-      const hasConflict = checkStatus === 'conflict' || (input.conflictFiles !== undefined && input.conflictFiles.length > 0)
-      const failedVerification = checkStatus === 'failed' || hasConflict
-
-      if (failedVerification) {
-        const blockedDependents = items.filter(x => x.dependsOn.includes(item.itemId)).map(x => x.itemId)
-        item.status = hasConflict ? 'conflict' : 'merge_failed'
-        item.verificationStatus = hasConflict ? 'conflict' : 'failed'
-        if (checkCmdDisplay) item.verificationCommand = checkCmdDisplay
-        if (checkOutput) item.verificationOutput = checkOutput
-        if (input.conflictFiles?.length) item.conflictFiles = [...input.conflictFiles]
-        if (input.mergeNote) item.mergeNote = input.mergeNote
-        item.mergeEventIds = [...item.mergeEventIds.slice(-99), input.eventId]
-        item.updatedAt = timestamp
-        plan.handoffAudit = [
-          ...(plan.handoffAudit ?? []).slice(-199),
-          {
-            kind: 'merge_failed',
-            actor: input.mergerDivisionId,
-            itemId: item.itemId,
-            at: timestamp,
-            detail: `${item.status}: ${input.conflictFiles?.length ? `conflicts=[${input.conflictFiles.join(',')}] ` : ''}${(checkOutput ?? input.mergeNote ?? '').slice(0, 200)}`,
-          },
-        ]
-        const noticeId = `workitem-merge-fail:${plan.taskId}:${item.itemId}:${input.eventId}`
-        const detail = [
-          `Merge blocked for work item "${item.title}" (${item.itemId}) with status=${item.status}.`,
-          input.conflictFiles?.length ? `Conflict files: ${input.conflictFiles.join(', ')}` : '',
-          checkCmdDisplay ? `Command: ${checkCmdDisplay}` : '',
-          checkOutput ? `Output: ${checkOutput.slice(0, 500)}` : '',
-          blockedDependents.length ? `Dependent items kept blocked: ${blockedDependents.join(', ')}` : '',
-        ].filter(Boolean).join('\n')
-        const targets: Array<{ kind: 'origin' | 'division'; divisionId?: string; targetSessionId: string; suffix: string }> = [
-          { kind: 'origin', targetSessionId: plan.originSessionId, suffix: 'origin' },
-        ]
-        if (item.assigneeDivisionId && item.assigneeDivisionId !== input.mergerDivisionId) {
-          const assignee = plan.divisions.find(d => d.divisionId === item.assigneeDivisionId)
-          if (assignee) {
-            targets.push({ kind: 'division', divisionId: assignee.divisionId, targetSessionId: assignee.sessionId, suffix: assignee.divisionId })
-            plan.peerMessages = [
-              ...(plan.peerMessages ?? []).slice(-199),
-              {
-                id: noticeId,
-                fromDivisionId: input.mergerDivisionId,
-                toDivisionId: assignee.divisionId,
-                kind: 'merge_failed',
-                itemId: item.itemId,
-                content: detail,
-                eventId: input.eventId,
-                at: timestamp,
-              },
-            ]
-          }
-        }
-        for (const t of targets) {
-          const id = `${noticeId}:${t.suffix}`
-          if (!(plan.deliveredNotificationIds ?? []).includes(id) && !(plan.pendingDeliveries ?? []).some(p => p.id === id)) {
-            plan.pendingDeliveries = [
-              ...(plan.pendingDeliveries ?? []),
-              {
-                id,
-                kind: t.kind,
-                ...(t.divisionId ? { divisionId: t.divisionId } : {}),
-                targetSessionId: t.targetSessionId,
-                requestId: `div-item-merge-fail:${plan.taskId}:${item.itemId}:${input.eventId}:${t.suffix}`,
-                text: `[work_item_${item.status}] task=${plan.taskId} item=${item.itemId}\n${detail}`,
-              },
-            ]
-          }
-        }
-        plan.updatedAt = timestamp
-        store.set(KV.sessions.divisions(input.taskId), plan)
-        outcome = { merged: false, deduplicated: false, item: { ...item }, unblockedItems: [], blockedDependents }
+      // 1b) 重复 eventId 重放幂等前置：已完成事件直接返回，0 次额外执行
+      if (item.mergeEventIds.includes(input.eventId)) {
+        immediateOutcome = { merged: item.status === 'merged', deduplicated: true, item: { ...item }, unblockedItems: [] }
         return
       }
 
-      const beforeOpenReady = new Set(this.listClaimableItems(plan).map(x => x.itemId))
-      item.status = 'merged'
-      item.mergedBy = input.mergerDivisionId
-      item.verificationStatus = 'passed'
-      if (checkCmdDisplay) item.verificationCommand = checkCmdDisplay
-      if (checkOutput) item.verificationOutput = checkOutput
-      delete item.conflictFiles
-      if (input.mergeNote) item.mergeNote = input.mergeNote
-      item.mergeEventIds = [...item.mergeEventIds.slice(-99), input.eventId]
-      item.updatedAt = timestamp
-      plan.handoffAudit = [
-        ...(plan.handoffAudit ?? []).slice(-199),
-        { kind: 'merged', actor: input.mergerDivisionId, itemId: item.itemId, at: timestamp, detail: checkCmdDisplay ?? input.mergeNote },
-      ]
-      plan.updatedAt = timestamp
-
-      const afterOpenReady = this.listClaimableItems(plan).map(x => x.itemId)
-      const unblockedItems = afterOpenReady.filter(id => !beforeOpenReady.has(id))
-
-      if (item.assigneeDivisionId && item.assigneeDivisionId !== input.mergerDivisionId) {
-        const assignee = plan.divisions.find(d => d.divisionId === item.assigneeDivisionId)
-        const noticeId = `workitem-merge:${plan.taskId}:${item.itemId}:${input.eventId}`
-        const peerMsg: DivisionPeerMessage = {
-          id: noticeId,
-          fromDivisionId: input.mergerDivisionId,
-          toDivisionId: item.assigneeDivisionId,
-          kind: 'merge_confirm',
-          itemId: item.itemId,
-          content: `Merged work item "${item.title}" (${item.itemId}) by ${input.mergerDivisionId}.${input.mergeNote ? ` Note: ${input.mergeNote}` : ''}`,
-          eventId: input.eventId,
-          at: timestamp,
+      // 1c) 在途并发校验前置：同 eventId 加入同一在途 promise；不同 eventId 竞争直接拒绝（0 次重复拉起）
+      if (item.activeVerification) {
+        const liveInFlight = this.inFlightVerifications.has(item.activeVerification.runId)
+        if (liveInFlight) {
+          if (item.activeVerification.eventId === input.eventId) {
+            joinRunId = item.activeVerification.runId
+            return
+          }
+          throw new Error(`Verification already in progress for work item "${input.itemId}" (runId=${item.activeVerification.runId})`)
         }
-        plan.peerMessages = [...(plan.peerMessages ?? []).slice(-199), peerMsg]
-        if (assignee && !(plan.deliveredNotificationIds ?? []).includes(noticeId) && !(plan.pendingDeliveries ?? []).some(p => p.id === noticeId)) {
-          plan.pendingDeliveries = [
-            ...(plan.pendingDeliveries ?? []),
-            {
-              id: noticeId,
-              kind: 'division',
-              divisionId: assignee.divisionId,
-              targetSessionId: assignee.sessionId,
-              requestId: `div-item-merge:${plan.taskId}:${item.itemId}:${input.eventId}`,
-              text: `[work_item_merged] task=${plan.taskId} item=${item.itemId} ("${item.title}") merged_by=${input.mergerDivisionId} event_id=${input.eventId}\n${peerMsg.content}`,
-            },
-          ]
-        }
+        // 上次进程异常中止留下的无主锁：安全清理
+        delete item.activeVerification
       }
 
+      // 1d) 状态合法性校验前置
+      if (item.status !== 'submitted' && item.status !== 'merged' && item.status !== 'merge_failed' && item.status !== 'conflict') {
+        throw new Error(`Work item "${input.itemId}" must be submitted before merging (current status: ${item.status})`)
+      }
+      if (item.status === 'merged') {
+        immediateOutcome = { merged: true, deduplicated: true, item: { ...item }, unblockedItems: [] }
+        return
+      }
+
+      const currentVersion = item.deliverableVersion ?? workItemDeliverableVersion(item.submitEventIds.length, item.deliverable, item.summary)
+      item.deliverableVersion = currentVersion
+      const mode = resolveWorkItemVerificationMode(item.kind, item.verificationMode)
+      item.verificationMode = mode
+      const timestamp = now()
+
+      // 1e) 显式冲突报告：直接置为 conflict 并阻断下游，无需浪费进程执行
+      const hasConflict = input.verificationStatus === 'conflict' || (input.conflictFiles !== undefined && input.conflictFiles.length > 0)
+      if (hasConflict) {
+        shouldFlushAfterImmediate = true
+        immediateOutcome = this.recordMergeRejectionInTx(plan, item, {
+          eventId: input.eventId,
+          mergerDivisionId: input.mergerDivisionId,
+          mergeNote: input.mergeNote,
+          status: 'conflict',
+          failureReason: 'conflict',
+          historyStatus: 'conflict',
+          runId: `conflict:${input.eventId}`,
+          deliverableVersion: currentVersion,
+          conflictFiles: input.conflictFiles,
+          output: input.verificationOutput,
+          detailMessage: `Merge conflict in files: ${(input.conflictFiles ?? []).join(', ') || 'unspecified'}`,
+        })
+        return
+      }
+
+      const cmd = input.verificationCommand?.trim()
+      const wantsRun = Boolean(cmd) && input.runCheck !== false
+
+      // 1f) 未执行受控命令时的严格凭据 / 策略门禁
+      if (!wantsRun) {
+        if (mode === 'manual_acceptance') {
+          const note = (input.acceptanceNote ?? input.mergeNote ?? '').trim()
+          if (!note) {
+            shouldFlushAfterImmediate = true
+            immediateOutcome = this.recordMergeRejectionInTx(plan, item, {
+              eventId: input.eventId,
+              mergerDivisionId: input.mergerDivisionId,
+              mergeNote: input.mergeNote,
+              status: 'merge_failed',
+              failureReason: 'missing_verification',
+              historyStatus: 'rejected',
+              runId: `manual-reject:${input.eventId}`,
+              deliverableVersion: currentVersion,
+              detailMessage: 'Manual acceptance work items require an explicit acceptanceNote or mergeNote recording how verification was performed.',
+            })
+            return
+          }
+          shouldFlushAfterImmediate = true
+          immediateOutcome = this.commitMergeSuccessInTx(plan, item, {
+            eventId: input.eventId,
+            mergerDivisionId: input.mergerDivisionId,
+            mergeNote: input.mergeNote,
+            acceptanceMethod: 'manual_acceptance',
+            acceptanceNote: note,
+          })
+          return
+        }
+
+        // test_required 模式：严禁无凭据、伪报通过或使用过期凭据解锁下游！
+        const cred = item.verificationCredential
+        const callerForgedPass = input.verificationStatus === 'passed' || (Boolean(input.verificationOutput?.trim()) && input.verificationStatus !== 'failed')
+        if (cred && cred.source === 'controlled_runner' && cred.passed) {
+          if (cred.deliverableVersion === currentVersion) {
+            // 已有当前交付版本的可信受控测试凭据 -> 直接放行合并，0 次重复执行
+            shouldFlushAfterImmediate = true
+            immediateOutcome = this.commitMergeSuccessInTx(plan, item, {
+              eventId: input.eventId,
+              mergerDivisionId: input.mergerDivisionId,
+              mergeNote: input.mergeNote,
+              acceptanceMethod: 'automated_test',
+              acceptanceNote: input.acceptanceNote ?? input.mergeNote,
+              commandDisplay: [cred.command, ...cred.args].join(' '),
+              output: cred.outputExcerpt,
+            })
+            return
+          }
+          // 旧版本通过凭据已过期（deliverableVersion 不匹配）-> 明确按 stale_verification 拒合并并阻断下游
+          shouldFlushAfterImmediate = true
+          immediateOutcome = this.recordMergeRejectionInTx(plan, item, {
+            eventId: input.eventId,
+            mergerDivisionId: input.mergerDivisionId,
+            mergeNote: input.mergeNote,
+            status: 'merge_failed',
+            failureReason: 'stale_verification',
+            historyStatus: 'stale',
+            runId: cred.runId,
+            deliverableVersion: currentVersion,
+            commandDisplay: [cred.command, ...cred.args].join(' '),
+            detailMessage: `Trusted verification credential is stale (verified ${cred.deliverableVersion}, current ${currentVersion}); re-run tests for the latest deliverable.`,
+          })
+          return
+        }
+
+        if (callerForgedPass) {
+          shouldFlushAfterImmediate = true
+          immediateOutcome = this.recordMergeRejectionInTx(plan, item, {
+            eventId: input.eventId,
+            mergerDivisionId: input.mergerDivisionId,
+            mergeNote: input.mergeNote,
+            status: 'merge_failed',
+            failureReason: 'untrusted_claim',
+            historyStatus: 'rejected',
+            runId: `untrusted:${input.eventId}`,
+            deliverableVersion: currentVersion,
+            detailMessage: 'Self-reported verification pass without a controlled runner credential for the current deliverable version is rejected.',
+          })
+          return
+        }
+
+        if (input.verificationStatus === 'failed') {
+          shouldFlushAfterImmediate = true
+          immediateOutcome = this.recordMergeRejectionInTx(plan, item, {
+            eventId: input.eventId,
+            mergerDivisionId: input.mergerDivisionId,
+            mergeNote: input.mergeNote,
+            status: 'merge_failed',
+            failureReason: 'test_failed',
+            historyStatus: 'failed',
+            runId: `reported-fail:${input.eventId}`,
+            deliverableVersion: currentVersion,
+            output: input.verificationOutput,
+            detailMessage: input.verificationOutput ?? input.mergeNote ?? 'Verification reported failed.',
+          })
+          return
+        }
+
+        // 既无命令也无当前版本可信凭据 -> missing_verification
+        shouldFlushAfterImmediate = true
+        immediateOutcome = this.recordMergeRejectionInTx(plan, item, {
+          eventId: input.eventId,
+          mergerDivisionId: input.mergerDivisionId,
+          mergeNote: input.mergeNote,
+          status: 'merge_failed',
+          failureReason: 'missing_verification',
+          historyStatus: 'rejected',
+          runId: `missing:${input.eventId}`,
+          deliverableVersion: currentVersion,
+          detailMessage: `Work item "${item.itemId}" requires automated test verification; supply verification_command to execute through the controlled runner.`,
+        })
+        return
+      }
+
+      // 1g) 通过所有前置门禁：原子登记在途验证任务 activeVerification，锁定本次 runId
+      const runId = `verify:${plan.taskId}:${item.itemId}:${currentVersion}:${key(input.eventId, timestamp).slice(0, 8)}`
+      const args = [...(input.verificationArgs ?? [])]
+      item.activeVerification = {
+        runId,
+        eventId: input.eventId,
+        deliverableVersion: currentVersion,
+        command: cmd!,
+        args,
+        startedAt: timestamp,
+      }
+      plan.updatedAt = timestamp
       store.set(KV.sessions.divisions(input.taskId), plan)
-      outcome = { merged: true, deduplicated: false, item: { ...item }, unblockedItems }
+      runSpec = {
+        command: cmd!,
+        args,
+        cwd: plan.directory,
+        taskId: plan.taskId,
+        itemId: item.itemId,
+        deliverableVersion: currentVersion,
+        runId,
+      }
     })
 
-    await this.flushDeliveries(input.taskId)
-    if (outcome.merged && outcome.unblockedItems.length > 0) {
-      await this.offerClaimableWorkItems(input.taskId, { triggerBy: input.mergerDivisionId })
+    if (immediateOutcome) {
+      if (shouldFlushAfterImmediate) {
+        await this.flushDeliveries(input.taskId)
+        if (immediateOutcome.merged && immediateOutcome.unblockedItems.length > 0) {
+          await this.offerClaimableWorkItems(input.taskId, { triggerBy: input.mergerDivisionId })
+        }
+      }
+      return immediateOutcome
     }
-    return outcome
+
+    if (joinRunId) {
+      const joined = await this.inFlightVerifications.get(joinRunId)!
+      return { ...joined, deduplicated: true }
+    }
+
+    // 第 2 & 3 阶段：经受控执行入口运行验证，并按 deliverableVersion 原子提交结果
+    const spec = runSpec!
+    const executionPromise = (async (): Promise<MergeWorkItemResult> => {
+      let res: VerificationExecutionResult
+      try {
+        res = await this.runVerification(spec)
+      } catch (error) {
+        // 清理在途锁避免死锁后向上抛错
+        store.atomic(() => {
+          const latest = store.get(KV.sessions.divisions(input.taskId))
+          const row = latest?.workItems?.find(x => x.itemId === input.itemId)
+          if (latest && row && row.activeVerification?.runId === spec.runId) {
+            delete row.activeVerification
+            latest.updatedAt = now()
+            store.set(KV.sessions.divisions(input.taskId), latest)
+          }
+        })
+        throw error
+      }
+
+      const cmdDisplay = [spec.command, ...spec.args].join(' ')
+      let committed!: MergeWorkItemResult
+      store.atomic(() => {
+        const plan = store.get(KV.sessions.divisions(input.taskId))
+        if (!plan) throw new Error(`Task plan ${input.taskId} not found`)
+        const item = (plan.workItems ?? []).find(x => x.itemId === input.itemId)
+        if (!item) throw new Error(`Work item ${input.itemId} not found in ${input.taskId}`)
+
+        if (item.activeVerification?.runId === spec.runId) delete item.activeVerification
+        const latestVersion = item.deliverableVersion ?? workItemDeliverableVersion(item.submitEventIds.length, item.deliverable, item.summary)
+
+        // 交付版本在验证运行期间已被新提交覆盖 -> 严禁按旧版本结果合并或解锁下游
+        if (latestVersion !== spec.deliverableVersion) {
+          committed = this.recordMergeRejectionInTx(plan, item, {
+            eventId: input.eventId,
+            mergerDivisionId: input.mergerDivisionId,
+            mergeNote: input.mergeNote,
+            status: 'merge_failed',
+            failureReason: 'stale_verification',
+            historyStatus: 'stale',
+            runId: spec.runId,
+            deliverableVersion: spec.deliverableVersion,
+            commandDisplay: cmdDisplay,
+            output: res.output,
+            exitCode: res.exitCode,
+            detailMessage: `Deliverable changed during verification (verified ${spec.deliverableVersion}, current ${latestVersion}); result discarded and downstream kept blocked.`,
+          })
+          return
+        }
+
+        const timestamp = now()
+        const credential: WorkItemVerificationCredential = {
+          runId: spec.runId,
+          deliverableVersion: spec.deliverableVersion,
+          command: spec.command,
+          args: [...spec.args],
+          exitCode: res.exitCode,
+          passed: res.exitCode === 0,
+          verifiedAt: timestamp,
+          outputExcerpt: res.output.slice(0, 4000),
+          source: 'controlled_runner',
+        }
+        item.verificationCredential = credential
+        item.verificationHistory = [
+          ...(item.verificationHistory ?? []).slice(-49),
+          {
+            runId: credential.runId,
+            eventId: input.eventId,
+            deliverableVersion: credential.deliverableVersion,
+            command: cmdDisplay,
+            status: credential.passed ? 'passed' : 'failed',
+            exitCode: credential.exitCode,
+            at: timestamp,
+          },
+        ]
+
+        if (!credential.passed) {
+          committed = this.recordMergeRejectionInTx(plan, item, {
+            eventId: input.eventId,
+            mergerDivisionId: input.mergerDivisionId,
+            mergeNote: input.mergeNote,
+            status: 'merge_failed',
+            failureReason: 'test_failed',
+            historyStatus: 'failed',
+            runId: credential.runId,
+            deliverableVersion: credential.deliverableVersion,
+            commandDisplay: cmdDisplay,
+            output: credential.outputExcerpt,
+            exitCode: credential.exitCode,
+            detailMessage: `Verification command exited with code ${credential.exitCode}.`,
+          })
+          return
+        }
+
+        committed = this.commitMergeSuccessInTx(plan, item, {
+          eventId: input.eventId,
+          mergerDivisionId: input.mergerDivisionId,
+          mergeNote: input.mergeNote,
+          acceptanceMethod: 'automated_test',
+          acceptanceNote: input.acceptanceNote ?? input.mergeNote,
+          commandDisplay: cmdDisplay,
+          output: credential.outputExcerpt,
+        })
+      })
+
+      await this.flushDeliveries(input.taskId)
+      if (committed.merged && committed.unblockedItems.length > 0) {
+        await this.offerClaimableWorkItems(input.taskId, { triggerBy: input.mergerDivisionId })
+      }
+      return committed
+    })()
+
+    this.inFlightVerifications.set(spec.runId, executionPromise)
+    try {
+      return await executionPromise
+    } finally {
+      if (this.inFlightVerifications.get(spec.runId) === executionPromise) {
+        this.inFlightVerifications.delete(spec.runId)
+      }
+    }
   }
 
   /**
@@ -2095,21 +2733,35 @@ export class DivisionCoordinator {
     return { reviewed: true, item: reviewedItem }
   }
 
-  /** §4.2 投机执行：先形成未发布草稿，绝不外发。 */
-  createSpeculativeDraft(input: { draftId?: string; triggerId: string; title: string; content: string }): SpeculativeDraft {
+  /** §4.2 投机执行：先形成未发布草稿（绑定稳定 deliveryKey 与真实渠道/会话目标），绝不外发；若 lowValue=true 则静默丢弃。 */
+  createSpeculativeDraft(input: {
+    draftId?: string | undefined
+    triggerId: string
+    title: string
+    content: string
+    target?: SpeculativeDraftTarget | undefined
+    lowValue?: boolean | undefined
+    discardReason?: string | undefined
+  }): SpeculativeDraft {
     const { store } = this.host
     const draftId = input.draftId?.trim() || `draft-${key(input.triggerId, input.title, input.content).slice(0, 12)}`
+    const deliveryKey = `spec-draft:${draftId}`
     let draft!: SpeculativeDraft
     store.atomic(() => {
       const existing = store.get(KV.sessions.speculativeDraft(draftId))
       if (existing) { draft = existing; return }
       const timestamp = now()
+      const resolvedTarget = input.target ?? this.resolveDraftTargetFromTrigger(input.triggerId)
       draft = {
         draftId,
         triggerId: input.triggerId,
         title: input.title,
         content: input.content,
-        status: 'draft',
+        deliveryKey,
+        ...(resolvedTarget ? { target: resolvedTarget } : {}),
+        status: input.lowValue ? 'discarded' : 'draft',
+        ...(input.lowValue ? { reason: input.discardReason ?? 'low-value silent discard', discardedAt: timestamp } : {}),
+        deliveryAttempts: 0,
         createdAt: timestamp,
         updatedAt: timestamp,
       }
@@ -2118,75 +2770,417 @@ export class DivisionCoordinator {
     return draft
   }
 
-  /** §4.2 投机执行：用户/策略确认草稿后幂等交付一次。 */
-  async confirmSpeculativeDraft(
-    draftId: string,
-    deliver: (draft: SpeculativeDraft) => Promise<string | void>,
-  ): Promise<{ delivered: boolean; deduplicated: boolean; draft: SpeculativeDraft }> {
-    const { store } = this.host
-    let current = store.get(KV.sessions.speculativeDraft(draftId))
-    if (!current) throw new Error(`Speculative draft ${draftId} not found`)
-    if (current.status === 'delivered') return { delivered: true, deduplicated: true, draft: current }
-    if (current.status === 'revoked' || current.status === 'discarded') {
-      throw new Error(`Speculative draft ${draftId} is already ${current.status} and cannot be delivered`)
+  /** 根据真实入站 triggerId 自动解析渠道 Outbox 外发目标，供实际事件/工具/面板确认后直接外发。 */
+  private resolveDraftTargetFromTrigger(triggerId: string): SpeculativeDraftTarget | undefined {
+    const trigger = this.host.store.triggers.get(triggerId)
+    if (!trigger?.channel) return undefined
+    return {
+      kind: 'outbox',
+      channel: {
+        source: trigger.channel.source,
+        thread: trigger.channel.thread,
+        address: { ...trigger.channel.address },
+      },
     }
-    store.atomic(() => {
-      const latest = store.get(KV.sessions.speculativeDraft(draftId))
-      if (!latest || latest.status !== 'draft') return
-      latest.status = 'approved'
-      latest.updatedAt = now()
-      store.set(KV.sessions.speculativeDraft(draftId), latest)
-      current = latest
-    })
-    const deliveryId = (await deliver(current)) ?? `deliver:${draftId}`
-    store.atomic(() => {
-      const latest = store.get(KV.sessions.speculativeDraft(draftId))
-      if (!latest) return
-      latest.status = 'delivered'
-      latest.deliveryId = deliveryId
-      latest.updatedAt = now()
-      store.set(KV.sessions.speculativeDraft(draftId), latest)
-      current = latest
-    })
-    return { delivered: true, deduplicated: false, draft: current }
   }
 
-  /** §4.2 投机执行：在确认交付前撤销草稿，确保零外发。 */
+  /** 检查目标投递通道（持久台账、真实 Outbox 回执、宿主会话或外部探针）是否已按 deliveryKey 发出。 */
+  private async probeDraftAlreadyDelivered(
+    draft: SpeculativeDraft,
+    probeDelivered?: ConfirmSpeculativeDraftOptions['probeDelivered'],
+  ): Promise<string | undefined> {
+    const ledger = this.host.store.get(KV.sessions.speculativeDelivery(draft.deliveryKey))
+    if (ledger && (ledger.state === 'dispatched' || ledger.state === 'acknowledged')) {
+      return ledger.externalDeliveryId ?? draft.deliveryKey
+    }
+    if (probeDelivered) {
+      const probed = await probeDelivered(draft.deliveryKey)
+      if (typeof probed === 'string' && probed.trim()) return probed.trim()
+      if (probed === true) return draft.deliveryKey
+    }
+    if (draft.target?.kind === 'outbox' && this.host.outbox) {
+      const receipt = this.host.store.receipts.get(draft.deliveryKey)
+      if (receipt && (receipt.status === 'sent' || receipt.status === 'pending')) {
+        if (receipt.status === 'pending') await this.host.outbox.sent()
+        const settled = this.host.store.receipts.get(draft.deliveryKey)
+        if (settled?.status === 'sent') return draft.deliveryKey
+      }
+    }
+    if (draft.target?.kind === 'session' && draft.target.sessionId) {
+      const targetSession = this.host.relay.route(draft.target.sessionId)
+      if (await this.host.sessions.holds(targetSession, draft.deliveryKey)) {
+        return draft.deliveryKey
+      }
+    }
+    return undefined
+  }
+
+  /** 默认宿主真实投递实现：渠道草稿经 Outbox（稳定 id=deliveryKey）外发，会话草稿经 sessions.prompt（requestId=deliveryKey）投递。 */
+  private async deliverDraftViaHost(draft: SpeculativeDraft, deliveryKey: string): Promise<string> {
+    const target = draft.target ?? this.resolveDraftTargetFromTrigger(draft.triggerId)
+    if (target?.kind === 'outbox' && target.channel && this.host.outbox) {
+      this.host.outbox.send({
+        id: deliveryKey,
+        kind: 'reply',
+        channel: target.channel,
+        text: draft.content,
+        ...(target.ticketId ? { ticketId: target.ticketId } : {}),
+      })
+      await this.host.outbox.sent()
+      const status = this.host.outbox.status(deliveryKey)
+      if (status === 'dropped') {
+        throw new Error(`Outbound delivery for speculative draft ${draft.draftId} was dropped by channel`)
+      }
+      return deliveryKey
+    }
+    const targetSession = this.host.relay.route(target?.sessionId ?? this.host.masterId)
+    if (!await this.host.sessions.holds(targetSession, deliveryKey)) {
+      await this.host.sessions.prompt(targetSession, deliveryKey, `[speculative_draft_confirmed] draft=${draft.draftId} title="${draft.title}"\n${draft.content}`, 'queue')
+    }
+    return deliveryKey
+  }
+
+  /**
+   * §4.2 投机执行：原子认领 + 稳定投递键 + 并发合流 + 发送/撤销明确边界 + 崩溃重启无重复恢复。
+   * - 第二个并发确认看到 status='delivering' 时直接合流到同一个在途 promise，绝不二次调用投递回调；
+   * - 发送边界一旦进入 delivering，撤销/丢弃将被 DraftBoundaryError 拒绝，杜绝“既撤销又已发送”的矛盾状态；
+   * - 若进程在外部发送完成之后、写回 KV 状态之前崩溃，重启后调用 recoverSpeculativeDrafts 或再次确认会先探测发件记录并直接收口为 delivered（0 次重发）。
+   */
+  async confirmSpeculativeDraft(
+    draftId: string,
+    deliverOrOptions?: ((draft: SpeculativeDraft, deliveryKey: string) => Promise<string | void>) | ConfirmSpeculativeDraftOptions,
+    maybeOptions?: ConfirmSpeculativeDraftOptions,
+  ): Promise<ConfirmSpeculativeDraftResult> {
+    const deliverFn = typeof deliverOrOptions === 'function' ? deliverOrOptions : undefined
+    const options: ConfirmSpeculativeDraftOptions = (typeof deliverOrOptions === 'function' ? maybeOptions : deliverOrOptions) ?? {}
+    const { store } = this.host
+
+    let immediate: ConfirmSpeculativeDraftResult | undefined
+    let joinInFlight = false
+    let needsCrashRecovery: SpeculativeDraft | undefined
+    let claimedDraft: SpeculativeDraft | undefined
+    let claimToken: string | undefined
+
+    store.atomic(() => {
+      const latest = store.get(KV.sessions.speculativeDraft(draftId))
+      if (!latest) throw new DraftNotFoundError(`Speculative draft ${draftId} not found`)
+      if (!latest.deliveryKey) latest.deliveryKey = `spec-draft:${latest.draftId}`
+
+      if (latest.status === 'delivered') {
+        immediate = { delivered: true, deduplicated: true, draft: { ...latest } }
+        return
+      }
+      if (latest.status === 'revoked' || latest.status === 'discarded') {
+        throw new DraftBoundaryError(`Speculative draft ${draftId} is already ${latest.status} and cannot be delivered`)
+      }
+      if (latest.status === 'delivering') {
+        if (this.inFlightDraftDeliveries.has(draftId)) {
+          joinInFlight = true
+          return
+        }
+        // 无本地在途 promise 但持久化状态为 delivering -> 属于上次进程中途崩溃遗留，进入重启恢复探测分支
+        needsCrashRecovery = { ...latest }
+        return
+      }
+      if (latest.status === 'delivery_failed' && (latest.deliveryAttempts ?? 0) > 0) {
+        // 先前尝试中断或重启恢复标为 delivery_failed：重试外发前必须先探测稳定 deliveryKey 是否已实际送达，杜绝重复发送
+        needsCrashRecovery = { ...latest }
+        return
+      }
+
+      const timestamp = now()
+      const attempts = (latest.deliveryAttempts ?? 0) + 1
+      claimToken = `claim:${draftId}:a${attempts}:${key(timestamp, String(attempts), draftId).slice(0, 8)}`
+      latest.status = 'delivering'
+      latest.claimToken = claimToken
+      latest.deliveryAttempts = attempts
+      if (options.confirmedBy) latest.confirmedBy = options.confirmedBy
+      delete latest.lastError
+      latest.updatedAt = timestamp
+      store.set(KV.sessions.speculativeDraft(draftId), latest)
+      const deliveryRec: SpeculativeDraftDeliveryRecord = {
+        deliveryKey: latest.deliveryKey,
+        draftId: latest.draftId,
+        claimToken,
+        state: 'claimed',
+        updatedAt: timestamp,
+      }
+      store.set(KV.sessions.speculativeDelivery(latest.deliveryKey), deliveryRec)
+      claimedDraft = { ...latest }
+    })
+
+    if (immediate) return immediate
+
+    if (joinInFlight) {
+      const shared = this.inFlightDraftDeliveries.get(draftId)
+      if (shared) {
+        const result = await shared
+        return { delivered: result.delivered, deduplicated: true, draft: result.draft }
+      }
+    }
+
+    // 重启恢复分支：先探测外部通道/持久台账是否已按稳定 deliveryKey 发出，避免发完崩溃重启后重复发送
+    if (needsCrashRecovery) {
+      const recoveredId = await this.probeDraftAlreadyDelivered(needsCrashRecovery, options.probeDelivered)
+      if (recoveredId) {
+        let reconciled!: SpeculativeDraft
+        store.atomic(() => {
+          const latest = store.get(KV.sessions.speculativeDraft(draftId))
+          if (!latest) throw new DraftNotFoundError(`Speculative draft ${draftId} not found`)
+          const timestamp = now()
+          latest.status = 'delivered'
+          latest.deliveryId = recoveredId
+          latest.confirmedAt = latest.confirmedAt ?? timestamp
+          delete latest.claimToken
+          delete latest.lastError
+          latest.updatedAt = timestamp
+          store.set(KV.sessions.speculativeDraft(draftId), latest)
+          store.set(KV.sessions.speculativeDelivery(latest.deliveryKey), {
+            deliveryKey: latest.deliveryKey,
+            draftId: latest.draftId,
+            claimToken: latest.claimToken ?? 'recovered',
+            state: 'acknowledged',
+            externalDeliveryId: recoveredId,
+            updatedAt: timestamp,
+          })
+          reconciled = { ...latest }
+        })
+        return { delivered: true, deduplicated: true, draft: reconciled }
+      }
+      // 外部确认尚未发出：复用同一稳定 deliveryKey 原子重新认领再投递
+      store.atomic(() => {
+        const latest = store.get(KV.sessions.speculativeDraft(draftId))
+        if (!latest) throw new DraftNotFoundError(`Speculative draft ${draftId} not found`)
+        if (latest.status === 'delivered') {
+          immediate = { delivered: true, deduplicated: true, draft: { ...latest } }
+          return
+        }
+        const timestamp = now()
+        const attempts = (latest.deliveryAttempts ?? 0) + 1
+        claimToken = `claim:${draftId}:a${attempts}:${key(timestamp, String(attempts), draftId).slice(0, 8)}`
+        latest.status = 'delivering'
+        latest.claimToken = claimToken
+        latest.deliveryAttempts = attempts
+        latest.updatedAt = timestamp
+        store.set(KV.sessions.speculativeDraft(draftId), latest)
+        store.set(KV.sessions.speculativeDelivery(latest.deliveryKey), {
+          deliveryKey: latest.deliveryKey,
+          draftId: latest.draftId,
+          claimToken,
+          state: 'claimed',
+          updatedAt: timestamp,
+        })
+        claimedDraft = { ...latest }
+      })
+      if (immediate) return immediate
+    }
+
+    const activeDraft = claimedDraft!
+    const activeToken = claimToken!
+    const deliveryPromise = (async (): Promise<ConfirmSpeculativeDraftResult> => {
+      let deliveryId: string
+      let dispatchedExternally = false
+      try {
+        const out = deliverFn
+          ? await deliverFn(activeDraft, activeDraft.deliveryKey)
+          : await this.deliverDraftViaHost(activeDraft, activeDraft.deliveryKey)
+        deliveryId = out ?? activeDraft.deliveryKey
+        dispatchedExternally = true
+        if (options.beforeCommit) {
+          await options.beforeCommit(activeDraft, deliveryId)
+        }
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error)
+        // 若异常发生在外部发送完成后的 beforeCommit（模拟发完未写回即崩），保留 delivering 状态待重启恢复探测
+        if (!dispatchedExternally) {
+          store.atomic(() => {
+            const latest = store.get(KV.sessions.speculativeDraft(draftId))
+            if (!latest || latest.claimToken !== activeToken || latest.status !== 'delivering') return
+            const timestamp = now()
+            latest.status = 'delivery_failed'
+            latest.lastError = reason
+            delete latest.claimToken
+            latest.updatedAt = timestamp
+            store.set(KV.sessions.speculativeDraft(draftId), latest)
+            store.set(KV.sessions.speculativeDelivery(latest.deliveryKey), {
+              deliveryKey: latest.deliveryKey,
+              draftId: latest.draftId,
+              claimToken: activeToken,
+              state: 'failed',
+              error: reason,
+              updatedAt: timestamp,
+            })
+          })
+        }
+        throw error
+      }
+
+      let finalized!: SpeculativeDraft
+      store.atomic(() => {
+        const latest = store.get(KV.sessions.speculativeDraft(draftId))
+        if (!latest) throw new DraftNotFoundError(`Speculative draft ${draftId} not found`)
+        const timestamp = now()
+        latest.status = 'delivered'
+        latest.deliveryId = deliveryId
+        latest.confirmedAt = timestamp
+        delete latest.claimToken
+        delete latest.lastError
+        latest.updatedAt = timestamp
+        store.set(KV.sessions.speculativeDraft(draftId), latest)
+        store.set(KV.sessions.speculativeDelivery(latest.deliveryKey), {
+          deliveryKey: latest.deliveryKey,
+          draftId: latest.draftId,
+          claimToken: activeToken,
+          state: 'acknowledged',
+          externalDeliveryId: deliveryId,
+          updatedAt: timestamp,
+        })
+        finalized = { ...latest }
+      })
+      return { delivered: true, deduplicated: false, draft: finalized }
+    })()
+
+    this.inFlightDraftDeliveries.set(draftId, deliveryPromise)
+    try {
+      return await deliveryPromise
+    } finally {
+      if (this.inFlightDraftDeliveries.get(draftId) === deliveryPromise) {
+        this.inFlightDraftDeliveries.delete(draftId)
+      }
+    }
+  }
+
+  /**
+   * §4.2 投机执行：在进入发送边界之前撤销草稿，确保零外发。
+   * 若草稿已原子认领进入 delivering 或已 delivered，直接抛出 DraftBoundaryError，保证发送与撤销绝无矛盾状态。
+   */
   revokeSpeculativeDraft(draftId: string, reason = 'revoked before confirmation'): SpeculativeDraft {
     const { store } = this.host
     let updated!: SpeculativeDraft
     store.atomic(() => {
       const draft = store.get(KV.sessions.speculativeDraft(draftId))
-      if (!draft) throw new Error(`Speculative draft ${draftId} not found`)
-      if (draft.status === 'delivered') throw new Error(`Speculative draft ${draftId} was already delivered`)
+      if (!draft) throw new DraftNotFoundError(`Speculative draft ${draftId} not found`)
+      if (draft.status === 'delivered') {
+        throw new DraftBoundaryError(`Speculative draft ${draftId} was already delivered and cannot be revoked`)
+      }
+      if (draft.status === 'delivering') {
+        throw new DraftBoundaryError(`Speculative draft ${draftId} is currently delivering (deliveryKey=${draft.deliveryKey}) and cannot be revoked after send boundary`)
+      }
+      if (draft.status === 'revoked') {
+        updated = { ...draft }
+        return
+      }
+      if (draft.status === 'discarded') {
+        throw new DraftBoundaryError(`Speculative draft ${draftId} was already discarded`)
+      }
+      const timestamp = now()
       draft.status = 'revoked'
       draft.reason = reason
-      draft.updatedAt = now()
+      draft.revokedAt = timestamp
+      draft.updatedAt = timestamp
       store.set(KV.sessions.speculativeDraft(draftId), draft)
-      updated = draft
+      updated = { ...draft }
     })
     return updated
   }
 
-  /** §4.2 投机执行：无价值候选静默丢弃，零打扰零外发。 */
+  /** §4.2 投机执行：无价值候选静默丢弃，零打扰零外发（同样遵守发送边界约束）。 */
   discardSpeculativeDraft(draftId: string, reason = 'low-value silent discard'): SpeculativeDraft {
     const { store } = this.host
     let updated!: SpeculativeDraft
     store.atomic(() => {
       const draft = store.get(KV.sessions.speculativeDraft(draftId))
-      if (!draft) throw new Error(`Speculative draft ${draftId} not found`)
-      if (draft.status === 'delivered') throw new Error(`Speculative draft ${draftId} was already delivered`)
+      if (!draft) throw new DraftNotFoundError(`Speculative draft ${draftId} not found`)
+      if (draft.status === 'delivered') {
+        throw new DraftBoundaryError(`Speculative draft ${draftId} was already delivered and cannot be discarded`)
+      }
+      if (draft.status === 'delivering') {
+        throw new DraftBoundaryError(`Speculative draft ${draftId} is currently delivering (deliveryKey=${draft.deliveryKey}) and cannot be discarded after send boundary`)
+      }
+      if (draft.status === 'discarded') {
+        updated = { ...draft }
+        return
+      }
+      if (draft.status === 'revoked') {
+        throw new DraftBoundaryError(`Speculative draft ${draftId} was already revoked`)
+      }
+      const timestamp = now()
       draft.status = 'discarded'
       draft.reason = reason
-      draft.updatedAt = now()
+      draft.discardedAt = timestamp
+      draft.updatedAt = timestamp
       store.set(KV.sessions.speculativeDraft(draftId), draft)
-      updated = draft
+      updated = { ...draft }
     })
     return updated
   }
 
   getSpeculativeDraft(draftId: string): SpeculativeDraft | undefined {
     return this.host.store.get(KV.sessions.speculativeDraft(draftId))
+  }
+
+  listSpeculativeDrafts(status?: SpeculativeDraft['status']): SpeculativeDraft[] {
+    const all = this.host.store.keys(KV.sessions.speculativeDraft)
+      .map(name => this.host.store.get(name))
+      .filter((d): d is SpeculativeDraft => d !== undefined)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    return status ? all.filter(d => d.status === status) : all
+  }
+
+  /**
+   * 重启恢复：扫描所有遗留在 delivering 状态的草稿，通过发件台账 / Outbox / 会话 / 外部探针核实是否已实际发出：
+   * - 已发出：直接收口为 delivered（0 次重发）；
+   * - 未发出：转为 delivery_failed 以便安全重试或撤销。
+   */
+  async recoverSpeculativeDrafts(
+    probeDelivered?: ConfirmSpeculativeDraftOptions['probeDelivered'],
+  ): Promise<{ reconciledDelivered: string[]; markedFailed: string[] }> {
+    const reconciledDelivered: string[] = []
+    const markedFailed: string[] = []
+    const delivering = this.listSpeculativeDrafts('delivering')
+    for (const draft of delivering) {
+      if (this.inFlightDraftDeliveries.has(draft.draftId)) continue
+      const existingDeliveryId = await this.probeDraftAlreadyDelivered(draft, probeDelivered)
+      this.host.store.atomic(() => {
+        const latest = this.host.store.get(KV.sessions.speculativeDraft(draft.draftId))
+        if (!latest || latest.status !== 'delivering') return
+        const timestamp = now()
+        if (existingDeliveryId) {
+          latest.status = 'delivered'
+          latest.deliveryId = existingDeliveryId
+          latest.confirmedAt = latest.confirmedAt ?? timestamp
+          delete latest.claimToken
+          delete latest.lastError
+          latest.updatedAt = timestamp
+          this.host.store.set(KV.sessions.speculativeDraft(draft.draftId), latest)
+          this.host.store.set(KV.sessions.speculativeDelivery(latest.deliveryKey), {
+            deliveryKey: latest.deliveryKey,
+            draftId: latest.draftId,
+            claimToken: latest.claimToken ?? 'recovered',
+            state: 'acknowledged',
+            externalDeliveryId: existingDeliveryId,
+            updatedAt: timestamp,
+          })
+          reconciledDelivered.push(draft.draftId)
+        } else {
+          latest.status = 'delivery_failed'
+          latest.lastError = 'interrupted before delivery completed'
+          delete latest.claimToken
+          latest.updatedAt = timestamp
+          this.host.store.set(KV.sessions.speculativeDraft(draft.draftId), latest)
+          this.host.store.set(KV.sessions.speculativeDelivery(latest.deliveryKey), {
+            deliveryKey: latest.deliveryKey,
+            draftId: latest.draftId,
+            claimToken: 'recovered',
+            state: 'failed',
+            error: latest.lastError,
+            updatedAt: timestamp,
+          })
+          markedFailed.push(draft.draftId)
+        }
+      })
+    }
+    return { reconciledDelivered, markedFailed }
   }
 
   /**
@@ -2388,6 +3382,8 @@ export class DivisionCoordinator {
               item_id: z.string().min(1).max(80),
               title: z.string().min(1).max(200),
               brief: z.string().min(1).max(4000),
+              kind: z.enum(['code', 'docs', 'research', 'config', 'other']).optional(),
+              verification_mode: z.enum(['test_required', 'manual_acceptance']).optional(),
               depends_on: z.array(z.string().min(1)).optional(),
             }).strict()).min(1).max(50),
           }).strict(),
@@ -2395,7 +3391,14 @@ export class DivisionCoordinator {
             const workItems = coordinator.publishWorkItems({
               taskId,
               ownerDivisionId: divisionId,
-              items: args.items.map(i => ({ itemId: i.item_id, title: i.title, brief: i.brief, dependsOn: i.depends_on })),
+              items: args.items.map(i => ({
+                itemId: i.item_id,
+                title: i.title,
+                brief: i.brief,
+                kind: i.kind,
+                verificationMode: i.verification_mode,
+                dependsOn: i.depends_on,
+              })),
             })
             const { offered } = await coordinator.offerClaimableWorkItems(taskId, { triggerBy: divisionId })
             return { workItems, offered }
@@ -2435,10 +3438,11 @@ export class DivisionCoordinator {
         }),
         tool({
           name: 'orchestrator_division_merge_item',
-          description: 'Confirm and merge a submitted work item deliverable owned by your division with optional test/conflict verification gate (idempotent by event_id).',
+          description: 'Confirm and merge a submitted work item deliverable owned by your division with mandatory controlled test verification for code items (or recorded manual acceptance for docs/research items, idempotent by event_id).',
           schema: z.object({
             item_id: z.string().min(1).max(80),
             merge_note: z.string().max(4000).optional(),
+            acceptance_note: z.string().max(4000).optional(),
             verification_status: z.enum(['passed', 'failed', 'conflict']).optional(),
             verification_command: z.string().max(500).optional(),
             verification_args: z.array(z.string().max(500)).max(30).optional(),
@@ -2452,6 +3456,7 @@ export class DivisionCoordinator {
             itemId: args.item_id,
             mergerDivisionId: divisionId,
             mergeNote: args.merge_note,
+            acceptanceNote: args.acceptance_note,
             verificationStatus: args.verification_status,
             verificationCommand: args.verification_command,
             verificationArgs: args.verification_args,

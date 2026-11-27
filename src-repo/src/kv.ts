@@ -154,10 +154,59 @@ export interface DeferredDivisionRecord {
 /** 同一任务内可由空闲或等待依赖成员主动领取、独立完成并交回原负责人合并的工作项（R04 动态补位）。 */
 export type WorkItemStatus = 'open' | 'claimed' | 'submitted' | 'merged' | 'merge_failed' | 'conflict' | 'failed'
 
+export type WorkItemKind = 'code' | 'docs' | 'research' | 'config' | 'other'
+export type WorkItemVerificationMode = 'test_required' | 'manual_acceptance'
+export type WorkItemVerificationFailureReason =
+  | 'missing_verification'
+  | 'untrusted_claim'
+  | 'test_failed'
+  | 'stale_verification'
+  | 'conflict'
+  | 'concurrent_in_flight'
+
+/** 受控验证执行器签发的不可伪造工作项验证凭据，严格绑定交付版本与运行 ID。 */
+export interface WorkItemVerificationCredential {
+  runId: string
+  deliverableVersion: string
+  command: string
+  args: string[]
+  exitCode: number
+  passed: boolean
+  verifiedAt: string
+  outputExcerpt: string
+  source: 'controlled_runner'
+}
+
+export interface WorkItemActiveVerification {
+  runId: string
+  eventId: string
+  deliverableVersion: string
+  command: string
+  args: string[]
+  startedAt: string
+}
+
+export interface WorkItemVerificationHistoryEntry {
+  runId: string
+  eventId: string
+  deliverableVersion: string
+  command?: string | undefined
+  status: 'passed' | 'failed' | 'stale' | 'conflict' | 'rejected'
+  exitCode?: number | undefined
+  reason?: string | undefined
+  at: string
+}
+
 export interface DivisionWorkItem {
   itemId: string
   title: string
   brief: string
+  /** 工作项类别（默认 code）；文档/调研类可采用人工验收并记录方式，代码类默认必须提供当前版本真实验证凭据。 */
+  kind?: WorkItemKind | undefined
+  /** 合并验证要求：test_required 要求受控运行器签发当前版本通过凭据；manual_acceptance 允许人工验收并留存方式与说明。 */
+  verificationMode?: WorkItemVerificationMode | undefined
+  /** 当前成果交付版本指纹：每次 submitWorkItem 提交新产物自动递进，用于防止旧版本测试凭据解锁新改动。 */
+  deliverableVersion?: string | undefined
   /** 原负责人分工 ID（负责验收与合并成果）。 */
   ownerDivisionId: string
   /** 当前实际领取执行该项的分工 ID（空闲或等待依赖成员补位）。 */
@@ -170,10 +219,17 @@ export interface DivisionWorkItem {
   contributors: string[]
   mergedBy?: string | undefined
   mergeNote?: string | undefined
-  /** 合并验证门禁状态、执行命令、真实输出及冲突文件列表（避免测试失败或冲突时提前解锁依赖）。 */
+  /** 验收方式与说明（automated_test / manual_acceptance）。 */
+  acceptanceMethod?: 'automated_test' | 'manual_acceptance' | undefined
+  acceptanceNote?: string | undefined
+  /** 合并验证门禁状态、执行命令、真实输出、在途任务、可信凭据、失败归因与历史记录。 */
   verificationStatus?: 'passed' | 'failed' | 'conflict' | undefined
+  verificationFailureReason?: WorkItemVerificationFailureReason | undefined
   verificationCommand?: string | undefined
   verificationOutput?: string | undefined
+  activeVerification?: WorkItemActiveVerification | undefined
+  verificationCredential?: WorkItemVerificationCredential | undefined
+  verificationHistory?: WorkItemVerificationHistoryEntry[] | undefined
   conflictFiles?: string[] | undefined
   /** 空闲成员补位通知与超时回退记录（防止无人应答时无限等待）。 */
   offeredTo?: string[] | undefined
@@ -213,15 +269,45 @@ export interface DivisionHandoffAudit {
   detail?: string | undefined
 }
 
-/** §4.2 投机执行草稿：先形成未发布草稿，确认后交付一次，撤销或无价值时零外发静默丢弃。 */
+/** §4.2 投机草稿实际外发目标（渠道 Outbox 或 DSH 会话）。 */
+export interface SpeculativeDraftTarget {
+  kind: 'outbox' | 'session'
+  channel?: { source: string; thread: string; address: Record<string, string> } | undefined
+  ticketId?: string | undefined
+  sessionId?: string | undefined
+}
+
+/** §4.2 投机草稿可恢复发件台账（按稳定 deliveryKey 索引，确保并发双确认与崩溃重启后绝不重复发送）。 */
+export interface SpeculativeDraftDeliveryRecord {
+  deliveryKey: string
+  draftId: string
+  claimToken: string
+  state: 'claimed' | 'dispatched' | 'acknowledged' | 'failed'
+  externalDeliveryId?: string | undefined
+  error?: string | undefined
+  updatedAt: string
+}
+
+/** §4.2 投机执行草稿：先形成未发布草稿，原子认领后按稳定投递键交付一次，撤销或无价值时零外发静默丢弃。 */
 export interface SpeculativeDraft {
   draftId: string
   triggerId: string
   title: string
   content: string
-  status: 'draft' | 'approved' | 'delivered' | 'revoked' | 'discarded'
+  /** 稳定幂等投递键，创建时确定，跨重试与重启保持不变。 */
+  deliveryKey: string
+  /** 绑定的真实渠道 Outbox 或会话目标，供真实事件/工具/HTTP 入口直接外发。 */
+  target?: SpeculativeDraftTarget | undefined
+  status: 'draft' | 'delivering' | 'delivered' | 'delivery_failed' | 'revoked' | 'discarded'
+  claimToken?: string | undefined
+  deliveryAttempts?: number | undefined
   reason?: string | undefined
   deliveryId?: string | undefined
+  confirmedBy?: string | undefined
+  confirmedAt?: string | undefined
+  revokedAt?: string | undefined
+  discardedAt?: string | undefined
+  lastError?: string | undefined
   createdAt: string
   updatedAt: string
 }
@@ -338,8 +424,10 @@ export const KV = {
     divisions: family<TaskPlan, [taskId: string]>('task-divisions:'),
     /** 反向索引：把独立分工会话 ID 映射到所属任务和分工 ID。 */
     divisionOwner: family<{ taskId: string; divisionId: string }, [session: string]>('division-owner:'),
-    /** §4.2 投机执行草稿记录：未发布草稿 → 确认交付 / 撤销 / 无价值静默丢弃。 */
-    speculativeDraft: family<SpeculativeDraft, [draftId: string]>('speculative-draft:') },
+    /** §4.2 投机执行草稿记录：未发布草稿 → 原子认领交付 / 撤销 / 无价值静默丢弃。 */
+    speculativeDraft: family<SpeculativeDraft, [draftId: string]>('speculative-draft:'),
+    /** §4.2 投机执行草稿发件台账（按稳定 deliveryKey 索引，支持崩溃与重启后的幂等恢复）。 */
+    speculativeDelivery: family<SpeculativeDraftDeliveryRecord, [deliveryKey: string]>('speculative-delivery:') },
   /** Schema 11 migration: legacy main-Session queues imported into the effect table. */
   queues: { relays: record<{ id: string; text: string }[]>('relay-queue'), unsubscribed: record<string[]>('subscription-results'),
     prompts: record<number | null>('prompt-notification'), settings: record<number | null>('settings-notification') },

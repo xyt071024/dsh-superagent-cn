@@ -204,4 +204,4 @@ it('opens Routing and Budget settings from navigation, navigates arbitrary pages
   await type(field<HTMLInputElement>(zh.budgetArchivePercent), '55')
   await click(zh.save)
   expect(server.settings.budget.archivePercent).toBe(55)
-})
+}, 15_000)

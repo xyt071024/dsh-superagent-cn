@@ -199,6 +199,8 @@ export function TicketPage({ id }: { id: string }) {
                 <span>{t('divisionsWorkItemOwner', { owner: item.ownerDivisionId })}</span>
                 {item.assigneeDivisionId && <span>{t('divisionsWorkItemAssignee', { assignee: item.assigneeDivisionId })}</span>}
                 {item.mergedBy && <span>{t('divisionsWorkItemMergedBy', { merger: item.mergedBy })}</span>}
+                {item.acceptanceMethod && <span>via: {item.acceptanceMethod}</span>}
+                {item.verificationFailureReason && <span>reason: {item.verificationFailureReason}</span>}
                 {item.reviewedBy && <span>review: {item.reviewedBy} ({item.reviewState ?? 'pending'})</span>}
               </div>
               {item.summary && <Hint>{item.summary}</Hint>}

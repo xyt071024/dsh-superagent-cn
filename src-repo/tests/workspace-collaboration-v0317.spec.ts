@@ -377,10 +377,18 @@ describe('v0.3.17 项 5：动态补位、工作项原子领取/提交/合并、�
       expect(subDup.deduplicated).toBe(true)
 
       await h.runTool(devSession, 'orchestrator_division_merge_item', {
-        item_id: 'dev-part-a', merge_note: 'A 合并通过', event_id: 'merge-a-1',
+        item_id: 'dev-part-a',
+        verification_command: process.execPath,
+        verification_args: ['-e', 'process.exit(0)'],
+        merge_note: 'A 合并通过',
+        event_id: 'merge-a-1',
       })
       const mergedB = await h.runTool(devSession, 'orchestrator_division_merge_item', {
-        item_id: 'dev-part-b', merge_note: 'B 已验收并与 A 合并测试通过', event_id: 'merge-b-1',
+        item_id: 'dev-part-b',
+        verification_command: process.execPath,
+        verification_args: ['-e', 'process.exit(0)'],
+        merge_note: 'B 已验收并与 A 合并测试通过',
+        event_id: 'merge-b-1',
       }) as { merged: boolean; unblockedItems: string[] }
       expect(mergedB.merged).toBe(true)
       // 合并后自动解锁依赖二者的 test-case-1
@@ -407,7 +415,11 @@ describe('v0.3.17 项 5：动态补位、工作项原子领取/提交/合并、�
         item_id: 'test-case-1', summary: '边界单测已补充', deliverable: 'tests/edge.spec.ts', event_id: 'sub-t1',
       })
       await h.runTool(testSession, 'orchestrator_division_merge_item', {
-        item_id: 'test-case-1', merge_note: '已合入测试套', event_id: 'merge-t1',
+        item_id: 'test-case-1',
+        verification_command: process.execPath,
+        verification_args: ['-e', 'process.exit(0)'],
+        merge_note: '已合入测试套',
+        event_id: 'merge-t1',
       })
 
       // 4. 独立复核回避验证：review_prep 参与编写了 dev-part-b，可审查 dev-part-a，但不得独自作为 dev-part-b 最终复核者

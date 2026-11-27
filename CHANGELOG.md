@@ -8,6 +8,29 @@
 
 ## [Unreleased]
 
+## [0.3.19] - 2026-11-27
+
+本版针对 2026-11-27 `v0.3.18` 桌面独立复验指出的四项关键架构问题完成全面加固与真实入口接通：
+
+### 新增与修复
+
+1. **合并验证门禁前置原子化与受控执行入口（高优 1）**
+   - `src/app/divisions.ts` `mergeWorkItem` 将归属权限、工作项状态、重复 `event_id` 幂等判断与 `activeVerification` 并发在途锁全部前置至单一 `store.atomic` 事务内，在拉起任何外部进程之前完成拦截；无权、非法状态与重放请求均保证 **0 次额外执行**，同 `event_id` 并发重试自动合流，异 `event_id` 并发竞争直接拒绝。
+   - `src/infra/commands.ts` 新增统一受控执行入口 `Commands.runChecked()`（沿用 Windows `.cmd` 解析、环境隔离、生命周期 `AbortSignal` 与超时/输出上限），并支持注入计数型测试替身。
+   - `submitWorkItem` 每次提交递进 `deliverableVersion`，验证结果按版本原子提交，验证期间产物变更自动按 `stale_verification` 拒绝，绝不提前解锁下游。
+
+2. **强制可信验证凭据五态与文档人工验收（高优 2）**
+   - `DivisionWorkItem` 新增 `kind`（默认 `code`）与 `verificationMode`（代码类默认 `test_required`，文档/调研类可采用 `manual_acceptance` 并强制记录 `acceptanceMethod` 与 `acceptanceNote`）。
+   - 仅受控运行器为当前 `deliverableVersion` 签发的 `verificationCredential`（`source: 'controlled_runner'`）可解锁下游依赖，覆盖并实测**缺结果**、**伪报通过**、**测试失败**、**结果过期**与**通过**五态。
+
+3. **投机草稿并发认领、发送/撤销边界与崩溃重启零重发（高优 3）**
+   - `SpeculativeDraft` 创建即绑定不可变稳定投递键 `deliveryKey = spec-draft:<draftId>`，确认时在 `store.atomic` 原子认领进入 `delivering` 并写入持久台账 `KV.sessions.speculativeDelivery(deliveryKey)`；并发双确认合流至同一在途 Promise，仅发送 1 次。
+   - 发送与撤销建立严格互斥边界：进入 `delivering` 或 `delivered` 后撤销/丢弃均抛 `DraftBoundaryError`（HTTP 409），杜绝矛盾状态。
+   - `recoverSpeculativeDrafts()` 与重试前探测自动核对持久台账、真实 `Outbox` 回执、`sessions.holds` 或外部探针，崩溃重启后零重发收口。
+
+4. **§4.2 投机草稿接通真实事件、主会话工具、HTTP API、Outbox 与管理面板（问题 4）**
+   - 注册主会话统一工具 `orchestrator_draft`（`op: create | confirm | revoke | discard | list`），按真实入站 `Trigger` 绑定渠道 `Outbox` 目标；新增管理 HTTP 端点 `GET /orchestrator/api/drafts` 与 `POST /orchestrator/api/drafts/:id/{confirm,revoke,discard}`，并在概览面板 `OverviewPage` 提供待确认草稿列表与确认/撤销/静默丢弃交互按钮。
+
 ## [0.3.18] - 2026-11-27
 
 本版根据 2026-11-27 Linux 复测报告补充（问题 I / G1 / G2 / H / M / N / K）及设计对照三大优先项与 §4.2 投机执行闭环要求完成全面升级与跨平台 CI 加固。

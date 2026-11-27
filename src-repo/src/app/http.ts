@@ -26,7 +26,7 @@ import { policyHistory } from './settings-history.ts'
 import { inspect, hygiene } from './self-inspect.ts'
 import { probeSource } from './source-probe.ts'
 import { checkForUpdate, currentVersion } from './update-check.ts'
-import type { DivisionCoordinator } from './divisions.ts'
+import { DraftBoundaryError, DraftNotFoundError, type DivisionCoordinator } from './divisions.ts'
 import type { VersionTracker } from './version-info.ts'
 import { KV } from '../kv.ts'
 import { overview } from './views/overview.ts'
@@ -96,7 +96,8 @@ function failure(error: unknown): [number, Record<string, unknown>] {
   if (error instanceof SetupError) return [400, { error: error.message, setup: error.problem }]
   if (error instanceof RouteError) return [error.status, { error: error.message }]
   if (error instanceof UserError) return [error.missing ? 404 : 400, { error: error.message, code: error.code, values: error.values }]
-  if (error instanceof SettingsConflict || error instanceof PromptConflict) return [409, { error: error.message }]
+  if (error instanceof SettingsConflict || error instanceof PromptConflict || error instanceof DraftBoundaryError) return [409, { error: error.message }]
+  if (error instanceof DraftNotFoundError) return [404, { error: error.message }]
   return [500, { error: error instanceof Error ? error.message : String(error) }]
 }
 
@@ -178,6 +179,24 @@ function routes(runtime: HttpHost): Routes {
       return { inspection: inspect(store.settings(), runtime.sources, runtime.health, store, 7, version), hygiene: hygiene(store), ...(version ? { version } : {}) }
     },
     'GET divisions': () => ({ plans: runtime.divisions?.list() ?? [] }),
+    'GET drafts': ({ query }) => {
+      const status = z.enum(['draft', 'delivering', 'delivered', 'delivery_failed', 'revoked', 'discarded']).optional().parse(query.status || undefined)
+      return { drafts: runtime.divisions?.listSpeculativeDrafts(status) ?? [] }
+    },
+    'POST drafts/:id/confirm': async ({ params }) => {
+      if (!runtime.divisions) throw new RouteError(404, 'Draft coordinator unavailable')
+      return runtime.divisions.confirmSpeculativeDraft(params.id, { confirmedBy: 'panel' })
+    },
+    'POST drafts/:id/revoke': async ({ params, body }) => {
+      if (!runtime.divisions) throw new RouteError(404, 'Draft coordinator unavailable')
+      const parsed = z.object({ reason: z.string().max(500).optional() }).parse(await body())
+      return { draft: runtime.divisions.revokeSpeculativeDraft(params.id, parsed.reason) }
+    },
+    'POST drafts/:id/discard': async ({ params, body }) => {
+      if (!runtime.divisions) throw new RouteError(404, 'Draft coordinator unavailable')
+      const parsed = z.object({ reason: z.string().max(500).optional() }).parse(await body())
+      return { draft: runtime.divisions.discardSpeculativeDraft(params.id, parsed.reason) }
+    },
     'GET update-check': async () => checkForUpdate(await currentVersion()),
     'GET overview': () => overview(views(runtime), runtime.health, policyVersion(store.settings()),
       executorLoad(store, runtime.executor.activeCount()), runtime.setupProblem ?? runtime.feishuProblem),
